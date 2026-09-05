@@ -28,6 +28,18 @@ export function isoLocalInput(dt) {
   return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())}T${p(dt.getHours())}:${p(dt.getMinutes())}`;
 }
 
+// Curated, muted avatar palette — no rainbow noise.
+const AVATAR_COLORS = [
+  "#1a73e8", "#188038", "#e37400", "#9334e6", "#12a4af", "#c5221f", "#5f6368"
+];
+
+export function avatarColor(seed) {
+  const s = String(seed || "");
+  let hash = 0;
+  for (let i = 0; i < s.length; i++) hash = (hash * 31 + s.charCodeAt(i)) >>> 0;
+  return AVATAR_COLORS[hash % AVATAR_COLORS.length];
+}
+
 // Light HTML sanitizer for rendering Gmail html bodies (@html needs safety).
 export function sanitizeHtml(html) {
   if (!html) return "";

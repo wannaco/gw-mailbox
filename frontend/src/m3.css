@@ -1,130 +1,126 @@
 /* =============================================================================
-   Material 3 — design tokens + base (hand-rolled, zero dependencies)
-   Palette generated from the "Gmail blue" seed (#0b57d0) via the Material
-   Theme Builder convention. Light + dark via [data-theme].
+   Material 3 tokens — Gmail-like palette, hand-rolled, zero dependencies.
+   Calm neutrals + single blue accent; light by default, dark optional.
    ============================================================================= */
 
 :root,
 [data-theme="light"] {
   color-scheme: light;
 
-  /* primary */
-  --m3-primary: #085fae;
+  /* primary — Gmail blue */
+  --m3-primary: #1a73e8;
   --m3-on-primary: #ffffff;
-  --m3-primary-container: #d4e3ff;
-  --m3-on-primary-container: #001b3f;
-  /* secondary */
-  --m3-secondary: #545f71;
+  --m3-primary-container: #d2e3fc;
+  --m3-on-primary-container: #041e49;
+  /* secondary — calm slate */
+  --m3-secondary: #475e74;
   --m3-on-secondary: #ffffff;
-  --m3-secondary-container: #d8e3f9;
-  --m3-on-secondary-container: #111c2b;
-  /* tertiary */
-  --m3-tertiary: #6d5678;
+  --m3-secondary-container: #dae2f9;
+  --m3-on-secondary-container: #0a1f33;
+  /* tertiary — soft violet (drafting accents) */
+  --m3-tertiary: #7c4d9e;
   --m3-on-tertiary: #ffffff;
-  --m3-tertiary-container: #f5d9ff;
-  --m3-on-tertiary-container: #26132f;
-  /* error */
-  --m3-error: #ba1a1a;
+  --m3-tertiary-container: #f0dcff;
+  --m3-on-tertiary-container: #2b1050;
+  /* error — Gmail red */
+  --m3-error: #d93025;
   --m3-on-error: #ffffff;
-  --m3-error-container: #ffdad6;
-  --m3-on-error-container: #410002;
-  /* surfaces */
-  --m3-surface: #fdf8fd;
-  --m3-on-surface: #1a1c20;
-  --m3-surface-dim: #ddd9de;
-  --m3-surface-bright: #fdf8fd;
+  --m3-error-container: #fce8e6;
+  --m3-on-error-container: #8c1d18;
+
+  /* surfaces — near-white, Gmail-like */
+  --m3-surface: #f8fafd;
+  --m3-on-surface: #1f1f1f;
+  --m3-surface-dim: #e6eaf1;
+  --m3-surface-bright: #ffffff;
   --m3-surface-container-lowest: #ffffff;
-  --m3-surface-container-low: #f7f2f8;
-  --m3-surface-container: #f1ecf2;
-  --m3-surface-container-high: #ebe7ec;
-  --m3-surface-container-highest: #e5e1e7;
+  --m3-surface-container-low: #ffffff;
+  --m3-surface-container: #eef1f6;
+  --m3-surface-container-high: #e6eaf1;
+  --m3-surface-container-highest: #dfe4ec;
   --m3-on-surface-variant: #44474e;
-  --m3-on-surface-variant-2: #65696f;
+  --m3-on-surface-variant-2: #5f6368;
   --m3-outline: #74777f;
-  --m3-outline-variant: #c4c6cf;
+  --m3-outline-variant: #dadce0;
   --m3-inverse-surface: #2f3036;
   --m3-inverse-on-surface: #f1f0f4;
   --m3-scrim: #000000;
   --m3-shadow: #000000;
 
-  /* elevation (shadows per M3 spec tiers) */
-  --m3-elev-1: 0 1px 2px rgb(0 0 0 / 0.3), 0 1px 3px 1px rgb(0 0 0 / 0.15);
-  --m3-elev-2: 0 1px 2px rgb(0 0 0 / 0.3), 0 2px 6px 2px rgb(0 0 0 / 0.15);
-  --m3-elev-3: 0 1px 3px rgb(0 0 0 / 0.3), 0 4px 8px 3px rgb(0 0 0 / 0.15);
-  --m3-elev-4: 0 2px 3px rgb(0 0 0 / 0.3), 0 6px 10px 4px rgb(0 0 0 / 0.15);
+  /* row hover / selection (list view) */
+  --m3-row-hover: #f1f5fb;
+  --m3-row-active: #e8f0fe;
+
+  /* elevation */
+  --m3-elev-1: 0 1px 2px rgb(0 0 0 / 0.14);
+  --m3-elev-2: 0 1px 2px rgb(0 0 0 / 0.16), 0 2px 6px rgb(0 0 0 / 0.1);
+  --m3-elev-3: 0 1px 3px rgb(0 0 0 / 0.18), 0 4px 8px rgb(0 0 0 / 0.12);
+  --m3-elev-4: 0 2px 3px rgb(0 0 0 / 0.2), 0 6px 12px rgb(0 0 0 / 0.14);
 
   /* shape */
-  --m3-shape-xs: 4px;
+  --m3-shape-xs: 6px;
   --m3-shape-sm: 8px;
   --m3-shape-md: 12px;
   --m3-shape-lg: 16px;
-  --m3-shape-xl: 28px;
+  --m3-shape-xl: 24px;
   --m3-shape-full: 9999px;
-
-  /* state overlays */
-  --m3-state-hover: rgb(28 27 31 / 0.08);
-  --m3-state-pressed: rgb(28 27 31 / 0.12);
-  --m3-state-focus: rgb(28 27 31 / 0.12);
-
-  /* state colors per role */
-  --m3-on-surface-hover: rgb(26 28 32 / 0.08);
 }
 
 [data-theme="dark"] {
   color-scheme: dark;
 
-  --m3-primary: #a4c9ff;
-  --m3-on-primary: #002f5e;
-  --m3-primary-container: #00468a;
-  --m3-on-primary-container: #d4e3ff;
-  --m3-secondary: #bcc7da;
-  --m3-on-secondary: #273141;
-  --m3-secondary-container: #3d4758;
-  --m3-on-secondary-container: #d8e3f9;
-  --m3-tertiary: #d8bce2;
-  --m3-on-tertiary: #3d2846;
-  --m3-tertiary-container: #553f5e;
-  --m3-on-tertiary-container: #f5d9ff;
-  --m3-error: #ffb4ab;
-  --m3-on-error: #690005;
-  --m3-error-container: #93000a;
-  --m3-on-error-container: #ffdad6;
-  --m3-surface: #121317;
-  --m3-on-surface: #e3e2e6;
-  --m3-surface-dim: #121317;
-  --m3-surface-bright: #38393f;
-  --m3-surface-container-lowest: #0d0e12;
-  --m3-surface-container-low: #1a1b20;
-  --m3-surface-container: #1e1f24;
-  --m3-surface-container-high: #292a2f;
-  --m3-surface-container-highest: #34343a;
-  --m3-on-surface-variant: #c7c6cf;
-  --m3-on-surface-variant-2: #a5a6ae;
-  --m3-outline: #90919a;
-  --m3-outline-variant: #44464f;
-  --m3-inverse-surface: #e3e2e6;
+  --m3-primary: #8ab4f8;
+  --m3-on-primary: #062e6f;
+  --m3-primary-container: #1a56c0;
+  --m3-on-primary-container: #d2e3fc;
+  --m3-secondary: #b9c7d9;
+  --m3-on-secondary: #223243;
+  --m3-secondary-container: #3b4d60;
+  --m3-on-secondary-container: #dae2f9;
+  --m3-tertiary: #dcbcf3;
+  --m3-on-tertiary: #43245c;
+  --m3-tertiary-container: #5f3a80;
+  --m3-on-tertiary-container: #f0dcff;
+  --m3-error: #f6aea9;
+  --m3-on-error: #601410;
+  --m3-error-container: #8c1d18;
+  --m3-on-error-container: #fce8e6;
+
+  --m3-surface: #1f1f1f;
+  --m3-on-surface: #e4e4e4;
+  --m3-surface-dim: #141414;
+  --m3-surface-bright: #3a3a3a;
+  --m3-surface-container-lowest: #121212;
+  --m3-surface-container-low: #262626;
+  --m3-surface-container: #2d2d2d;
+  --m3-surface-container-high: #343434;
+  --m3-surface-container-highest: #3c3c3c;
+  --m3-on-surface-variant: #c6c6c6;
+  --m3-on-surface-variant-2: #a5a5a5;
+  --m3-outline: #8f8f8f;
+  --m3-outline-variant: #4a4a4a;
+  --m3-inverse-surface: #e4e4e4;
   --m3-inverse-on-surface: #2f3036;
 
-  --m3-state-hover: rgb(227 226 230 / 0.08);
-  --m3-state-pressed: rgb(227 226 230 / 0.12);
-  --m3-on-surface-hover: rgb(227 226 230 / 0.08);
+  --m3-row-hover: #2c2c2c;
+  --m3-row-active: #30353b;
 }
 
 /* ---------------------------------------------------------------------------
-   Typography — M3 type scale
+   Type scale
    --------------------------------------------------------------------------- */
 :root {
-  --m3-type-display: clamp(2.5rem, 6vw, 3.5rem) / 1.1 "Roboto Flex", "Segoe UI", system-ui, sans-serif;
-  --m3-type-headline: 1.5rem / 1.3 "Roboto Flex", "Segoe UI", system-ui, sans-serif;
-  --m3-type-title-lg: 1.25rem / 1.4 "Roboto Flex", "Segoe UI", system-ui, sans-serif;
-  --m3-type-title-md: 1rem / 1.5 "Roboto Flex", "Segoe UI", system-ui, sans-serif;
-  --m3-type-title-sm: 0.875rem / 1.4 600 "Roboto Flex", "Segoe UI", system-ui, sans-serif;
-  --m3-type-body-lg: 1rem / 1.5 "Roboto Flex", "Segoe UI", system-ui, sans-serif;
-  --m3-type-body-md: 0.875rem / 1.45 "Roboto Flex", "Segoe UI", system-ui, sans-serif;
-  --m3-type-body-sm: 0.75rem / 1.4 "Roboto Flex", "Segoe UI", system-ui, sans-serif;
-  --m3-type-label-lg: 0.875rem / 1.4 600 "Roboto Flex", "Segoe UI", system-ui, sans-serif;
-  --m3-type-label-md: 0.75rem / 1.3 600 "Roboto Flex", "Segoe UI", system-ui, sans-serif;
-  --m3-type-label-sm: 0.6875rem / 1.3 600 "Roboto Flex", "Segoe UI", system-ui, sans-serif;
+  --m3-type-display: clamp(2.25rem, 5vw, 3.25rem) / 1.15 "Roboto", "Segoe UI", system-ui, sans-serif;
+  --m3-type-headline: 1.375rem / 1.3 600 "Roboto", "Segoe UI", system-ui, sans-serif;
+  --m3-type-title-lg: 1.125rem / 1.4 600 "Roboto", "Segoe UI", system-ui, sans-serif;
+  --m3-type-title-md: 1rem / 1.4 500 "Roboto", "Segoe UI", system-ui, sans-serif;
+  --m3-type-title-sm: 0.875rem / 1.4 600 "Roboto", "Segoe UI", system-ui, sans-serif;
+  --m3-type-body-lg: 1rem / 1.45 "Roboto", "Segoe UI", system-ui, sans-serif;
+  --m3-type-body-md: 0.875rem / 1.4 "Roboto", "Segoe UI", system-ui, sans-serif;
+  --m3-type-body-sm: 0.75rem / 1.35 "Roboto", "Segoe UI", system-ui, sans-serif;
+  --m3-type-label-lg: 0.875rem / 1.4 500 "Roboto", "Segoe UI", system-ui, sans-serif;
+  --m3-type-label-md: 0.75rem / 1.3 500 "Roboto", "Segoe UI", system-ui, sans-serif;
+  --m3-type-label-sm: 0.6875rem / 1.3 500 "Roboto", "Segoe UI", system-ui, sans-serif;
 }
 
 /* ---------------------------------------------------------------------------
@@ -165,7 +161,7 @@ select {
   color: inherit;
 }
 
-h1, h2, h3 {
+h1, h2, h3, h4, p {
   margin: 0;
 }
 
@@ -189,7 +185,7 @@ a {
   height: 32px;
   padding: 0 14px;
   border-radius: var(--m3-shape-full);
-  background: var(--m3-surface-container-low);
+  background: var(--m3-surface-container-lowest);
   border: 1px solid var(--m3-outline-variant);
   font: var(--m3-type-label-lg);
   color: var(--m3-on-surface-variant);
@@ -198,13 +194,43 @@ a {
 }
 
 .md3-chip:hover {
-  background: var(--m3-surface-container-highest);
+  background: var(--m3-surface-container-high);
 }
 
 .md3-chip.is-active {
-  background: var(--m3-secondary-container);
+  background: var(--m3-primary-container);
   border-color: transparent;
-  color: var(--m3-on-secondary-container);
+  color: var(--m3-on-primary-container);
+}
+
+.md3-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  background: var(--m3-surface-container);
+  border-radius: var(--m3-shape-sm);
+}
+
+.md3-seg button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 6px;
+  color: var(--m3-on-surface-variant);
+  font: var(--m3-type-label-lg);
+}
+
+.md3-seg button:hover {
+  background: var(--m3-row-hover);
+}
+
+.md3-seg button.is-active {
+  background: var(--m3-surface-container-lowest);
+  color: var(--m3-on-surface);
+  box-shadow: var(--m3-elev-1);
 }
 
 .md3-fab {
@@ -216,27 +242,10 @@ a {
   min-width: 56px;
   padding: 0 18px;
   border-radius: var(--m3-shape-lg);
-  background: var(--m3-primary-container);
-  color: var(--m3-on-primary-container);
+  background: var(--m3-primary);
+  color: var(--m3-on-primary);
   box-shadow: var(--m3-elev-3);
   font: var(--m3-type-label-lg);
-  transition: box-shadow 0.2s ease, transform 0.05s ease;
-}
-
-.md3-fab:hover {
-  box-shadow: var(--m3-elev-4);
-}
-
-.md3-fab:active {
-  box-shadow: var(--m3-elev-1);
-}
-
-.md3-fab.small {
-  height: 40px;
-  min-width: 40px;
-  padding: 0 14px;
-  border-radius: var(--m3-shape-md);
-  font-size: 0.8rem;
 }
 
 .md3-btn {
@@ -248,7 +257,6 @@ a {
   padding: 0 20px;
   border-radius: var(--m3-shape-full);
   font: var(--m3-type-label-lg);
-  letter-spacing: 0.01em;
   transition: background 0.15s ease;
 }
 
@@ -282,15 +290,14 @@ a {
   justify-content: center;
   width: 40px;
   height: 40px;
-  border-radius: var(--m3-shape-full);
+  border-radius: 50%;
   color: var(--m3-on-surface-variant);
 }
 
 .md3-icon-btn:hover {
-  background: var(--m3-on-surface-hover);
+  background: var(--m3-row-hover);
 }
 
-/* Scrollbars */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;

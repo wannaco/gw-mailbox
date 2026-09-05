@@ -1,11 +1,9 @@
 <script>
   import { appState, agentInitials } from "../lib/appState.svelte.js";
+  import { avatarColor } from "../lib/utils.js";
 
   let { select } = $props();
 
-  function inboxHue(id) {
-    return (id || "0").charCodeAt(0) * 137 % 360;
-  }
 </script>
 
 <nav class="rail" aria-label="Inboxes">
@@ -17,7 +15,7 @@
         onclick={() => select(inbox.id)}
         title={inbox.email_address}
       >
-        <span class="rail-dot" style="background:hsl({inboxHue(inbox.id)} 65% 46%)"></span>
+        <span class="rail-dot" style="background:{avatarColor(inbox.email_address)}"></span>
         <span class="rail-label">{inbox.name}</span>
       </button>
     {/each}

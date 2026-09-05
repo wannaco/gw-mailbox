@@ -1,7 +1,7 @@
 <script>
   import { appState, toast, statusMeta, composingLock, agentInitials, STATUSES } from "../lib/appState.svelte.js";
   import * as api from "../lib/api.js";
-  import { timeAgo, fmtDateTime, sanitizeHtml, isoLocalInput } from "../lib/utils.js";
+  import { timeAgo, fmtDateTime, sanitizeHtml, isoLocalInput, avatarColor } from "../lib/utils.js";
 
   let { threadId } = $props();
 
@@ -219,7 +219,7 @@
     {#each msgsVisible as m (m.id)}
       <article class:note={m.is_internal_note} class:external={!m.is_internal_note}>
         <div class="msg-head">
-          <span class="avatar" style="background:hsl({(m.sender_email || 'x').charCodeAt(0) * 47 % 360} 55% 40%)">
+          <span class="avatar" style="background:{avatarColor(m.sender_email)}">
             {agentInitials(m.sender_email)}
           </span>
           <span class="sender">{m.is_internal_note ? "Internal note · " + (m.sender_email || "system") : m.sender_email}</span>

@@ -1,18 +1,20 @@
 <script>
   import { onMount } from "svelte";
   import { appState, toast, resetSession, agentInitials } from "./lib/appState.svelte.js";
+  import { avatarColor } from "./lib/utils.js";
   import * as api from "./lib/api.js";
   import Login from "./components/Login.svelte";
   import NavRail from "./components/NavRail.svelte";
+  import ListView from "./components/ListView.svelte";
   import Board from "./components/Board.svelte";
   import ThreadView from "./components/ThreadView.svelte";
   import Snackbar from "./components/Snackbar.svelte";
 
-  let theme = $state("dark");
+  let theme = $state("light");
 
   function applyTheme() {
     const saved = localStorage.getItem("gwmb.theme");
-    theme = saved || (window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    theme = saved === "dark" ? "dark" : "light"; // light default
     document.documentElement.setAttribute("data-theme", theme);
   }
   function toggleTheme() {
@@ -70,6 +72,16 @@
         <span class="brand-name">Mailbox</span>
       </div>
       <div class="spacer"></div>
+      <div class="md3-seg" role="tablist" aria-label="View">
+        <button class:is-active={appState.view === "list"} onclick={() => (appState.view = "list")} title="List view">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/></svg>
+          List
+        </button>
+        <button class:is-active={appState.view === "board"} onclick={() => (appState.view = "board")} title="Board view">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 5h18v14H3z" opacity="0"/><path d="M3 5v14h8V5H3zm10 0v9h8V5h-8z"/></svg>
+          Board
+        </button>
+      </div>
       <span class="md3-chip is-active">{appState.inboxes.find((i) => i.id === appState.activeInboxId)?.name || "—"}</span>
       <button class="md3-icon-btn" title="Toggle theme" onclick={toggleTheme}>
         {#if theme === "dark"}
@@ -79,7 +91,7 @@
         {/if}
       </button>
       <div class="me">
-        <span class="avatar" style="background:hsl({(appState.me?.id || '0').charCodeAt(0) * 47 % 360} 60% 42%)">
+        <span class="avatar" style="background:{avatarColor(appState.me?.name || appState.me?.email)}">
           {agentInitials(appState.me?.name || appState.me?.email)}
         </span>
         <span class="me-name">{appState.me?.name || appState.me?.email}</span>
@@ -92,7 +104,11 @@
     <div class="body">
       <NavRail select={switchInbox} />
       <main class:dimmed={!!appState.openThreadId}>
-        <Board open={(id) => (appState.openThreadId = id)} />
+        {#if appState.view === "board"}
+          <Board open={(id) => (appState.openThreadId = id)} />
+        {:else}
+          <ListView open={(id) => (appState.openThreadId = id)} />
+        {/if}
       </main>
 
       {#if appState.openThreadId}
@@ -137,7 +153,7 @@
     width: 26px;
     height: 26px;
     border-radius: 50%;
-    background: linear-gradient(135deg, var(--m3-primary), var(--m3-tertiary));
+    background: var(--m3-primary);
   }
 
   .spacer {

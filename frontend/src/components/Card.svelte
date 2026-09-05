@@ -1,6 +1,6 @@
 <script>
   import { appState, agentInitials } from "../lib/appState.svelte.js";
-  import { timeAgo } from "../lib/utils.js";
+  import { timeAgo, avatarColor } from "../lib/utils.js";
 
   let { thread, open } = $props();
 
@@ -50,7 +50,7 @@
   <p class="snippet">{thread.snippet || ""}</p>
   <div class="meta">
     <span class="who">
-      <span class="avatar" style="background:hsl({(thread.customer_email || 'x').charCodeAt(0) * 47 % 360} 55% 40%)">
+      <span class="avatar" style="background:{avatarColor(thread.customer_email || thread.customer_name)}">
         {agentInitials(thread.customer_name || thread.customer_email)}
       </span>
       <span class="email" title={thread.customer_email}>{thread.customer_email || "—"}</span>

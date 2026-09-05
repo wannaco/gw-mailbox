@@ -72,7 +72,7 @@
     width: 44px;
     height: 44px;
     border-radius: 50%;
-    background: linear-gradient(135deg, var(--m3-primary), var(--m3-tertiary));
+    background: var(--m3-primary);
     display: block;
   }
 
