@@ -1,0 +1,11 @@
+pb_data/
+pb_hooks/.pb_logs
+node_modules/
+frontend/dist/
+frontend/node_modules/
+.env
+.env.local
+*.log
+.DS_Store
+.seedtest/
+.test_pb_data/

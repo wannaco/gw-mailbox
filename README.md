@@ -1,0 +1,197 @@
+# gw-mailbox — Google Workspace Collaborative Mailbox & Kanban (PocketBase)
+
+High-performance, real-time shared email inbox + collaborative Kanban ticketing
+for Google Workspace. Backend: **PocketBase 0.39.x** (SQLite + SSE realtime +
+Cron + JS hooks, zero external services). External calls: **Gmail API v3**
+(Pub/Sub push webhooks) and **Google Calendar API v3**.
+
+```
+┌──────────────┐  push   ┌──────────────────────────────────────────────┐
+│ Google       │ ──────► │ PocketBase  (this repo)                       │
+│ Pub/Sub      │  /api/  │  pb_hooks/gmail.pb.js   → threads + messages  │
+│  (Gmail)     │  gmail- │  pb_hooks/calendar.pb.js→ Meet booking        │
+└──────────────┘  webhook│  pb_hooks/main.pb.js    → presence/draft-lock │
+                         │  pb_hooks/cron.pb.js    → SLA + sweeper jobs  │
+                         │  /api/realtime (SSE)    → live board/panes    │
+                         └──────────────────────────────────────────────┘
+                                  ▲                    │  /api/collections/*
+                                  │  SSE + REST        │  + /api/mailbox/*
+                           ┌──────┴──────┐      ┌──────▼──────┐
+                           │ Agent A     │      │ Agent B     │  (M3 frontend, Phase 3)
+                           └─────────────┘      └─────────────┘
+```
+
+## Repository layout
+
+```
+pb_migrations/1786000000_init_mailbox_schema.js   Phase 1 — schema + rules
+pb_hooks/
+  main.pb.js           registrar: presence/notes/move routes + record hooks
+  gmail.pb.js          registrar: webhook + watch/sync routes
+  calendar.pb.js       registrar: availability/meet routes
+  cron.pb.js           registrar: SLA monitor + presence sweeper jobs
+  lib/
+    helpers.js         shared: cors/auth, access checks, presence engine,
+                       Google SA auth (signer/openssl), dates, base64, notes
+    presence_api.js    presence heartbeat/lock, notes, move, me handlers
+    gmail_engine.js    Pub/Sub webhook, watch, history-sync engine
+    calendar_engine.js free/busy + 1-click Meet booking
+    cron_engine.js     SLA breach monitor + stale presence sweeper
+scripts/signer/        RS256 JWT signer sidecar (Go)
+scripts/e2e.py         end-to-end suite (schema → presence → notes → SSE)
+docs/schema.md         collection/field/rules reference
+.env.example           configuration template
+pocketbase             PB 0.39 binary
+```
+
+## Quick start (dev)
+
+```bash
+cd gw-mailbox
+cp .env.example .env            # fill GOOGLE_SA_FILE / GOOGLE_PUBSUB_TOPIC
+go run ./scripts/signer &       # optional — openssl fallback exists
+./pocketbase serve --http=127.0.0.1:8090 --dev
+```
+
+First boot runs the migration (creates `users`, `teams`, `inboxes`, `threads`,
+`messages`, `thread_presence` + indexes + rules). Then:
+
+1. Open `http://127.0.0.1:8090/_/` → create the superuser.
+2. Provision inboxes (Admin UI or REST as superuser):
+   ```json
+   POST /api/collections/inboxes/records
+   { "name": "Support", "email_address": "support@yourdomain.com",
+     "allowed_users": ["<agent-user-id>"], "allowed_teams": ["<team-id>"], "is_active": true }
+   ```
+3. Start the Gmail push watch:
+   ```bash
+   curl -X POST http://127.0.0.1:8090/api/mailbox/inboxes/{inboxId}/watch \
+     -H "Authorization: Bearer <agent-token>"
+   ```
+   (requires the Pub/Sub topic to exist and a push subscription pointing at
+   `https://<host>/api/gmail-webhook` — see *Webhook setup*.)
+4. Watch the SSE stream:
+   ```bash
+   curl -N http://127.0.0.1:8090/api/realtime \
+     -H "Authorization: Bearer <agent-token>"
+   ```
+   subscribe: `{"clientId":"x","subscriptions":["threads","messages","thread_presence","inboxes"]}`
+
+## Custom API surface (everything else is plain PocketBase REST + realtime)
+
+| Method | Route | Purpose |
+|--------|-------|---------|
+| GET  | `/api/mailbox/me` | agent profile + permitted inboxes (UI bootstrap) |
+| POST | `/api/mailbox/threads/{id}/presence` | heartbeat `{status: viewing\|composing_reply}` → returns `lock` when another agent is drafting |
+| GET  | `/api/mailbox/threads/{id}/presence` | current viewers/composers |
+| DELETE | `/api/mailbox/threads/{id}/presence` | release lock |
+| POST | `/api/mailbox/threads/{id}/notes` | internal note `{body}` (@mentions) |
+| POST | `/api/mailbox/threads/{id}/move` | validated status/assignee/tags move |
+| POST | `/api/mailbox/inboxes/{id}/watch` | register Gmail push watch |
+| POST | `/api/mailbox/inboxes/{id}/sync` | incremental sync (`?backfill=1` full) |
+| GET  | `/api/gmail-webhook` | probe |
+| POST | `/api/gmail-webhook` | Google Pub/Sub push |
+| GET  | `/api/mailbox/threads/{id}/availability?start&end` | free/busy + suggested slots |
+| POST | `/api/mailbox/threads/{id}/meet` | book Meet `{start,end,summary?}` → links event, internal note, status→`waiting_customer` |
+| POST | `/api/mailbox/threads/{id}/cancel-meet` | remove linked event |
+
+Frontend consumption notes (Phase 3):
+
+- **Kanban board**: `GET /api/collections/threads/records?filter=(inbox='..')&sort=-last_message_at`
+  + SSE on `threads` for live drag/drop; drag = `PATCH /api/collections/threads/{id}` `{status}` or the `/move` endpoint.
+- **Thread detail**: expand `thread.inbox`, list
+  `GET /api/collections/messages/records?filter=(thread='..')`, compose tab
+  toggles `presence` heartbeat to `composing_reply`.
+- **Draft lock**: subscribe `thread_presence`; when a *different* `user` row has
+  `status=composing_reply`, show the M3 banner and disable Reply/Meet.
+
+## Webhook setup (Gmail push)
+
+1. Create topic + subscription (Pub/Sub Admin API):
+   - topic: `projects/{project}/topics/{topic}` → use `users.watch` with it.
+   - subscription: push endpoint `https://<public-host>/api/gmail-webhook`.
+     Recommended: enable **OIDC token** with `audience` = your webhook URL and
+     verify the JWT server-side (certs at
+     `https://www.googleapis.com/oauth2/v1/certs`). For quick setups set
+     `MAILBOX_WEBHOOK_SECRET` and send `X-Mailbox-Webhook-Token`.
+2. Grant the service account the Gmail scopes for every mailbox address that
+   will be an inbox (`gmail.modify`, `calendar.events`), enabled via
+   domain-wide delegation in the Workspace Admin console.
+3. Call `POST /api/mailbox/inboxes/{id}/watch`.
+
+## Cron automations (`pb_hooks/cron.pb.js`)
+
+| Job | Schedule | Action |
+|-----|----------|--------|
+| `gw-sla-monitor` | hourly (`0 * * * *`) | `status="new" && sla_due_at <= now` → `escalated`, internal note, `MAILBOX_ALERT_WEBHOOK` alert |
+| `gw-presence-sweeper` | every minute (`* * * * *`) | deletes `thread_presence` heartbeats older than 2 min (no phantom draft locks) |
+
+## Implementation phases
+
+1. **Phase 1 — Schema & rules** ✅ `pb_migrations/…` + `docs/schema.md`
+2. **Phase 2 — Gmail webhook + Calendar hooks** ✅ `gmail.pb.js`, `calendar.pb.js`
+3. **Phase 3 — M3 frontend** ⏳ SvelteKit/React + Material 3 (nav rail, kanban
+   DnD, thread viewer w/ notes tab) — consumes the REST + SSE contract above.
+4. **Phase 4 — SSE bindings** ✅ backend already emits; Phase 3 wires clients.
+
+## Frontend — Svelte 5 + Material 3 (Phase 3 slice)
+
+```bash
+cd frontend
+npm install
+npm run dev            # http://localhost:5173  (/api proxied to PB :8090)
+# override backend:  VITE_PB_URL=http://host:8090 npm run dev
+```
+
+Zero-framework-weight build: Svelte 5 + Vite only, **no meta-framework, no state
+lib, no component library** — Material 3 via generated design tokens
+(`src/m3.css`, light+dark) and ~15 hand-rolled components. Dev preview proxies
+`/api` → PocketBase, so no CORS config. Production: `npm run build` (dist ≈ 26 KB
+JS + 4 KB CSS gzip) and serve `dist/` behind the same host as PB (or set
+`MAILBOX_ALLOWED_ORIGIN` and `VITE_PB_URL`).
+
+Includes: M3 nav rail with inbox switcher, Kanban board (native drag between
+status columns → optimistic `/move`, revert+snackbar on failure), filter chips
++ search, thread drawer with conversation/notes tabs, live presence heartbeat
+(composing lock banner disables Reply/Meet while a teammate drafts), internal
+notes, reply composer (`/reply`), and 1-click Meet slot booking
+(`/availability` + `/meet`). Realtime = fetch-stream SSE with auth header
+(`src/lib/api.js`), auto-reconnect, subscribed to `threads`/`messages`/
+`thread_presence`.
+
+Phase 3 slice verified: `npm run build` clean (26 KB JS + 4 KB CSS gzip);
+dev server + proxy serves the app and completes agent login → `/mailbox/me`.
+
+## Verified end-to-end (PocketBase 0.39 binary, `scripts/e2e.py`)
+
+```
+RESULT: 22 passed, 0 failed
+```
+
+- migration applies cleanly (PB 0.39 auto-creates `users`; the migration
+  augments it idempotently with agent fields + rules)
+- API rules: cross-inbox isolation via direct grants AND
+  `allowed_teams.members` (Alice cannot list/view Bob's threads, and back)
+- record hooks: default `status=new`, `sla_due_at = now + MAILBOX_SLA_HOURS`
+- draft lock: Bob's presence heartbeat returns
+  `lock.agentName = "Alice Agent"` while Alice is composing; snapshots show
+  both agents; closing a card releases the composer lock
+- internal notes visible to teammates on the same inbox
+- card moves with assignment; webhook push acks gracefully (`200`)
+- SSE: presence heartbeat → `event:thread_presence` frame to subscribers
+- cron: `gw-presence-sweeper` removed a stale row at the next minute tick;
+  calendar availability returns a clean 502 when Google creds are absent
+
+## Notes / trade-offs
+
+- PB 0.39 removed the old `rsaSign` — service-account JWTs are signed by the
+  vendored Go sidecar, falling back to `openssl dgst -sha256 -sign`.
+- Webhook processing is inline for simplicity; very high-volume deployments
+  should enqueue history ids in a small collection and let a cron drain them.
+- Access is inbox-scoped; the `users` auth collection is intentionally
+  admin-provisioned (`createRule: null`).
+- `messages.gmail_message_id` uses a partial unique index so internal notes
+  (empty gmail id) never collide.
+- Handlers live in `pb_hooks/lib/*` and are registered through inline
+  `require()` wrappers because PB 0.39 does not retain closure/top-level
+  scope for `routerAdd`/`cronAdd` callbacks (documented in registrar headers).

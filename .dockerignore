@@ -1,0 +1,19 @@
+# Local data / state must never enter the image
+pb_data
+.test_pb_data
+*.db
+*.log
+.DS_Store
+
+# Node/build artifacts (frontend is built inside the Dockerfile)
+frontend/node_modules
+frontend/dist
+node_modules
+
+# Secrets
+.env
+.env.local
+
+# Repo plumbing
+.git
+.github
