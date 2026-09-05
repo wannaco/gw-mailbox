@@ -31,7 +31,6 @@ COPY pb_hooks ./pb_hooks
 
 # Frontend SPA served by PocketBase at the domain root
 COPY --from=ui /ui/dist ./pb_public
-RUN ls -la /app/pb_public && echo PWD=$(pwd)
 
 ENV PB_ENCRYPTION_KEY="" \
     MAILBOX_SEED_DEMO=1 \
