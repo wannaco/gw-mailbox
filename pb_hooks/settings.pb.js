@@ -31,3 +31,7 @@ console.log("[gw-mailbox] settings.pb.js loaded — admin settings routes regist
 routerAdd("GET", "/api/mailbox/settings/ping", (e) => {
   e.json(200, { ok: true, pong: Date.now() });
 }, $apis.requireSuperuserAuth());
+
+routerAdd("GET", "/api/mailbox/settings/t502", (e) => {
+  e.json(502, { error: "probe", message: "hello-502-json" });
+}, $apis.requireSuperuserAuth());
