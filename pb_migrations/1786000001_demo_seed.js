@@ -1,11 +1,12 @@
+/// <reference path="../pb_data/types.d.ts" />
 // =============================================================================
-// gw-mailbox — demo seed engine (module)
-// Seeds demo agents / inboxes / threads when MAILBOX_SEED_DEMO=1 and the
-// inboxes collection is empty. Runs inside a one-minute cron job (see
-// seed_demo.pb.js) so it executes AFTER the schema migration on first boot.
+// gw-mailbox — demo data seed (runs synchronously right after the schema
+// migration at every boot, BEFORE the HTTP server starts listening).
+//
+// Enabled only when MAILBOX_SEED_DEMO=1 AND the inboxes collection is empty
+// (fresh data dir). Because it runs inside a migration it needs no cron tick,
+// so demo data is available ~instantly after every container (re)start.
 // =============================================================================
-
-var seeded = false;
 
 function esc(s) {
   return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -15,55 +16,48 @@ function iso(d) {
   return new DateTime(d).string();
 }
 
-function trySeed() {
-  if (seeded) return "done";
-  if ($os.getenv("MAILBOX_SEED_DEMO") !== "1") {
-    seeded = true; // nothing to do, stop ticking
-    return "disabled";
-  }
+function runSeed(app) {
+  if ($os.getenv("MAILBOX_SEED_DEMO") !== "1") return false;
+
   try {
-    // collections exist yet?
-    $app.findCollectionByNameOrId("inboxes");
+    app.findCollectionByNameOrId("inboxes");
   } catch (_) {
-    return "not_ready"; // migrations not applied yet — retry next tick
+    return false; // schema not ready (shouldn't happen — runs after 1786000000)
   }
 
   try {
-    const existing = $app.findRecordsByFilter("inboxes", "", "", 1, 0);
-    if (existing && existing.length) {
-      seeded = true; // already has data — never overwrite
-      return "skip_existing";
-    }
+    const existing = app.findRecordsByFilter("inboxes", "", "", 1, 0);
+    if (existing && existing.length) return false; // never overwrite existing data
 
-    const usersColl = $app.findCollectionByNameOrId("users");
+    const usersColl = app.findCollectionByNameOrId("users");
 
     function ensureUser(email, name) {
       let u = null;
       try {
-        u = $app.findFirstRecordByFilter("users", "email = {:e}", { e: email });
+        u = app.findFirstRecordByFilter("users", "email = {:e}", { e: email });
       } catch (_) { /* not found */ }
       if (u) return u;
       u = new Record(usersColl, { email: email, name: name, verified: true });
       u.setPassword("<<CREDENTIAL-REMOVED>>");
-      $app.save(u);
+      app.save(u);
       return u;
     }
 
     const alice = ensureUser("alice@demo.local", "Alice Agent");
     const bob = ensureUser("bob@demo.local", "Bob Agent");
 
-    const teamsColl = $app.findCollectionByNameOrId("teams");
+    const teamsColl = app.findCollectionByNameOrId("teams");
     let team = null;
     try {
-      team = $app.findFirstRecordByFilter("teams", "name = {:n}", { n: "Demo Support L1" });
+      team = app.findFirstRecordByFilter("teams", "name = {:n}", { n: "Demo Support L1" });
     } catch (_) { /* not found */ }
     if (!team) {
       team = new Record(teamsColl, { name: "Demo Support L1", description: "Demo team" });
       team.set("members", [alice.id, bob.id]);
-      $app.save(team);
+      app.save(team);
     }
 
-    const inboxesColl = $app.findCollectionByNameOrId("inboxes");
+    const inboxesColl = app.findCollectionByNameOrId("inboxes");
     const both = [alice.id, bob.id];
     function ensureInbox(name, email) {
       const rec = new Record(inboxesColl, {
@@ -74,7 +68,7 @@ function trySeed() {
       });
       rec.set("allowed_users", both);
       rec.set("allowed_teams", [team.id]);
-      $app.save(rec);
+      app.save(rec);
       return rec;
     }
 
@@ -82,8 +76,8 @@ function trySeed() {
     const sales = ensureInbox("Sales", "sales@demo.local");
     const billing = ensureInbox("Billing", "billing@demo.local");
 
-    const threadsColl = $app.findCollectionByNameOrId("threads");
-    const messagesColl = $app.findCollectionByNameOrId("messages");
+    const threadsColl = app.findCollectionByNameOrId("threads");
+    const messagesColl = app.findCollectionByNameOrId("messages");
     const now = Date.now();
     const H = 3600 * 1000;
 
@@ -96,8 +90,8 @@ function trySeed() {
         body_html: html || "<p>" + esc(plain).replace(/\n+/g, "</p><p>") + "</p>",
         is_internal_note: !!note
       });
-      if (whenIso) { try { m.set("created", whenIso); } catch (_) { /* autodate ignores manual */ } }
-      $app.save(m);
+      if (whenIso) { try { m.set("created", whenIso); } catch (_) { /* autodate */ } }
+      app.save(m);
       return m;
     }
 
@@ -114,13 +108,13 @@ function trySeed() {
         last_message_at: iso(new Date(now - hoursAgo * H).toISOString()),
         tags: extra.tags || []
       });
-      const slaHours = extra.escalated ? -(1) : 24;
+      const slaHours = extra.escalated ? 0 : 24;
       t.set("sla_due_at", iso(new Date(now + (slaHours + 1) * H).toISOString()));
-      $app.save(t);
+      app.save(t);
       return t;
     }
 
-    // Support inbox threads
+    // Support inbox
     const t1 = addThread(support, "Cannot log into the customer portal", "Marina Klein", "marina.klein@outlook.com", "in_progress", 3, {
       snippet: "I've reset my password three times but still get 'invalid credentials'.",
       tags: ["portal", "urgent"]
@@ -187,14 +181,17 @@ function trySeed() {
       "Refund processed, you'll see it in 3-5 business days.",
       "", iso(new Date(now - 60 * H).toISOString()));
 
-    console.log("[gw-mailbox] demo seed complete: users/inboxes/threads created");
-    seeded = true;
-    try { cronRemove("gw-seed-demo"); } catch (_) { /* fine */ }
-    return "done";
+    console.log("[gw-mailbox] demo seed complete (migration): users/inboxes/threads created");
+    return true;
   } catch (err) {
-    console.warn("[gw-mailbox] demo seed failed:", err && err.message ? err.message : err);
-    return "error";
+    console.warn("[gw-mailbox] demo seed (migration) failed:", err && err.message ? err.message : err);
+    return false;
   }
 }
 
-module.exports = { trySeed: trySeed };
+migrate((app) => {
+  runSeed(app);
+}, (app) => {
+  // Downgrade: nothing to roll back — data removal is intentionally destructive
+  // and never performed by migrations.
+});
