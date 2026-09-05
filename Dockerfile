@@ -22,7 +22,9 @@ RUN npm run build
 
 # ---- stage 2: runtime ------------------------------------------------------
 FROM alpine:3.20
-RUN apk add --no-cache ca-certificates tzdata
+# openssl is REQUIRED: PB 0.39 removed rsaSign, so service-account JWTs are
+# signed via `openssl dgst -sha256 -sign` (no Go signer runs in this image).
+RUN apk add --no-cache ca-certificates tzdata openssl
 WORKDIR /app
 
 # PocketBase 0.39 binary (kept in the repo for reproducible builds)
