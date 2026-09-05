@@ -1,5 +1,5 @@
 <script>
-  import { state, agentInitials } from "../lib/state.svelte.js";
+  import { appState, agentInitials } from "../lib/appState.svelte.js";
 
   let { select } = $props();
 
@@ -10,10 +10,10 @@
 
 <nav class="rail" aria-label="Inboxes">
   <div class="rail-inner">
-    {#each state.inboxes as inbox (inbox.id)}
+    {#each appState.inboxes as inbox (inbox.id)}
       <button
         class="rail-item"
-        class:active={state.activeInboxId === inbox.id}
+        class:active={appState.activeInboxId === inbox.id}
         onclick={() => select(inbox.id)}
         title={inbox.email_address}
       >
@@ -21,7 +21,7 @@
         <span class="rail-label">{inbox.name}</span>
       </button>
     {/each}
-    {#if !state.inboxes.length}
+    {#if !appState.inboxes.length}
       <div class="empty">No inboxes assigned yet.<br /><small>Ask an admin to add you to an inbox.</small></div>
     {/if}
   </div>

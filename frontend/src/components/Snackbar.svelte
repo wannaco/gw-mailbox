@@ -1,5 +1,5 @@
 <script>
-  import { state } from "../lib/state.svelte.js";
+  import { appState } from "../lib/appState.svelte.js";
 
   function kindIcon(kind) {
     if (kind === "error") {
@@ -13,7 +13,7 @@
 </script>
 
 <div class="snacks" role="status">
-  {#each state.toasts as t (t.id)}
+  {#each appState.toasts as t (t.id)}
     <div class="snack {t.kind}">
       <!-- svelte-ignore a11y_no_raw_html -->
       <span class="icon">{@html kindIcon(t.kind)}</span>
@@ -21,8 +21,8 @@
       <button
         class="dismiss"
         onclick={() => {
-          const i = state.toasts.findIndex((x) => x.id === t.id);
-          if (i >= 0) state.toasts.splice(i, 1);
+          const i = appState.toasts.findIndex((x) => x.id === t.id);
+          if (i >= 0) appState.toasts.splice(i, 1);
         }}
       >✕</button>
     </div>

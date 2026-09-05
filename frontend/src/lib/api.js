@@ -7,7 +7,7 @@
 // POST /api/realtime {clientId, subscriptions:[...]}.
 // =============================================================================
 
-import { state, toast } from "./state.svelte.js";
+import { appState, toast } from "./appState.svelte.js";
 
 export const PB_URL = (import.meta.env.VITE_PB_URL || "").replace(/\/$/, "");
 
@@ -26,7 +26,7 @@ export function savedToken() {
 }
 
 export async function pbRequest(method, path, body, opts = {}) {
-  const token = opts.token ?? state.token;
+  const token = opts.token ?? appState.token;
   const res = await fetch(url(path), {
     method,
     headers: {
@@ -70,23 +70,23 @@ export function authWithPassword(email, password) {
 export async function loadSession() {
   // bootstrap /me + permitted inboxes + lightweight directory
   const meRes = await pbRequest("GET", "/mailbox/me");
-  state.me = meRes.me;
-  state.inboxes = meRes.inboxes || [];
-  if (state.inboxes.length) {
-    state.activeInboxId =
-      state.inboxes.find((i) => i.id === state.activeInboxId)?.id || state.inboxes[0].id;
+  appState.me = meRes.me;
+  appState.inboxes = meRes.inboxes || [];
+  if (appState.inboxes.length) {
+    appState.activeInboxId =
+      appState.inboxes.find((i) => i.id === appState.activeInboxId)?.id || appState.inboxes[0].id;
   }
   await refreshThreads();
 }
 
 export async function refreshThreads() {
-  const filter = encodeURIComponent('inbox = "' + state.activeInboxId + '"');
+  const filter = encodeURIComponent('inbox = "' + appState.activeInboxId + '"');
   const res = await pbRequest(
     "GET",
     `/collections/threads/records?perPage=200&sort=-last_message_at&filter=${filter}`
   );
   for (const item of res.items || []) {
-    state.threads[item.id] = item;
+    appState.threads[item.id] = item;
   }
 }
 
@@ -96,7 +96,7 @@ export async function fetchMessages(threadId) {
     "GET",
     `/collections/messages/records?perPage=200&sort=created&filter=${filter}`
   );
-  state.messages[threadId] = res.items || [];
+  appState.messages[threadId] = res.items || [];
 }
 
 // ---- presence / notes / moves / replies / meet -----------------------------
@@ -142,28 +142,28 @@ function upsertRecord(collection, data) {
 
   if (collection === "threads") {
     if (action === "delete") {
-      delete state.threads[record.id];
+      delete appState.threads[record.id];
     } else if (record.inbox) {
-      state.threads[record.id] = { ...(state.threads[record.id] || {}), ...record };
+      appState.threads[record.id] = { ...(appState.threads[record.id] || {}), ...record };
     }
   } else if (collection === "messages") {
     const threadId = record.thread;
     if (action === "delete") {
-      state.messages[threadId] = (state.messages[threadId] || []).filter((m) => m.id !== record.id);
+      appState.messages[threadId] = (appState.messages[threadId] || []).filter((m) => m.id !== record.id);
     } else if (threadId) {
-      const list = state.messages[threadId] || [];
+      const list = appState.messages[threadId] || [];
       const i = list.findIndex((m) => m.id === record.id);
       if (i >= 0) list[i] = { ...list[i], ...record };
-      else if (state.openThreadId === threadId) list.push(record);
-      state.messages[threadId] = list;
+      else if (appState.openThreadId === threadId) list.push(record);
+      appState.messages[threadId] = list;
     }
   } else if (collection === "thread_presence") {
     const key = `${record.thread}:${record.user}`;
     if (action === "delete") {
-      delete state.presence[key];
+      delete appState.presence[key];
     } else {
-      const existing = state.presence[key];
-      state.presence[key] = {
+      const existing = appState.presence[key];
+      appState.presence[key] = {
         ...(existing || {}),
         thread: record.thread,
         user: record.user,
@@ -195,7 +195,7 @@ async function rtLoop() {
   while (rtActive) {
     try {
       const res = await fetch(url("/realtime"), {
-        headers: { Authorization: "Bearer " + state.token }
+        headers: { Authorization: "Bearer " + appState.token }
       });
       if (!res.ok || !res.body) throw new Error("realtime " + res.status);
 
@@ -209,8 +209,8 @@ async function rtLoop() {
         "threads",
         "messages",
         "thread_presence",
-        `thread_presence/${state.openThreadId || "*"}`,
-        `messages/${state.openThreadId || "*"}`
+        `thread_presence/${appState.openThreadId || "*"}`,
+        `messages/${appState.openThreadId || "*"}`
       ];
 
       while (rtActive) {
@@ -227,7 +227,7 @@ async function rtLoop() {
 
           if (frame.event === "PB_CONNECT") {
             clientId = frame.data?.clientId || "";
-            state.realtimeOn = true;
+            appState.realtimeOn = true;
             // Subscribe for this client.
             try {
               await pbRequest("POST", "/realtime", {
@@ -254,7 +254,7 @@ async function rtLoop() {
       }
     }
     if (rtActive) {
-      state.realtimeOn = false;
+      appState.realtimeOn = false;
       await new Promise((r) => setTimeout(r, 2500));
     }
   }
@@ -269,5 +269,5 @@ export function startRealtime() {
 
 export function stopRealtime() {
   rtActive = false;
-  state.realtimeOn = false;
+  appState.realtimeOn = false;
 }

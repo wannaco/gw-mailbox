@@ -1,11 +1,11 @@
 <script>
-  import { state, toast, statusMeta, composingLock, agentInitials, STATUSES } from "../lib/state.svelte.js";
+  import { appState, toast, statusMeta, composingLock, agentInitials, STATUSES } from "../lib/appState.svelte.js";
   import * as api from "../lib/api.js";
   import { timeAgo, fmtDateTime, sanitizeHtml, isoLocalInput } from "../lib/utils.js";
 
   let { threadId } = $props();
 
-  const thread = $derived(state.threads[threadId]);
+  const thread = $derived(appState.threads[threadId]);
 
   let tab = $state("conversation"); // conversation | notes
   let replyText = $state("");
@@ -18,7 +18,7 @@
   let loadingSlots = $state(false);
   let slotMsg = $state("");
 
-  const messages = $derived(state.messages[threadId] || []);
+  const messages = $derived(appState.messages[threadId] || []);
   const lock = $derived(composingLock(threadId));
   const isComposing = $derived(replyText.length > 0 || focused);
 
@@ -45,7 +45,7 @@
       .pbRequest("GET", `/mailbox/threads/${tid}/presence`)
       .then((r) => {
         for (const p of r?.presence || []) {
-          state.presence[`${tid}:${p.userId}`] = {
+          appState.presence[`${tid}:${p.userId}`] = {
             thread: tid,
             user: p.userId,
             status: p.status,
@@ -151,7 +151,7 @@
 {#if thread}
   <header class="tv-head">
     <div class="tv-title-row">
-      <button class="md3-icon-btn close" onclick={() => (state.openThreadId = "")} title="Close">
+      <button class="md3-icon-btn close" onclick={() => (appState.openThreadId = "")} title="Close">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M18.3 5.7 12 12l6.3 6.3-1.4 1.4L10.6 13.4 4.3 19.7l-1.4-1.4L9.2 12 2.9 5.7l1.4-1.4 6.3 6.3 6.3-6.3z"/></svg>
       </button>
       <div class="tv-title">

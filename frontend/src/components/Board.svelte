@@ -1,5 +1,5 @@
 <script>
-  import { state, STATUSES, toast } from "../lib/state.svelte.js";
+  import { appState, STATUSES, toast } from "../lib/appState.svelte.js";
   import { moveThread, refreshThreads } from "../lib/api.js";
   import Card from "./Card.svelte";
 
@@ -9,12 +9,12 @@
   let hoverCol = $state("");
 
   const visible = $derived(
-    Object.values(state.threads)
-      .filter((t) => t.inbox === state.activeInboxId)
+    Object.values(appState.threads)
+      .filter((t) => t.inbox === appState.activeInboxId)
       .filter((t) => {
-        if (state.onlyMine && t.assigned_agent && t.assigned_agent !== state.me?.id) return false;
-        if (!state.search) return true;
-        const q = state.search.toLowerCase();
+        if (appState.onlyMine && t.assigned_agent && t.assigned_agent !== appState.me?.id) return false;
+        if (!appState.search) return true;
+        const q = appState.search.toLowerCase();
         return (
           (t.subject || "").toLowerCase().includes(q) ||
           (t.customer_email || "").toLowerCase().includes(q) ||
@@ -31,7 +31,7 @@
 
   async function dropOn(status) {
     if (!dragId) return;
-    const thread = state.threads[dragId];
+    const thread = appState.threads[dragId];
     dragId = "";
     hoverCol = "";
     if (!thread || thread.status === status) return;
@@ -59,9 +59,9 @@
   <div class="toolbar">
     <div class="search">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M9.5 3a6.5 6.5 0 1 0 4.05 11.55l4.95 4.95 1.5-1.5-4.95-4.95A6.5 6.5 0 0 0 9.5 3zm0 2a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9z"/></svg>
-      <input bind:value={state.search} placeholder="Search threads…" />
+      <input bind:value={appState.search} placeholder="Search threads…" />
     </div>
-    <button class="md3-chip" class:is-active={state.onlyMine} onclick={() => (state.onlyMine = !state.onlyMine)}>
+    <button class="md3-chip" class:is-active={appState.onlyMine} onclick={() => (appState.onlyMine = !appState.onlyMine)}>
       My tickets
     </button>
     <button class="md3-chip" onclick={refresh} title="Re-fetch from server">

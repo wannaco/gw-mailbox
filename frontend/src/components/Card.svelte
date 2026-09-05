@@ -1,5 +1,5 @@
 <script>
-  import { state, agentInitials } from "../lib/state.svelte.js";
+  import { appState, agentInitials } from "../lib/appState.svelte.js";
   import { timeAgo } from "../lib/utils.js";
 
   let { thread, open } = $props();
@@ -8,12 +8,12 @@
 
   const tags = $derived(Array.isArray(thread.tags) ? thread.tags : []);
   const someoneComposing = $derived(
-    Object.values(state.presence).some(
-      (p) => p.thread === thread.id && p.user !== state.me?.id && p.status === "composing_reply"
+    Object.values(appState.presence).some(
+      (p) => p.thread === thread.id && p.user !== appState.me?.id && p.status === "composing_reply"
     )
   );
   const assigned = $derived(
-    thread.assigned_agent ? state.users[thread.assigned_agent]?.name || thread.assigned_agent : ""
+    thread.assigned_agent ? appState.users[thread.assigned_agent]?.name || thread.assigned_agent : ""
   );
 
   function openCard() {

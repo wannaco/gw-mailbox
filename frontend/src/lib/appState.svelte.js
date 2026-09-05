@@ -1,5 +1,5 @@
 // =============================================================================
-// gw-mailbox UI — global state (Svelte 5 runes, module singleton)
+// gw-mailbox UI — global appState (Svelte 5 runes, module singleton)
 // =============================================================================
 
 export const STATUSES = [
@@ -10,7 +10,7 @@ export const STATUSES = [
   { value: "closed", label: "Closed", dot: "#5f6368" }
 ];
 
-export const state = $state({
+export const appState = $state({
   pbUrl: "", // relative -> vite dev proxy to PocketBase
   token: "",
   me: null, // { id, name, email, googleEmail }
@@ -32,10 +32,10 @@ let toastSeq = 0;
 export function toast(kind, message) {
   toastSeq += 1;
   const id = toastSeq;
-  state.toasts.push({ id, kind, message });
+  appState.toasts.push({ id, kind, message });
   setTimeout(() => {
-    const i = state.toasts.findIndex((t) => t.id === id);
-    if (i >= 0) state.toasts.splice(i, 1);
+    const i = appState.toasts.findIndex((t) => t.id === id);
+    if (i >= 0) appState.toasts.splice(i, 1);
   }, 4200);
 }
 
@@ -44,13 +44,13 @@ export function statusMeta(value) {
 }
 
 export function threadsOfActiveInbox() {
-  const tid = state.activeInboxId;
-  return Object.values(state.threads).filter((t) => t.inbox === tid);
+  const tid = appState.activeInboxId;
+  return Object.values(appState.threads).filter((t) => t.inbox === tid);
 }
 
 export function presenceFor(threadId) {
   const out = [];
-  for (const [k, p] of Object.entries(state.presence)) {
+  for (const [k, p] of Object.entries(appState.presence)) {
     if (p.thread === threadId && p.status !== "closed") out.push(p);
   }
   return out;
@@ -58,12 +58,12 @@ export function presenceFor(threadId) {
 
 // True when ANY OTHER agent is composing this thread (draft lock).
 export function composingLock(threadId) {
-  const me = state.me?.id;
+  const me = appState.me?.id;
   return presenceFor(threadId).find((p) => p.user !== me && p.status === "composing_reply") || null;
 }
 
 export function userName(id) {
-  return state.users[id]?.name || state.users[id]?.email || "Another agent";
+  return appState.users[id]?.name || appState.users[id]?.email || "Another agent";
 }
 
 export function agentInitials(nameOrEmail) {
@@ -75,14 +75,14 @@ export function agentInitials(nameOrEmail) {
 }
 
 export function resetSession() {
-  state.token = "";
-  state.me = null;
-  state.users = {};
-  state.inboxes = [];
-  state.threads = {};
-  state.messages = {};
-  state.presence = {};
-  state.openThreadId = "";
-  state.activeInboxId = "";
-  state.realtimeOn = false;
+  appState.token = "";
+  appState.me = null;
+  appState.users = {};
+  appState.inboxes = [];
+  appState.threads = {};
+  appState.messages = {};
+  appState.presence = {};
+  appState.openThreadId = "";
+  appState.activeInboxId = "";
+  appState.realtimeOn = false;
 }
