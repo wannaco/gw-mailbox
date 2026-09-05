@@ -32,7 +32,9 @@ COPY pb_hooks ./pb_hooks
 # Frontend SPA served by PocketBase at the domain root
 COPY --from=ui /ui/dist ./pb_public
 
-ENV PB_ENCRYPTION_KEY=""
+ENV PB_ENCRYPTION_KEY="" \
+    MAILBOX_SEED_DEMO=1 \
+    MAILBOX_TIMEZONE=UTC
 EXPOSE 8090
 VOLUME ["/app/pb_data"]
 
