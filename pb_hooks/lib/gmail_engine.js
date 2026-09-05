@@ -465,7 +465,7 @@ function handleReply(e) {
       url: h.GMAIL_BASE + "/users/" + encodeURIComponent(uid) + "/messages/send",
       method: "POST",
       body: { raw: raw, threadId: thread.getString("gmail_thread_id") },
-      scopes: [h.GMAIL_SCOPE],
+      scopes: [h.GMAIL_SCOPE, h.GMAIL_SEND_SCOPE],
       subject: uid
     });
     h.addInternalNote(threadId, actor, "📤 Reply sent to " + thread.getString("customer_email") + ": " + text.slice(0, 120), {

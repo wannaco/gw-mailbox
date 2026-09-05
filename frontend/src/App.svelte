@@ -194,12 +194,26 @@
   main {
     flex: 1;
     min-width: 0;
+    min-height: 0;
     position: relative;
+    overflow: hidden;
     transition: filter 0.2s ease;
   }
 
   main.dimmed {
     filter: brightness(0.96);
+  }
+
+  @media (max-width: 720px) {
+    .body {
+      flex-direction: column;
+    }
+
+    main {
+      flex: 1 1 auto;
+      order: 0;
+      min-height: 0;
+    }
   }
 
   .scrim {

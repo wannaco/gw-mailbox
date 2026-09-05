@@ -1,9 +1,7 @@
 <script>
   import { appState, agentInitials } from "../lib/appState.svelte.js";
-  import { avatarColor } from "../lib/utils.js";
 
   let { select } = $props();
-
 </script>
 
 <nav class="rail" aria-label="Inboxes">
@@ -15,7 +13,7 @@
         onclick={() => select(inbox.id)}
         title={inbox.email_address}
       >
-        <span class="rail-dot" style="background:{avatarColor(inbox.email_address)}"></span>
+        <span class="rail-icon">{agentInitials(inbox.name)}</span>
         <span class="rail-label">{inbox.name}</span>
       </button>
     {/each}
@@ -27,8 +25,8 @@
 
 <style>
   .rail {
-    width: 92px;
-    flex: 0 0 92px;
+    width: 96px;
+    flex: 0 0 96px;
     background: var(--m3-surface);
     border-right: 1px solid var(--m3-outline-variant);
     display: flex;
@@ -46,41 +44,57 @@
   }
 
   .rail-item {
-    width: 80px;
+    width: 84px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 4px;
+    gap: 5px;
     padding: 8px 4px;
     border-radius: var(--m3-shape-md);
     color: var(--m3-on-surface-variant);
+    transition: background 0.15s ease;
   }
 
   .rail-item:hover {
-    background: var(--m3-surface-container-low);
+    background: var(--m3-surface-container-high);
   }
 
   .rail-item.active {
-    background: var(--m3-secondary-container);
-    color: var(--m3-on-secondary-container);
-    font-weight: 600;
+    background: var(--m3-primary-container);
+    color: var(--m3-on-primary-container);
   }
 
-  .rail-dot {
-    width: 26px;
-    height: 26px;
-    border-radius: 8px;
-    display: block;
+  .rail-icon {
+    display: grid;
+    place-items: center;
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+    background: var(--m3-surface-container-high);
+    color: var(--m3-on-surface-variant);
+    font: var(--m3-type-title-sm);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+
+  .rail-item.active .rail-icon {
+    background: var(--m3-primary);
+    color: var(--m3-on-primary);
   }
 
   .rail-label {
     font: var(--m3-type-label-sm);
     text-align: center;
     line-height: 1.15;
-    max-width: 74px;
+    max-width: 78px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .rail-item.active .rail-label {
+    font-weight: 600;
   }
 
   .empty {
@@ -103,12 +117,21 @@
     .rail-inner {
       flex-direction: row;
       overflow-x: auto;
-      padding: 6px;
+      padding: 6px 8px;
     }
 
     .rail-item {
       width: auto;
       flex-direction: row;
+      gap: 6px;
+      padding: 6px 10px;
+    }
+
+    .rail-icon {
+      width: 30px;
+      height: 30px;
+      border-radius: 9px;
+      font-size: 0.72rem;
     }
 
     .rail-label {

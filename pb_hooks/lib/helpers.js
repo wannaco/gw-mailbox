@@ -7,7 +7,8 @@
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-const GMAIL_SCOPE  = "https://www.googleapis.com/auth/gmail.modify";
+const GMAIL_SCOPE      = "https://www.googleapis.com/auth/gmail.modify";
+const GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send";
 const CAL_SCOPE    = "https://www.googleapis.com/auth/calendar.events";
 const GMAIL_BASE   = "https://gmail.googleapis.com/gmail/v1";
 const CAL_BASE     = "https://www.googleapis.com/calendar/v3";
@@ -495,7 +496,7 @@ function sendAlertWebhook(kind, payload) {
 // ---------------------------------------------------------------------------
 module.exports = {
   // meta
-  GMAIL_SCOPE, CAL_SCOPE, GMAIL_BASE, CAL_BASE, THREAD_STATUSES,
+  GMAIL_SCOPE, GMAIL_SEND_SCOPE, CAL_SCOPE, GMAIL_BASE, CAL_BASE, THREAD_STATUSES,
   log, warn,
   // http / auth
   addCorsHeaders, fail, actorFromEvent,
