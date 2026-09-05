@@ -3,6 +3,9 @@
 # gw-mailbox — single container: PocketBase 0.39 (API + hooks + cron) serving
 # the Svelte SPA from pb_public on the same origin. No CORS, one deployment.
 # Build context = repo root (PocketBase binary is committed to the repo).
+#
+# IMPORTANT: every PB directory is passed as an ABSOLUTE path — container
+# runtime CWD is not guaranteed to be /app (observed with Dokploy).
 # =============================================================================
 
 # ---- stage 1: build the Svelte 5 / M3 frontend ----------------------------
@@ -26,11 +29,13 @@ WORKDIR /app
 COPY --chmod=0755 pocketbase /usr/local/bin/pocketbase
 
 # Backend: schema migrations + JS hooks
-COPY pb_migrations ./pb_migrations
-COPY pb_hooks ./pb_hooks
+COPY pb_migrations /app/pb_migrations
+COPY pb_hooks /app/pb_hooks
 
 # Frontend SPA served by PocketBase at the domain root
-COPY --from=ui /ui/dist ./pb_public
+COPY --from=ui /ui/dist /app/pb_public
+
+RUN mkdir -p /app/pb_data
 
 ENV PB_ENCRYPTION_KEY="" \
     MAILBOX_SEED_DEMO=1 \
@@ -41,4 +46,6 @@ VOLUME ["/app/pb_data"]
 HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
   CMD wget -qO- http://127.0.0.1:8090/api/health || exit 1
 
-CMD ["/usr/local/bin/pocketbase", "serve", "--http=0.0.0.0:8090"]
+CMD ["/usr/local/bin/pocketbase", "serve", "--http=0.0.0.0:8090", \
+     "--dir=/app/pb_data", "--publicDir=/app/pb_public", \
+     "--hooksDir=/app/pb_hooks", "--migrationsDir=/app/pb_migrations"]
