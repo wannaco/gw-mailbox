@@ -154,7 +154,6 @@ function handleRemoveServiceAccount(e) {
 }
 
 function handleTestConnection(e) {
-  console.log("[gw-mailbox] test-connection handler ENTERED, subject=" + (function(){ try { const b=JSON.parse(toString(e.request.body)||"{}"); return (b.subject||"").toString(); } catch(_){ return "?"; } })());
   if (h.addCorsHeaders(e, "POST, OPTIONS")) return;
   const admin = requireAdmin(e);
   if (!admin) return;
@@ -172,7 +171,9 @@ function handleTestConnection(e) {
     });
   } catch (err) {
     h.warn("test-connection failed for", subject, "->", (err && err.message) || String(err));
-    h.fail(e, 502, "connection_failed", (err && err.message) || String(err));
+    // 200-with-error: the reverse proxy rewrites 5xx bodies into a useless
+    // "error code: 502", so return the real message as a successful response.
+    e.json(200, { ok: false, error: "connection_failed", message: (err && err.message) || String(err) });
   }
 }
 
