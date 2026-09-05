@@ -27,3 +27,7 @@ routerAdd("POST", "/api/mailbox/settings/sync-mode", (e) => {
 }, $apis.requireSuperuserAuth());
 
 console.log("[gw-mailbox] settings.pb.js loaded — admin settings routes registered");
+
+routerAdd("GET", "/api/mailbox/settings/ping", (e) => {
+  e.json(200, { ok: true, pong: Date.now() });
+}, $apis.requireSuperuserAuth());

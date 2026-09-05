@@ -154,6 +154,7 @@ function handleRemoveServiceAccount(e) {
 }
 
 function handleTestConnection(e) {
+  console.log("[gw-mailbox] test-connection handler ENTERED, subject=" + (function(){ try { const b=JSON.parse(toString(e.request.body)||"{}"); return (b.subject||"").toString(); } catch(_){ return "?"; } })());
   if (h.addCorsHeaders(e, "POST, OPTIONS")) return;
   const admin = requireAdmin(e);
   if (!admin) return;
