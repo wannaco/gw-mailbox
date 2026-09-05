@@ -91,13 +91,10 @@ function runPresenceSweeper() {
 // backfills on first run. Needs a service account (GOOGLE_SA_JSON/FILE).
 // ---------------------------------------------------------------------------
 function runMailPollSync() {
-  if ($os.getenv("MAILBOX_POLL_SYNC") !== "1") return;
   try {
-    const hasSa = !!($os.getenv("GOOGLE_SA_JSON") || $os.getenv("GOOGLE_SA_FILE"));
-    if (!hasSa) {
-      h.log("poll sync: GOOGLE_SA_JSON/GOOGLE_SA_FILE not configured — skipping");
-      return;
-    }
+    if (require(__hooks + "/lib/settings_engine.js").effectivePollSync() !== true) return;
+  } catch (_) { return; }
+  try {
     const gm = require(__hooks + "/lib/gmail_engine.js");
     const inboxes = $app.findRecordsByFilter("inboxes", "is_active = true", "", 0, 0) || [];
     for (const inbox of inboxes) {

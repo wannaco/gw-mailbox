@@ -67,6 +67,22 @@ export function authWithPassword(email, password) {
   );
 }
 
+// PocketBase admin (superuser) sign-in — grants Settings access.
+export function adminAuth(email, password) {
+  return pbRequest(
+    "POST",
+    "/collections/_superusers/auth-with-password",
+    { identity: email, password },
+    { token: "" }
+  );
+}
+
+export async function adminSession() {
+  const meRes = await pbRequest("GET", "/mailbox/me");
+  appState.me = meRes.me; // superuser: isSuperuser true
+  appState.inboxes = meRes.inboxes || [];
+}
+
 export async function loadSession() {
   // bootstrap /me + permitted inboxes + lightweight directory
   const meRes = await pbRequest("GET", "/mailbox/me");
@@ -128,6 +144,27 @@ export function availability(threadId, start, end, durationMin = 30) {
 
 export function bookMeet(threadId, payload) {
   return pbRequest("POST", `/mailbox/threads/${threadId}/meet`, payload);
+}
+
+
+// ---- admin settings -----------------------------------------------------
+export function getSettings() {
+  return pbRequest("GET", "/mailbox/settings");
+}
+export function saveServiceAccount(serviceAccountJson) {
+  return pbRequest("POST", "/mailbox/settings/service-account", { serviceAccountJson });
+}
+export function removeServiceAccount() {
+  return pbRequest("DELETE", "/mailbox/settings/service-account");
+}
+export function testConnection(subject, serviceAccountJson) {
+  return pbRequest("POST", "/mailbox/settings/test-connection", {
+    subject,
+    ...(serviceAccountJson ? { serviceAccountJson } : {})
+  });
+}
+export function setPollSync(enabled) {
+  return pbRequest("POST", "/mailbox/settings/sync-mode", { enabled });
 }
 
 // ---- realtime --------------------------------------------------------------

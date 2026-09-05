@@ -362,9 +362,19 @@ function loadServiceAccount() {
   let raw = $os.getenv("GOOGLE_SA_JSON") || "";
   if (!raw) {
     const file = $os.getenv("GOOGLE_SA_FILE") || "";
-    if (!file) throw new Error("GOOGLE_SA_JSON / GOOGLE_SA_FILE not configured");
-    raw = toString($os.readFile(file));
+    if (!file) {
+      // Fall back to the admin-stored key (Settings UI).
+      try {
+        const rec = $app.findFirstRecordByFilter("app_settings", "key = 'instance'");
+        raw = rec.getString("service_account_key") || "";
+      } catch (_) {
+        raw = "";
+      }
+    } else {
+      raw = toString($os.readFile(file));
+    }
   }
+  if (!raw) throw new Error("GOOGLE_SA_JSON / GOOGLE_SA_FILE not configured");
   const sa = JSON.parse(raw);
   if (!sa.client_email || !sa.private_key) throw new Error("invalid service account file");
   return sa;

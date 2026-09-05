@@ -23,6 +23,7 @@ export const appState = $state({
   messages: {}, // threadId -> message records
   openThreadId: "",
   view: "list", // list (Gmail-style) | board (kanban)
+  screen: "mail", // mail | settings
   presence: {}, // `${threadId}:${userId}` -> { thread, user, status, agentName, updatedAt }
   composerState: "idle", // idle | composing (this client)
   realtimeOn: false,

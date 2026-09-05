@@ -1,6 +1,7 @@
 <script>
-  let { signIn } = $props();
+  let { signIn, signInAdmin } = $props();
 
+  let adminMode = $state(false);
   let email = $state("");
   let password = $state("");
   let busy = $state(false);
@@ -15,9 +16,10 @@
     }
     busy = true;
     try {
-      await signIn(email, password);
+      if (adminMode) await signInAdmin(email, password);
+      else await signIn(email, password);
     } catch (e) {
-      error = e?.message || "Sign-in failed";
+      error = e?.message || (adminMode ? "Admin sign-in failed" : "Sign-in failed");
       busy = false;
     }
   }
@@ -32,9 +34,15 @@
     <h1>Mailbox</h1>
     <p class="tag">Shared Google Workspace inbox &amp; kanban</p>
 
+    <div class="md3-seg role-seg">
+      <button type="button" class:is-active={!adminMode} onclick={() => (adminMode = false)}>Agent</button>
+      <button type="button" class:is-active={adminMode} onclick={() => (adminMode = true)}>Admin</button>
+    </div>
+    <p class="subtag">{adminMode ? "PocketBase admin (Dashboard access + Settings)" : "Agent login"}</p>
+
     <label class="field">
       <span>Email</span>
-      <input type="email" bind:value={email} placeholder="agent@yourdomain.com" autocomplete="email" />
+      <input type="email" bind:value={email} placeholder={adminMode ? "admin@thinkcloud.dev" : "agent@yourdomain.com"} autocomplete="email" />
     </label>
     <label class="field">
       <span>Password</span>
@@ -44,7 +52,7 @@
     {#if error}<div class="err">{error}</div>{/if}
 
     <button class="md3-btn primary signin" type="submit" disabled={busy}>
-      {busy ? "Signing in…" : "Sign in"}
+      {busy ? "Signing in…" : adminMode ? "Sign in as admin" : "Sign in"}
     </button>
   </form>
 </div>
@@ -63,14 +71,14 @@
     background: var(--m3-surface-container-low);
     border-radius: var(--m3-shape-lg);
     box-shadow: var(--m3-elev-2);
-    padding: 32px 28px;
+    padding: 28px;
     display: flex;
     flex-direction: column;
   }
 
   .logo .dot {
-    width: 44px;
-    height: 44px;
+    width: 42px;
+    height: 42px;
     border-radius: 50%;
     background: var(--m3-primary);
     display: block;
@@ -78,32 +86,42 @@
 
   h1 {
     font: var(--m3-type-headline);
-    margin-top: 14px;
+    margin-top: 12px;
   }
 
   .tag {
     color: var(--m3-on-surface-variant);
-    margin: 4px 0 20px;
-    font: var(--m3-type-body-md);
+    margin: 2px 0 14px;
+    font: var(--m3-type-body-sm);
+  }
+
+  .role-seg {
+    align-self: flex-start;
+    margin-bottom: 4px;
+  }
+
+  .subtag {
+    font: var(--m3-type-label-sm);
+    color: var(--m3-on-surface-variant-2);
+    margin-bottom: 14px;
   }
 
   .field {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    margin-bottom: 14px;
+    gap: 5px;
+    margin-bottom: 12px;
     color: var(--m3-on-surface-variant);
-    font: var(--m3-type-label-lg);
+    font: var(--m3-type-label-md);
   }
 
   .field input {
-    height: 48px;
-    padding: 0 14px;
+    height: 46px;
+    padding: 0 13px;
     border-radius: var(--m3-shape-xs);
     border: 1px solid var(--m3-outline);
     background: var(--m3-surface);
     outline: none;
-    transition: border 0.15s ease;
   }
 
   .field input:focus {
@@ -114,12 +132,12 @@
     background: var(--m3-error-container);
     color: var(--m3-on-error-container);
     border-radius: var(--m3-shape-sm);
-    padding: 10px 12px;
+    padding: 9px 12px;
     font: var(--m3-type-body-sm);
-    margin-bottom: 12px;
+    margin-bottom: 10px;
   }
 
   .signin {
-    margin-top: 6px;
+    margin-top: 4px;
   }
 </style>

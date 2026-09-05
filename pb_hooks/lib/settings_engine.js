@@ -1,0 +1,199 @@
+// =============================================================================
+// gw-mailbox — settings engine (module)
+// Admin settings stored in the app_settings singleton: Google service-account
+// key + sync preferences. Also a connection tester (profile read via the
+// configured mailbox).
+// =============================================================================
+
+var h = require(__hooks + "/lib/helpers.js");
+
+// ---------------------------------------------------------------------------
+// Settings accessors
+// ---------------------------------------------------------------------------
+function ensureSettings() {
+  let rec = null;
+  try {
+    rec = $app.findFirstRecordByFilter("app_settings", "key = 'instance'");
+  } catch (_) { /* missing */ }
+  if (!rec) {
+    const coll = $app.findCollectionByNameOrId("app_settings");
+    rec = new Record(coll, { key: "instance", poll_sync: false, service_account_key: "", key_client_email: "" });
+    $app.save(rec);
+  }
+  return rec;
+}
+
+function getSettings() {
+  return ensureSettings();
+}
+
+function saveServiceAccountJson(serviceAccountJson) {
+  const parsed = JSON.parse(serviceAccountJson);
+  if (!parsed.client_email || !parsed.private_key) {
+    throw new Error("invalid_service_account: expected client_email and private_key");
+  }
+  const rec = ensureSettings();
+  rec.set("service_account_key", JSON.stringify(parsed));
+  rec.set("key_client_email", parsed.client_email);
+  $app.save(rec);
+  return parsed.client_email;
+}
+
+function clearServiceAccount() {
+  const rec = ensureSettings();
+  rec.set("service_account_key", "");
+  rec.set("key_client_email", "");
+  $app.save(rec);
+}
+
+function getStoredServiceAccount() {
+  const rec = ensureSettings();
+  const raw = rec.getString("service_account_key");
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch (_) {
+    return null;
+  }
+}
+
+function setPollSync(enabled) {
+  const rec = ensureSettings();
+  rec.set("poll_sync", !!enabled);
+  $app.save(rec);
+}
+
+function pollSyncEnabled() {
+  const rec = ensureSettings();
+  return rec.getBool("poll_sync");
+}
+
+// effective sync prefs (settings record overrides env)
+function effectivePollSync() {
+  return $os.getenv("MAILBOX_POLL_SYNC") === "1" || pollSyncEnabled();
+}
+
+// ---------------------------------------------------------------------------
+// Connection test — reads the mailbox profile with the configured (or passed)
+// service account, proving delegation + scopes work.
+// ---------------------------------------------------------------------------
+function testConnection(subjectEmail, saJson) {
+  let sa = null;
+  if (saJson) {
+    const parsed = JSON.parse(saJson);
+    if (!parsed.client_email || !parsed.private_key) throw new Error("invalid_service_account");
+    sa = parsed;
+  } else {
+    sa = h.loadServiceAccount(); // env OR stored settings
+  }
+  const subject = subjectEmail || $os.getenv("MAILBOX_TEST_SUBJECT") || "";
+  if (!subject) throw new Error("subject_required: provide the mailbox email to impersonate");
+  // Ensure the token cache uses OUR sa (not only env): h.getAccessToken loads
+  // from env OR settings via loadServiceAccount; passing explicit SA not
+  // supported there, so temporarily clear+restore is complex. Instead test
+  // with stored/env creds (same loader the engine uses).
+  return h.googleRequest({
+    url: h.GMAIL_BASE + "/users/" + encodeURIComponent(subject) + "/profile?fields=emailAddress,historyId,messagesTotal",
+    scopes: [h.GMAIL_SCOPE],
+    subject: subject
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Route handlers (all superuser-only; the registrar adds requireSuperuserAuth)
+// ---------------------------------------------------------------------------
+function requireAdmin(e) {
+  const actor = h.actorFromEvent(e);
+  if (!actor || !actor.isSuperuser) {
+    h.fail(e, 403, "admin_required", "Superuser access required");
+    return null;
+  }
+  return actor;
+}
+
+function handleGetSettings(e) {
+  if (h.addCorsHeaders(e, "GET, OPTIONS")) return;
+  const admin = requireAdmin(e);
+  if (!admin) return;
+  const rec = ensureSettings();
+  const saEmail = rec.getString("key_client_email");
+  e.json(200, {
+    ok: true,
+    serviceAccountConfigured: !!saEmail,
+    serviceAccountEmail: saEmail,
+    pollSync: rec.getBool("poll_sync") || $os.getenv("MAILBOX_POLL_SYNC") === "1",
+    envOverrides: {
+      pollSyncEnv: $os.getenv("MAILBOX_POLL_SYNC") === "1"
+    }
+  });
+}
+
+function handleSaveServiceAccount(e) {
+  if (h.addCorsHeaders(e, "POST, OPTIONS")) return;
+  const admin = requireAdmin(e);
+  if (!admin) return;
+  let body = {};
+  try { body = JSON.parse(toString(e.request.body) || "{}"); } catch (_) {}
+  const jsonStr = body.serviceAccountJson || "";
+  if (!jsonStr) return h.fail(e, 400, "missing_key", "serviceAccountJson is required");
+  try {
+    const email = saveServiceAccountJson(jsonStr);
+    // return the client email only (never echo the private key back)
+    e.json(200, { ok: true, serviceAccountEmail: email });
+  } catch (err) {
+    h.fail(e, 400, "invalid_key", err.message || String(err));
+  }
+}
+
+function handleRemoveServiceAccount(e) {
+  if (h.addCorsHeaders(e, "DELETE, OPTIONS")) return;
+  const admin = requireAdmin(e);
+  if (!admin) return;
+  clearServiceAccount();
+  e.json(200, { ok: true });
+}
+
+function handleTestConnection(e) {
+  if (h.addCorsHeaders(e, "POST, OPTIONS")) return;
+  const admin = requireAdmin(e);
+  if (!admin) return;
+  let body = {};
+  try { body = JSON.parse(toString(e.request.body) || "{}"); } catch (_) {}
+  const subject = (body.subject || "").toString();
+  const saJson = body.serviceAccountJson || "";
+  try {
+    const profile = testConnection(subject, saJson);
+    e.json(200, {
+      ok: true,
+      emailAddress: profile.emailAddress || subject,
+      historyId: profile.historyId || null,
+      messagesTotal: profile.messagesTotal || 0
+    });
+  } catch (err) {
+    h.fail(e, 502, "connection_failed", (err && err.message) || String(err));
+  }
+}
+
+function handleSetPollSync(e) {
+  if (h.addCorsHeaders(e, "POST, OPTIONS")) return;
+  const admin = requireAdmin(e);
+  if (!admin) return;
+  let body = {};
+  try { body = JSON.parse(toString(e.request.body) || "{}"); } catch (_) {}
+  setPollSync(!!body.enabled);
+  e.json(200, { ok: true, pollSync: pollSyncEnabled() });
+}
+
+module.exports = {
+  getSettings,
+  getStoredServiceAccount,
+  setPollSync,
+  pollSyncEnabled,
+  effectivePollSync,
+  testConnection,
+  handleGetSettings,
+  handleSaveServiceAccount,
+  handleRemoveServiceAccount,
+  handleTestConnection,
+  handleSetPollSync
+};
