@@ -275,7 +275,28 @@ function backfillInbox(inboxRec, opts) {
 function syncInbox(inboxRec, opts) {
   opts = opts || {};
   const hasCursor = !!inboxRec.getString("history_id");
-  if (!hasCursor || opts.backfill) return backfillInbox(inboxRec, opts);
+  if (!hasCursor || opts.backfill) {
+    const res = backfillInbox(inboxRec, opts);
+    // Persist a history cursor after backfill so subsequent polls use the
+    // efficient incremental (history) path instead of re-listing everything.
+    if (!inboxRec.getString("history_id")) {
+      try {
+        const uid = inboxUserEmail(inboxRec);
+        const prof = h.googleRequest({
+          url: h.GMAIL_BASE + "/users/" + encodeURIComponent(uid) + "/profile?fields=historyId",
+          scopes: [h.GMAIL_SCOPE],
+          subject: uid
+        });
+        if (prof && prof.historyId) {
+          inboxRec.set("history_id", String(prof.historyId));
+          $app.save(inboxRec);
+        }
+      } catch (err) {
+        h.warn("could not store history cursor for", inboxUserEmail(inboxRec), err.message || err);
+      }
+    }
+    return res;
+  }
   return syncFromHistory(inboxRec, opts.startHistoryId || "", opts);
 }
 
