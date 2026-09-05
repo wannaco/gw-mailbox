@@ -170,6 +170,7 @@ function handleTestConnection(e) {
       messagesTotal: profile.messagesTotal || 0
     });
   } catch (err) {
+    h.warn("test-connection failed for", subject, "->", (err && err.message) || String(err));
     h.fail(e, 502, "connection_failed", (err && err.message) || String(err));
   }
 }
