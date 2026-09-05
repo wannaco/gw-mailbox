@@ -61,7 +61,7 @@
 </svelte:head>
 
 {#if !appState.me}
-  <Login {handleLogin} />
+  <Login signIn={handleLogin} />
 {:else}
   <div class="shell">
     <header class="topbar">
