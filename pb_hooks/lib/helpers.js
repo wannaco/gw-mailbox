@@ -410,6 +410,7 @@ function signJwtRs256(claim, privateKeyPem) {
     const cmd = $os.cmd("openssl", "dgst", "-sha256", "-sign", keyPath, "-out", outPath, inPath);
     cmd.run();
     const sig = $os.readFile(outPath);
+    warn("jwt signed via openssl ok");
     return signingInput + "." + b64urlEncodeBinary(sig);
   } catch (err) {
     throw new Error("RS256 signing failed (no signer + no openssl): " + (err.message || err));
@@ -454,6 +455,7 @@ function getAccessToken(scopes, subject) {
     token: resp.json.access_token,
     exp: nowSec + (resp.json.expires_in || 3600)
   });
+  warn("oauth token ok for subject " + (subject || "-"));
   return resp.json.access_token;
 }
 
