@@ -85,7 +85,40 @@ function runPresenceSweeper() {
   if (removed > 0) h.log("presence sweeper removed", removed, "stale row(s)");
 }
 
+// ---------------------------------------------------------------------------
+// Gmail poll sync — when MAILBOX_POLL_SYNC=1 every active inbox is synced on
+// an interval (no Pub/Sub required). Incremental from inbox.history_id;
+// backfills on first run. Needs a service account (GOOGLE_SA_JSON/FILE).
+// ---------------------------------------------------------------------------
+function runMailPollSync() {
+  if ($os.getenv("MAILBOX_POLL_SYNC") !== "1") return;
+  try {
+    const hasSa = !!($os.getenv("GOOGLE_SA_JSON") || $os.getenv("GOOGLE_SA_FILE"));
+    if (!hasSa) {
+      h.log("poll sync: GOOGLE_SA_JSON/GOOGLE_SA_FILE not configured — skipping");
+      return;
+    }
+    const gm = require(__hooks + "/lib/gmail_engine.js");
+    const inboxes = $app.findRecordsByFilter("inboxes", "is_active = true", "", 0, 0) || [];
+    for (const inbox of inboxes) {
+      if (!inbox.getString("email_address")) continue;
+      try {
+        const counters = gm.syncInbox(inbox, { maxPages: 3, maxResults: 25 });
+        const total = (counters.threadsCreated || 0) + (counters.messagesAdded || 0);
+        if (total > 0) {
+          h.log("poll sync:", inbox.getString("email_address"), JSON.stringify(counters));
+        }
+      } catch (err) {
+        h.warn("poll sync failed for", inbox.getString("email_address"), err.message || err);
+      }
+    }
+  } catch (err) {
+    h.warn("poll sync error:", err.message || err);
+  }
+}
+
 module.exports = {
   runSlaMonitor,
-  runPresenceSweeper
+  runPresenceSweeper,
+  runMailPollSync
 };

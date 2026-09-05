@@ -15,4 +15,8 @@ cronAdd("gw-presence-sweeper", "* * * * *", () => {
   require(__hooks + "/lib/cron_engine.js").runPresenceSweeper();
 });
 
+cronAdd("gw-mail-poll-sync", "* * * * *", () => {
+  require(__hooks + "/lib/cron_engine.js").runMailPollSync();
+});
+
 console.log("[gw-mailbox] cron.pb.js loaded — SLA monitor (hourly) + presence sweeper (every min) registered");
