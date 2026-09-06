@@ -160,17 +160,18 @@
   .topbar {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 8px 16px;
+    gap: 8px;
+    padding: 6px 12px;
     background: var(--m3-surface-container);
     border-bottom: 1px solid var(--m3-outline-variant);
     z-index: 5;
+    flex-wrap: wrap;
   }
 
   .brand {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     font: var(--m3-type-title-lg);
     font-weight: 600;
   }
@@ -191,6 +192,12 @@
     align-items: center;
     gap: 8px;
     margin-left: 4px;
+  }
+
+  .me .avatar,
+  .topbar :global(.notif),
+  .topbar :global(.roster) {
+    flex: 0 0 auto;
   }
 
   .me-name {
@@ -240,6 +247,58 @@
       flex: 1 1 auto;
       order: 0;
       min-height: 0;
+    }
+
+    /* ---- mobile two-row topbar (no overflow) ---- */
+    .topbar {
+      gap: 4px 6px;
+      padding: 5px 8px;
+    }
+    .brand {
+      gap: 6px;
+      margin-right: auto;
+      min-width: 0;
+    }
+    .brand-name {
+      font-size: 0.92rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .brand-dot {
+      width: 20px;
+      height: 20px;
+      flex: 0 0 auto;
+    }
+    .topbar .md3-seg {
+      order: 10;
+      flex-basis: 100%;
+      justify-content: flex-start;
+      margin-top: 2px;
+    }
+    .topbar .md3-seg button {
+      font-size: 0.78rem;
+      padding: 3px 10px;
+    }
+    .topbar .md3-chip.is-active {
+      display: none; /* inbox name — too wide on mobile */
+    }
+    .topbar .md3-icon-btn {
+      width: 30px;
+      height: 30px;
+      flex: 0 0 auto;
+    }
+    .me {
+      gap: 3px;
+      margin-left: 0;
+    }
+    .me .avatar {
+      width: 26px;
+      height: 26px;
+      font-size: 10px;
+    }
+    .topbar .md3-icon-btn[title="Sign out"] {
+      display: none; /* sign out via profile later; saves space */
     }
   }
 
