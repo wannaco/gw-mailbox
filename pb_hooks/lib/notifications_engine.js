@@ -35,6 +35,16 @@ function notify(recipientId, kind, threadId, subject, messageId, actorName, body
   }
 }
 
+
+// Superuser record ids that opted in to being @mentionable (read app_settings
+// directly — avoids cross-module require in hook/runtime contexts).
+function mentionableAdminIds() {
+  try {
+    const rec = $app.findFirstRecordByFilter("app_settings", "key = 'instance'");
+    const v = rec.get("mention_admin_ids");
+    return Array.isArray(v) ? v : [];
+  } catch (_) { return []; }
+}
 // Scan an internal-note body for @mentions of teammates (by name or email)
 // and notify each mentioned user (except the author). Optionally also notify
 // the thread's assigned agent about a new note.
@@ -54,8 +64,7 @@ function notifyNoteMentions(threadRec, noteRec, actor, bodyText) {
     }
     // opted-in admins (superusers) — they are not in `users`
     try {
-      const se = require(__hooks + "/lib/settings_engine.js");
-      const enabled = se.getMentionAdminIds();
+      const enabled = mentionableAdminIds();
       if (enabled.length) {
         const su = $app.findRecordsByFilter("_superusers", "", "", 0, 0) || [];
         for (const r of su || []) {

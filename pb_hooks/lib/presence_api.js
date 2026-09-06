@@ -211,6 +211,16 @@ function handleMe(e) {
 // ---------------------------------------------------------------------------
 // GET /api/mailbox/users — team directory for @mentions / assignee names
 // ---------------------------------------------------------------------------
+
+// Superuser record ids that opted in to being @mentionable (read direct from
+// app_settings to avoid cross-module require in router contexts).
+function mentionableAdminIds() {
+  try {
+    const rec = $app.findFirstRecordByFilter("app_settings", "key = 'instance'");
+    const v = rec.get("mention_admin_ids");
+    return Array.isArray(v) ? v : [];
+  } catch (_) { return []; }
+}
 function handleDirectory(e) {
   if (h.addCorsHeaders(e, "GET, OPTIONS")) return;
   const actor = h.actorFromEvent(e);
@@ -227,8 +237,7 @@ function handleDirectory(e) {
   }));
   // Opted-in admins (superusers) are included so agents can @mention them.
   try {
-    const se = require(__hooks + "/lib/settings_engine.js");
-    const enabledIds = se.getMentionAdminIds();
+    const enabledIds = mentionableAdminIds();
     if (enabledIds.length) {
       const su = $app.findRecordsByFilter("_superusers", "", "", 0, 0) || [];
       for (const r of su || []) {
