@@ -40,7 +40,8 @@ function notify(recipientId, kind, threadId, subject, messageId, actorName, body
 function mentionableAdmins() {
   try {
     const rec = $app.findFirstRecordByFilter("app_settings", "key = 'instance'");
-    const v = rec.get("mention_admin_ids");
+    const raw = rec.getString("mention_admin_ids");
+    const v = raw ? JSON.parse(raw) : [];
     return Array.isArray(v) ? v.filter((x) => x && typeof x === "object" && x.id) : [];
   } catch (_) { return []; }
 }

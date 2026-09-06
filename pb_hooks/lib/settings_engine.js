@@ -27,7 +27,8 @@ function ensureSettings() {
 function getMentionAdminIds() {
   const rec = ensureSettings();
   try {
-    const v = rec.get("mention_admin_ids");
+    const raw = rec.getString("mention_admin_ids");
+    const v = raw ? JSON.parse(raw) : [];
     return Array.isArray(v) ? v.filter((x) => x && typeof x === "object" && x.id) : [];
   } catch (_) { return []; }
 }
@@ -149,7 +150,7 @@ function handleGetSettings(e) {
     serviceAccountConfigured: !!saEmail,
     serviceAccountEmail: saEmail,
     pollSync: rec.getBool("poll_sync") || $os.getenv("MAILBOX_POLL_SYNC") === "1",
-    mentionAdminIds: getMentionAdminIds(),
+    mentionAdminIds: getMentionAdminIds().map((a) => a.id),
     admins: listSuperusers(),
     envOverrides: {
       pollSyncEnv: $os.getenv("MAILBOX_POLL_SYNC") === "1"
