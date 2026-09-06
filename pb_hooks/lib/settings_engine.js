@@ -198,6 +198,137 @@ function handleSetPollSync(e) {
   e.json(200, { ok: true, pollSync: pollSyncEnabled() });
 }
 
+// ---------------------------------------------------------------------------
+// Mailbox management (admin) — add/configure additional mailboxes to sync
+// ---------------------------------------------------------------------------
+function readBody(e) {
+  try { return JSON.parse(toString(e.request.body) || "{}"); } catch (_) { return {}; }
+}
+
+function userMap() {
+  const map = {};
+  try {
+    const rows = $app.findRecordsByFilter("users", "", "name", 0, 0);
+    for (const r of rows || []) map[r.id] = r.getString("name") || r.getString("email");
+  } catch (_) {}
+  return map;
+}
+
+function inboxToView(r) {
+  const um = userMap();
+  const allowed = r.get("allowed_users") || r.getStringSlice("allowed_users") || [];
+  const teams = r.get("allowed_teams") || r.getStringSlice("allowed_teams") || [];
+  const users = (Array.isArray(allowed) ? allowed : []).map((u) => ({ id: u, name: um[u] || u }));
+  const teamNames = [];
+  for (const tid of Array.isArray(teams) ? teams : []) {
+    const t = h.safeFindById("teams", tid);
+    teamNames.push(t ? (t.getString("name") || tid) : tid);
+  }
+  return {
+    id: r.id,
+    name: r.getString("name"),
+    email_address: r.getString("email_address"),
+    history_id: r.getString("history_id"),
+    is_active: r.getBool("is_active"),
+    allowed_users: users,
+    team_names: teamNames
+  };
+}
+
+function handleListInboxes(e) {
+  if (h.addCorsHeaders(e, "GET, OPTIONS")) return;
+  if (!requireAdmin(e)) return;
+  const rows = $app.findRecordsByFilter("inboxes", "", "name", 0, 0);
+  e.json(200, { ok: true, inboxes: (rows || []).map(inboxToView) });
+}
+
+function handleCreateInbox(e) {
+  if (h.addCorsHeaders(e, "POST, OPTIONS")) return;
+  if (!requireAdmin(e)) return;
+  const body = readBody(e);
+  const name = (body.name || "").toString().trim();
+  const email = (body.email_address || "").toString().trim().toLowerCase();
+  const userIds = Array.isArray(body.allowed_user_ids) ? body.allowed_user_ids : [];
+  if (!name || !email) return h.fail(e, 400, "required", "name and email_address are required");
+  // Duplicate check (inbox email is unique-indexed).
+  const existing = h.safeFindFirstByFilter("inboxes", "email_address = {:e}", { e: email });
+  if (existing) return h.fail(e, 409, "duplicate", "A mailbox with that address already exists");
+  const rec = new Record($app.findCollectionByNameOrId("inboxes"), {
+    name: name,
+    email_address: email,
+    allowed_users: userIds,
+    allowed_teams: [],
+    is_active: body.is_active !== false,
+    history_id: ""
+  });
+  $app.save(rec);
+  e.json(200, { ok: true, inbox: inboxToView(rec) });
+}
+
+function handleUpdateInbox(e) {
+  if (h.addCorsHeaders(e, "POST, OPTIONS")) return;
+  if (!requireAdmin(e)) return;
+  const id = e.request.pathValue("id");
+  const rec = h.safeFindById("inboxes", id);
+  if (!rec) return h.fail(e, 404, "not_found", "Inbox not found");
+  const body = readBody(e);
+  if (body.name !== undefined) rec.set("name", String(body.name || "").trim());
+  if (body.is_active !== undefined) rec.set("is_active", !!body.is_active);
+  if (body.allowed_user_ids !== undefined) rec.set("allowed_users", Array.isArray(body.allowed_user_ids) ? body.allowed_user_ids : []);
+  $app.save(rec);
+  e.json(200, { ok: true, inbox: inboxToView(rec) });
+}
+
+function handleDeleteInbox(e) {
+  if (h.addCorsHeaders(e, "DELETE, OPTIONS")) return;
+  if (!requireAdmin(e)) return;
+  const id = e.request.pathValue("id");
+  const rec = h.safeFindById("inboxes", id);
+  if (!rec) return h.fail(e, 404, "not_found", "Inbox not found");
+  $app.delete(rec);
+  e.json(200, { ok: true });
+}
+
+// ---------------------------------------------------------------------------
+// Label catalog (admin) — manage categories/labels
+// ---------------------------------------------------------------------------
+function labelToView(r) {
+  return { id: r.id, name: r.getString("name"), color: r.getString("color") || "" };
+}
+
+function handleListLabels(e) {
+  if (h.addCorsHeaders(e, "GET, OPTIONS")) return;
+  if (!requireAdmin(e)) return;
+  const rows = $app.findRecordsByFilter("labels", "", "name", 0, 0);
+  e.json(200, { ok: true, labels: (rows || []).map(labelToView) });
+}
+
+function handleCreateLabel(e) {
+  if (h.addCorsHeaders(e, "POST, OPTIONS")) return;
+  if (!requireAdmin(e)) return;
+  const body = readBody(e);
+  const name = (body.name || "").toString().trim();
+  if (!name) return h.fail(e, 400, "required", "name is required");
+  const existing = h.safeFindFirstByFilter("labels", "name = {:n}", { n: name });
+  if (existing) return e.json(200, { ok: true, label: labelToView(existing), existing: true });
+  const rec = new Record($app.findCollectionByNameOrId("labels"), {
+    name: name,
+    color: (body.color || "").toString()
+  });
+  $app.save(rec);
+  e.json(200, { ok: true, label: labelToView(rec) });
+}
+
+function handleDeleteLabel(e) {
+  if (h.addCorsHeaders(e, "DELETE, OPTIONS")) return;
+  if (!requireAdmin(e)) return;
+  const id = e.request.pathValue("id");
+  const rec = h.safeFindById("labels", id);
+  if (!rec) return h.fail(e, 404, "not_found", "Label not found");
+  $app.delete(rec);
+  e.json(200, { ok: true });
+}
+
 module.exports = {
   getSettings,
   getStoredServiceAccount,
@@ -209,5 +340,12 @@ module.exports = {
   handleSaveServiceAccount,
   handleRemoveServiceAccount,
   handleTestConnection,
-  handleSetPollSync
+  handleSetPollSync,
+  handleListInboxes,
+  handleCreateInbox,
+  handleUpdateInbox,
+  handleDeleteInbox,
+  handleListLabels,
+  handleCreateLabel,
+  handleDeleteLabel
 };

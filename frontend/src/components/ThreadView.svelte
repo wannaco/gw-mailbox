@@ -365,6 +365,81 @@
     }
   }
 
+  // ---- assignee + labels -----------------------------------------------------
+  let catalog = $state([]); // {id,name,color}
+  let labelsOpen = $state(false);
+  let newLabelName = $state("");
+  let busyAssign = $state(false);
+
+  const threadTags = $derived(Array.isArray(thread?.tags) ? thread.tags : []);
+  const assigneeOptions = $derived(Object.values(appState.users).sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email)));
+
+  async function loadCatalog() {
+    try {
+      const r = await api.listLabels();
+      catalog = (r.items || []).map((l) => ({ id: l.id, name: l.name, color: l.color || "" }));
+    } catch { /* non-fatal */ }
+  }
+
+  $effect(() => {
+    if (threadId) loadCatalog();
+  });
+
+  function tagColor(name) {
+    const hit = catalog.find((l) => l.name === name);
+    return hit ? hit.color : "#888";
+  }
+
+  async function persistTags(next) {
+    thread.tags = next;
+    try {
+      await api.moveThread(threadId, thread.status, { tags: next });
+    } catch (err) {
+      toast("error", "Could not save labels");
+    }
+  }
+
+  async function toggleTag(name) {
+    const has = threadTags.includes(name);
+    if (has) {
+      await persistTags(threadTags.filter((t) => t !== name));
+    } else {
+      // ensure catalog entry exists first (agents may create on the fly)
+      if (!catalog.find((l) => l.name === name)) {
+        try {
+          await api.createLabelRecord({ name, color: "#0b57d0" });
+        } catch { /* ignore dup */ }
+        loadCatalog();
+      }
+      await persistTags([...threadTags, name]);
+    }
+  }
+
+  async function addCustomLabel() {
+    const name = newLabelName.trim();
+    if (!name) return;
+    if (!catalog.find((l) => l.name === name)) {
+      try {
+        await api.createLabelRecord({ name, color: "#0b57d0" });
+        await loadCatalog();
+      } catch { /* dup */ }
+    }
+    if (!threadTags.includes(name)) await persistTags([...threadTags, name]);
+    newLabelName = "";
+  }
+
+  async function setAssignee(v) {
+    busyAssign = true;
+    try {
+      thread.assigned_agent = v;
+      await api.moveThread(threadId, thread.status, { assigned_agent: v });
+    } catch (err) {
+      toast("error", "Assign failed");
+    } finally {
+      busyAssign = false;
+    }
+  }
+
   async function loadSlots() {
     meetOpen = !meetOpen;
     if (!meetOpen) return;
@@ -423,7 +498,41 @@
       </select>
     </div>
 
+    {#if threadTags.length}
+      <div class="tv-tags">
+        {#each threadTags as tg (tg)}
+          <span class="tgtag" style="background:{tagColor(tg)}22;color:{tagColor(tg)}">{tg}</span>
+        {/each}
+      </div>
+    {/if}
+
     <div class="tv-actions">
+      <select class="assignee-sel" value={thread.assigned_agent || ""} onchange={(e) => setAssignee(e.target.value)} disabled={busyAssign}>
+        <option value="">Unassigned</option>
+        {#each assigneeOptions as u (u.id)}
+          <option value={u.id}>{u.name || u.email}</option>
+        {/each}
+      </select>
+      <div class="lbl-wrap">
+        <button class="md3-chip" class:is-active={labelsOpen} onclick={() => (labelsOpen = !labelsOpen)} title="Labels">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M17.63 5.84C17.27 5.33 16.67 5 16 5L5 5.01C3.9 5.01 3 5.9 3 7v10c0 1.1.9 1.99 2 1.99L16 19c.67 0 1.27-.33 1.63-.84L22 12l-4.37-6.16zM16 15.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/></svg>
+          Labels
+        </button>
+        {#if labelsOpen}
+          <div class="lbl-menu">
+            {#each catalog as lb (lb.id)}
+              <label class="lbl-item">
+                <input type="checkbox" checked={threadTags.includes(lb.name)} onchange={() => toggleTag(lb.name)} />
+                <span class="lbl-dot" style="background:{lb.color || '#888'}"></span>{lb.name}
+              </label>
+            {/each}
+            <div class="lbl-new">
+              <input type="text" bind:value={newLabelName} placeholder="New label…" onkeydown={(ev) => { if (ev.key === "Enter") { ev.preventDefault(); addCustomLabel(); } }} />
+              <button class="md3-btn tonal small" onclick={addCustomLabel}>Add</button>
+            </div>
+          </div>
+        {/if}
+      </div>
       <button class="md3-chip" class:is-active={tab === "conversation"} onclick={() => (tab = "conversation")}>
         Conversation ({msgsVisible.length})
       </button>
@@ -658,6 +767,86 @@
   .cust {
     font: var(--m3-type-body-sm);
     color: var(--m3-on-surface-variant);
+  }
+
+  .tv-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 16px 0;
+  }
+
+  .tgtag {
+    font: var(--m3-type-label-sm);
+    font-weight: 600;
+    border-radius: 999px;
+    padding: 2px 10px;
+  }
+
+  .assignee-sel {
+    border: 1px solid var(--m3-outline-variant);
+    border-radius: 999px;
+    background: var(--m3-surface-container-high);
+    padding: 6px 10px;
+    font: var(--m3-type-label-md);
+    color: var(--m3-on-surface-variant);
+    outline: none;
+  }
+
+  .lbl-wrap {
+    position: relative;
+  }
+
+  .lbl-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    z-index: 60;
+    min-width: 200px;
+    background: var(--m3-surface-container-high);
+    border: 1px solid var(--m3-outline-variant);
+    border-radius: var(--m3-shape-sm);
+    box-shadow: var(--m3-elev-3);
+    padding: 6px;
+  }
+
+  .lbl-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 6px;
+    border-radius: 6px;
+    font: var(--m3-type-body-md);
+    cursor: pointer;
+  }
+
+  .lbl-item:hover {
+    background: var(--m3-row-hover);
+  }
+
+  .lbl-dot {
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    flex: 0 0 auto;
+  }
+
+  .lbl-new {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid var(--m3-outline-variant);
+  }
+
+  .lbl-new input {
+    flex: 1;
+    border: 1px solid var(--m3-outline-variant);
+    border-radius: var(--m3-shape-sm);
+    padding: 4px 8px;
+    font: var(--m3-type-body-sm);
+    background: var(--m3-surface-container-lowest);
+    min-width: 0;
   }
 
   .status-select {

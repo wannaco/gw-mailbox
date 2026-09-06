@@ -26,5 +26,35 @@ routerAdd("POST", "/api/mailbox/settings/sync-mode", (e) => {
   require(__hooks + "/lib/settings_engine.js").handleSetPollSync(e);
 }, $apis.requireSuperuserAuth());
 
+// --- Mailbox management (admin) ---------------------------------------------
+routerAdd("GET", "/api/mailbox/settings/inboxes", (e) => {
+  require(__hooks + "/lib/settings_engine.js").handleListInboxes(e);
+}, $apis.requireSuperuserAuth());
+
+routerAdd("POST", "/api/mailbox/settings/inboxes", (e) => {
+  require(__hooks + "/lib/settings_engine.js").handleCreateInbox(e);
+}, $apis.requireSuperuserAuth());
+
+routerAdd("POST", "/api/mailbox/settings/inboxes/{id}", (e) => {
+  require(__hooks + "/lib/settings_engine.js").handleUpdateInbox(e);
+}, $apis.requireSuperuserAuth());
+
+routerAdd("DELETE", "/api/mailbox/settings/inboxes/{id}", (e) => {
+  require(__hooks + "/lib/settings_engine.js").handleDeleteInbox(e);
+}, $apis.requireSuperuserAuth());
+
+// --- Label catalog (admin) ---------------------------------------------------
+routerAdd("GET", "/api/mailbox/settings/labels", (e) => {
+  require(__hooks + "/lib/settings_engine.js").handleListLabels(e);
+}, $apis.requireSuperuserAuth());
+
+routerAdd("POST", "/api/mailbox/settings/labels", (e) => {
+  require(__hooks + "/lib/settings_engine.js").handleCreateLabel(e);
+}, $apis.requireSuperuserAuth());
+
+routerAdd("DELETE", "/api/mailbox/settings/labels/{id}", (e) => {
+  require(__hooks + "/lib/settings_engine.js").handleDeleteLabel(e);
+}, $apis.requireSuperuserAuth());
+
 console.log("[gw-mailbox] settings.pb.js loaded — admin settings routes registered");
 

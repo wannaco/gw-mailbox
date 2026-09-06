@@ -190,6 +190,34 @@ export function setPollSync(enabled) {
   return pbRequest("POST", "/mailbox/settings/sync-mode", { enabled });
 }
 
+// ---- mailboxes (admin settings) --------------------------------------------
+export function listMailboxes() {
+  return pbRequest("GET", "/mailbox/settings/inboxes");
+}
+export function createMailbox(payload) {
+  return pbRequest("POST", "/mailbox/settings/inboxes", payload);
+}
+export function updateMailbox(id, payload) {
+  return pbRequest("POST", `/mailbox/settings/inboxes/${id}`, payload);
+}
+export function deleteMailbox(id) {
+  return pbRequest("DELETE", `/mailbox/settings/inboxes/${id}`);
+}
+
+// ---- labels / categories ----------------------------------------------------
+export function listLabels() {
+  // agents + admins may read the catalog (listRule any-auth)
+  return pbRequest("GET", "/collections/labels/records?perPage=200");
+}
+export function createLabelRecord(payload) {
+  // agents may add labels on the fly (createRule any-auth)
+  return pbRequest("POST", "/collections/labels/records", payload);
+}
+export function deleteLabelRecord(id) {
+  // admin-only (settings route, superuser)
+  return pbRequest("DELETE", `/mailbox/settings/labels/${id}`);
+}
+
 // ---- realtime --------------------------------------------------------------
 
 let rtActive = false;

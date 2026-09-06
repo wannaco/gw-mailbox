@@ -20,6 +20,16 @@
   let newEmail = $state("");
   let busyAdd = $state(false);
   let busyWatch = $state(""); // inbox id being watched
+  let mailboxes = $state([]); // admin list from settings API
+  let newUserIds = $state([]); // agents to grant access to the new mailbox
+  let savingMb = $state(""); // id being toggled/deleted
+
+  // labels
+  let labels = $state([]);
+  let newLabel = $state("");
+  let newLabelColor = $state("#0b57d0");
+
+  const agentOptions = $derived(Object.values(appState.users));
 
   async function refresh() {
     try {
@@ -32,6 +42,16 @@
       if (e?.status !== 401 && e?.status !== 403) toast("error", e?.message || "Failed to load settings");
     } finally {
       loaded = true;
+    }
+    if (isAdmin) {
+      try {
+        const mb = await api.listMailboxes();
+        mailboxes = mb.inboxes || [];
+      } catch (_) {}
+      try {
+        const lb = await api.listLabels();
+        labels = (lb.items || []).map((l) => ({ id: l.id, name: l.name, color: l.color || "" }));
+      } catch (_) {}
     }
   }
 
@@ -111,21 +131,86 @@
     if (!newName.trim() || !newEmail.trim()) return;
     busyAdd = true;
     try {
-      await api.pbRequest("POST", "/collections/inboxes/records", {
+      const r = await api.createMailbox({
         name: newName.trim(),
         email_address: newEmail.trim().toLowerCase(),
-        allowed_users: [],
-        allowed_teams: [],
+        allowed_user_ids: newUserIds,
         is_active: true
       });
-      toast("success", "Inbox created");
+      toast("success", "Mailbox created — grant the sync scopes in Google DWD for " + r.inbox.email_address);
       newName = "";
       newEmail = "";
-      await api.loadSession(); // superuser /me returns all inboxes
+      newUserIds = [];
+      await refresh();
+      await api.loadSession();
     } catch (e) {
-      toast("error", e?.message || "Could not create inbox");
+      toast("error", e?.message || "Could not create mailbox");
     } finally {
       busyAdd = false;
+    }
+  }
+
+  async function toggleInbox(id) {
+    savingMb = id;
+    const mb = mailboxes.find((m) => m.id === id);
+    try {
+      await api.updateMailbox(id, { is_active: !mb.is_active });
+      await refresh();
+    } catch (e) {
+      toast("error", e?.message || "Update failed");
+    } finally {
+      savingMb = "";
+    }
+  }
+
+  async function removeInbox(id) {
+    if (!confirm("Delete this mailbox and its threads?")) return;
+    savingMb = id;
+    try {
+      await api.deleteMailbox(id);
+      await refresh();
+      await api.loadSession();
+    } catch (e) {
+      toast("error", e?.message || "Delete failed");
+    } finally {
+      savingMb = "";
+    }
+  }
+
+  function toggleNewAgent(id) {
+    newUserIds = newUserIds.includes(id) ? newUserIds.filter((x) => x !== id) : [...newUserIds, id];
+  }
+
+  async function saveMbAgents(mb) {
+    const ids = mb.allowed_users.map((u) => u.id);
+    try {
+      await api.updateMailbox(mb.id, { allowed_user_ids: ids });
+      toast("success", "Access updated");
+    } catch (e) {
+      toast("error", e?.message || "Update failed");
+    }
+  }
+
+  async function addLabel() {
+    if (!newLabel.trim()) return;
+    try {
+      await api.createLabelRecord({ name: newLabel.trim(), color: newLabelColor });
+      newLabel = "";
+      const lb = await api.listLabels();
+      labels = (lb.items || []).map((l) => ({ id: l.id, name: l.name, color: l.color || "" }));
+    } catch (e) {
+      toast("error", e?.message || "Could not add label");
+    }
+  }
+
+  async function removeLabel(id) {
+    if (!confirm("Delete this label?")) return;
+    try {
+      await api.deleteLabelRecord(id);
+      const lb = await api.listLabels();
+      labels = (lb.items || []).map((l) => ({ id: l.id, name: l.name, color: l.color || "" }));
+    } catch (e) {
+      toast("error", e?.message || "Delete failed");
     }
   }
 
@@ -205,26 +290,90 @@
     <!-- Mailboxes -->
     <section class="card">
       <h3>Mailboxes</h3>
+      <p class="muted">Add the Google Workspace mailboxes you want this team to use. After adding, grant the service account’s domain-wide delegation for each (see Google Admin → API controls). New mail syncs when Poll or Watch is on.</p>
+
       <ul class="inbox-list">
-        {#each appState.inboxes as inbox (inbox.id)}
+        {#each mailboxes as mb (mb.id)}
           <li>
-            <span class="inbox-name">{inbox.name}</span>
-            <span class="muted">{inbox.email_address}</span>
-            {#if inbox.history_id}
-              <span class="pill" title="Gmail sync cursor">history {inbox.history_id.slice(0, 8)}…</span>
-            {/if}
-            <button class="md3-btn tonal small" onclick={() => startWatch(inbox.id)} disabled={busyWatch === inbox.id}>
-              {busyWatch === inbox.id ? "Watching…" : "Watch"}
-            </button>
+            <div class="mb-main">
+              <div class="mb-title">
+                <span class="inbox-name">{mb.name}</span>
+                <span class="muted">{mb.email_address}</span>
+                <span class="pill" class:off={!mb.is_active}>{mb.is_active ? "active" : "paused"}</span>
+              </div>
+              <div class="mb-agents">
+                <span class="muted small">Agents:</span>
+                {#each agentOptions as u (u.id)}
+                  <label class="ag-check">
+                    <input
+                      type="checkbox"
+                      checked={mb.allowed_users.some((x) => x.id === u.id)}
+                      onchange={(ev) => {
+                        const has = mb.allowed_users.some((x) => x.id === u.id);
+                        if (ev.target.checked && !has) mb.allowed_users = [...mb.allowed_users, { id: u.id, name: u.name || u.email }];
+                        if (!ev.target.checked && has) mb.allowed_users = mb.allowed_users.filter((x) => x.id !== u.id);
+                        saveMbAgents(mb);
+                      }}
+                    />{u.name || u.email}
+                  </label>
+                {/each}
+              </div>
+            </div>
+            <div class="mb-actions">
+              <button class="md3-btn tonal small" onclick={() => startWatch(mb.id)} disabled={busyWatch === mb.id}>
+                {busyWatch === mb.id ? "Watching…" : "Watch"}
+              </button>
+              <button class="md3-btn tonal small" onclick={() => toggleInbox(mb.id)} disabled={!!savingMb}>
+                {mb.is_active ? "Pause" : "Activate"}
+              </button>
+              <button class="md3-btn tonal small danger" onclick={() => removeInbox(mb.id)} disabled={!!savingMb}>Delete</button>
+            </div>
           </li>
+        {:else}
+          <li class="muted">No mailboxes yet — add one below.</li>
         {/each}
       </ul>
+
       <div class="add-inbox">
         <input type="text" bind:value={newName} placeholder="Name (Support…)" />
         <input type="email" bind:value={newEmail} placeholder="mailbox@thinkcloud.dev" />
-        <button class="md3-btn primary small" onclick={addInbox} disabled={busyAdd}>Add mailbox</button>
       </div>
-      <p class="hint">Tip: “Watch” needs a Pub/Sub topic configured in env (GOOGLE_PUBSUB_TOPIC). If you don't use Pub/Sub, enable Poll instead.</p>
+      <div class="add-agents">
+        <span class="muted small">Agents with access:</span>
+        {#each agentOptions as u (u.id)}
+          <label class="ag-check">
+            <input type="checkbox" checked={newUserIds.includes(u.id)} onchange={() => toggleNewAgent(u.id)} />{u.name || u.email}
+          </label>
+        {/each}
+      </div>
+      <div class="row-btns" style="margin-top:8px">
+        <button class="md3-btn primary" onclick={addInbox} disabled={busyAdd || !newName.trim() || !newEmail.trim()}>
+          {busyAdd ? "Adding…" : "Add mailbox"}
+        </button>
+      </div>
+      <p class="hint">Tip: “Watch” needs a Pub/Sub topic configured in env (GOOGLE_PUBSUB_TOPIC). If you don't use Pub/Sub, enable Poll instead — new mail appears ~1 min later.</p>
+    </section>
+
+    <!-- Labels / categories -->
+    <section class="card">
+      <h3>Labels & categories</h3>
+      <p class="muted">Extra categories you can tag onto tickets (besides the kanban statuses). Applied per-ticket from the thread panel.</p>
+      <ul class="inbox-list">
+        {#each labels as lb (lb.id)}
+          <li>
+            <span class="lbl-dot" style="background:{lb.color || '#888'}"></span>
+            <span class="inbox-name">{lb.name}</span>
+            <button class="md3-btn tonal small danger" onclick={() => removeLabel(lb.id)}>Delete</button>
+          </li>
+        {:else}
+          <li class="muted">No labels yet — create some below.</li>
+        {/each}
+      </ul>
+      <div class="add-inbox">
+        <input type="text" bind:value={newLabel} placeholder="New label (e.g. VIP, Billing, Urgent)" />
+        <input type="color" bind:value={newLabelColor} style="width:44px;height:40px;padding:2px" title="Label color" />
+        <button class="md3-btn primary small" onclick={addLabel} disabled={!newLabel.trim()}>Add label</button>
+      </div>
     </section>
   {/if}
 </div>
@@ -335,6 +484,67 @@
     gap: 10px;
     padding: 8px 0;
     border-bottom: 1px solid var(--m3-outline-variant);
+  }
+
+  .mb-main {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .mb-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .mb-agents {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 6px;
+  }
+
+  .ag-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font: var(--m3-type-label-sm);
+    color: var(--m3-on-surface-variant);
+  }
+
+  .mb-actions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .add-agents {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 6px;
+  }
+
+  .small {
+    font: var(--m3-type-label-sm);
+  }
+
+  .lbl-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    flex: 0 0 auto;
+  }
+
+  .pill.off {
+    opacity: 0.55;
+  }
+
+  .danger {
+    color: var(--m3-error);
   }
 
   .inbox-name {

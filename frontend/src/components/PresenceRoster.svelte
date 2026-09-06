@@ -1,43 +1,92 @@
 <script>
-  import { appState, agentInitials } from "../lib/appState.svelte.js";
+  import { appState, agentInitials, userName } from "../lib/appState.svelte.js";
   import { avatarColor } from "../lib/utils.js";
 
-  // Human-readable status line for a roster member.
+  // Always-on presence control: my avatar (green dot) + others online. No
+  // flash — the pill renders whenever a session is active, self always present.
+  let open = $state(false);
+
   function describe(p) {
     if (p.status === "composing_reply") return "composing a reply" + (p.thread_subject ? " on “" + p.thread_subject + "”" : "");
     if (p.status === "viewing") return "viewing" + (p.thread_subject ? " “" + p.thread_subject + "”" : " a thread");
     return "online";
   }
 
-  const online = $derived((appState.roster || []).filter((p) => p && p.name || p.email));
+  const me = $derived({
+    name: appState.me?.name || appState.me?.email || "",
+    email: appState.me?.email || "",
+    status: appState.myActivity?.status || "online"
+  });
+
+  const others = $derived((appState.roster || []).filter((p) => p && (p.name || p.email)));
+  const total = $derived(1 + others.length); // self + others
 </script>
 
-{#if online.length}
-  <div class="roster" role="status" title={online.map((p) => `${p.name || p.email} — ${describe(p)}`).join("\n")}>
+<div class="roster">
+  <button class="roster-btn" onclick={() => (open = !open)} title="Who's online" aria-expanded={open}>
+    <span class="live-dot"></span>
     <span class="roster-label">ONLINE</span>
-    {#each online.slice(0, 5) as p (p.actor)}
-      <span
-        class="r-avatar"
-        class:composing={p.status === "composing_reply"}
-        style="background:{avatarColor(p.email || p.name)}"
-        title={`${p.name || p.email} — ${describe(p)}`}
-      >{agentInitials(p.name || p.email)}{#if p.status === "composing_reply"}<span class="dot"></span>{/if}</span>
-    {/each}
-    {#if online.length > 5}
-      <span class="more">+{online.length - 5}</span>
+    <span class="me-avatar" style="background:{avatarColor(me.email || me.name)}">
+      {agentInitials(me.name)}
+      <span class="green-dot"></span>
+    </span>
+    {#if others.length > 0}
+      {#each others.slice(0, 4) as p (p.actor)}
+        <span class="o-avatar" style="background:{avatarColor(p.email || p.name)}">
+          {agentInitials(p.name || p.email)}
+          {#if p.status === "composing_reply"}<span class="typing-dot"></span>{/if}
+        </span>
+      {/each}
+      <span class="count">{total}</span>
+    {:else}
+      <span class="alone">alone</span>
     {/if}
-  </div>
-{/if}
+  </button>
+
+  {#if open}
+    <div class="pop" role="menu">
+      <div class="pop-title">Online now</div>
+      <div class="row">
+        <span class="me-avatar" style="background:{avatarColor(me.email || me.name)}">{agentInitials(me.name)}<span class="green-dot"></span></span>
+        <span class="who"><strong>{me.name}</strong><span class="act muted">you — {describe(me)}</span></span>
+      </div>
+      {#if others.length}
+        {#each others as p (p.actor)}
+          <div class="row">
+            <span class="o-avatar" style="background:{avatarColor(p.email || p.name)}">{agentInitials(p.name || p.email)}{#if p.status === "composing_reply"}<span class="typing-dot"></span>{/if}</span>
+            <span class="who"><strong>{p.name || p.email}</strong><span class="act muted">{describe(p)}</span></span>
+          </div>
+        {/each}
+      {:else}
+        <div class="muted" style="padding:4px 2px">No one else is online right now.</div>
+      {/if}
+    </div>
+  {/if}
+</div>
 
 <style>
   .roster {
+    position: relative;
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    padding: 2px 8px;
     margin-left: 2px;
+  }
+
+  .roster-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
     border-radius: 999px;
     background: var(--m3-surface-container-high);
+    cursor: pointer;
+  }
+
+  .live-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #22c55e;
   }
 
   .roster-label {
@@ -45,24 +94,35 @@
     font-weight: 700;
     letter-spacing: 0.06em;
     color: var(--m3-primary);
-    margin-right: 3px;
   }
 
-  .r-avatar {
+  .me-avatar,
+  .o-avatar {
     position: relative;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 24px;
-    height: 24px;
+    width: 22px;
+    height: 22px;
     border-radius: 50%;
     color: #fff;
-    font-size: 10px;
+    font-size: 9px;
     font-weight: 700;
     border: 2px solid var(--m3-surface-container);
   }
 
-  .r-avatar .dot {
+  .green-dot {
+    position: absolute;
+    right: -2px;
+    bottom: -2px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #22c55e;
+    border: 2px solid var(--m3-surface-container);
+  }
+
+  .typing-dot {
     position: absolute;
     right: -2px;
     bottom: -2px;
@@ -73,8 +133,60 @@
     border: 2px solid var(--m3-surface-container);
   }
 
-  .more {
+  .count {
     font: var(--m3-type-label-sm);
+    color: var(--m3-on-surface-variant);
+    font-weight: 700;
+  }
+
+  .alone {
+    font: var(--m3-type-label-sm);
+    color: var(--m3-on-surface-variant-2);
+  }
+
+  .pop {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 70;
+    min-width: 220px;
+    background: var(--m3-surface-container-high);
+    border: 1px solid var(--m3-outline-variant);
+    border-radius: var(--m3-shape-sm);
+    box-shadow: var(--m3-elev-4);
+    padding: 8px;
+  }
+
+  .pop-title {
+    font: var(--m3-type-label-sm);
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: var(--m3-on-surface-variant);
+    padding: 0 2px 6px;
+    border-bottom: 1px solid var(--m3-outline-variant);
+    margin-bottom: 6px;
+  }
+
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 2px;
+  }
+
+  .who {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.25;
+    font: var(--m3-type-body-sm);
+    color: var(--m3-on-surface);
+  }
+
+  .act {
+    font: var(--m3-type-label-sm);
+  }
+
+  .muted {
     color: var(--m3-on-surface-variant);
   }
 </style>
