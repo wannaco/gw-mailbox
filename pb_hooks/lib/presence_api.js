@@ -222,8 +222,25 @@ function handleDirectory(e) {
   const users = (rows || []).map((r) => ({
     id: r.id,
     name: r.getString("name"),
-    email: r.getString("email")
+    email: r.getString("email"),
+    kind: "agent"
   }));
+  // Opted-in admins (superusers) are included so agents can @mention them.
+  try {
+    const se = require(__hooks + "/lib/settings_engine.js");
+    const enabledIds = se.getMentionAdminIds();
+    if (enabledIds.length) {
+      const su = $app.findRecordsByFilter("_superusers", "", "", 0, 0) || [];
+      for (const r of su || []) {
+        if (enabledIds.indexOf(r.id) === -1) continue;
+        const email = r.getString("email") || "";
+        const nm = r.getString("name") || email;
+        if (!users.find((u) => u.email === email)) {
+          users.push({ id: r.id, name: nm, email: email, kind: "admin" });
+        }
+      }
+    }
+  } catch (_) { /* settings row may not exist yet */ }
   e.json(200, { ok: true, users: users });
 }
 

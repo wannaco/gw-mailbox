@@ -45,7 +45,11 @@
   });
   let busyAuto = $state(false);
 
-  const agentOptions = $derived(Object.values(appState.users));
+  // admin mention visibility
+  let admins = $state([]);          // [{id,name,email}] all superusers
+  let mentionAdminIds = $state([]); // ids opted in to @mentions
+
+  const agentOptions = $derived(Object.values(appState.users).filter((u) => (u.kind || 'agent') !== 'admin'));
 
   async function refresh() {
     try {
@@ -53,6 +57,8 @@
       isAdmin = true;
       saEmail = s.serviceAccountEmail || "";
       pollSync = !!s.pollSync;
+      admins = s.admins || [];
+      mentionAdminIds = s.mentionAdminIds || [];
     } catch (e) {
       isAdmin = false;
       if (e?.status !== 401 && e?.status !== 403) toast("error", e?.message || "Failed to load settings");
@@ -260,6 +266,31 @@
     } catch (e) {
       toast("error", e?.message || "Delete failed");
     }
+  }
+
+  async function saveMentionPrefs() {
+    busyAuto = true;
+    try {
+      const r = await api.saveMentionAdmins(mentionAdminIds);
+      mentionAdminIds = r.mentionAdminIds || [];
+      await api.loadDirectory();
+      toast("success", "Mention preferences saved");
+    } catch (e) {
+      toast("error", e?.message || "Save failed");
+    } finally {
+      busyAuto = false;
+    }
+  }
+
+  function toggleAdminMention(id) {
+    mentionAdminIds = mentionAdminIds.includes(id)
+      ? mentionAdminIds.filter((x) => x !== id)
+      : [...mentionAdminIds, id];
+  }
+
+  function enableDesktopNotifs() {
+    const ok = api.ensureNotifications();
+    toast(ok ? "success" : "info", ok ? "Notifications enabled" : "Notification permission requested — allow it in your browser");
   }
 
   async function saveAuto() {
@@ -511,6 +542,28 @@
       <div class="row-btns" style="margin-top:10px">
         <button class="md3-btn primary" onclick={saveAuto} disabled={busyAuto}>{busyAuto ? "Saving…" : "Save automation settings"}</button>
       </div>
+    </section>
+
+    <!-- Mentions & notifications -->
+    <section class="card">
+      <h3>Mentions &amp; notifications</h3>
+      <p class="muted">Admins aren't in the agents directory, so agents can't @-mention them by default. Tick the admins below who should be mentionable (and notified) in internal notes.</p>
+
+      <div style="margin:8px 0">
+        {#each admins as a (a.id)}
+          <label class="ag-check" style="display:flex;align-items:center;gap:6px;margin:4px 0">
+            <input type="checkbox" checked={mentionAdminIds.includes(a.id)} onchange={() => toggleAdminMention(a.id)} />
+            {a.name || a.email} <span class="muted">({a.email})</span>
+          </label>
+        {:else}
+          <span class="muted">No admin accounts found.</span>
+        {/each}
+      </div>
+      <div class="row-btns">
+        <button class="md3-btn primary small" onclick={saveMentionPrefs} disabled={busyAuto}>Save mention preferences</button>
+        <button class="md3-btn tonal small" onclick={enableDesktopNotifs}>Enable desktop notifications</button>
+      </div>
+      <p class="hint">Desktop notifications are requested after sign-in, or tap the button to (re)prompt.</p>
     </section>
   {/if}
 </div>

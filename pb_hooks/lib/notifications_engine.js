@@ -45,19 +45,35 @@ function notifyNoteMentions(threadRec, noteRec, actor, bodyText) {
   const actorId = actor && (actor.recordId || actor.id);
   const haystack = String(bodyText || "").toLowerCase();
 
-  // 1) @mentions
+  // 1) @mentions (agents + opted-in admins)
   try {
     const users = $app.findRecordsByFilter("users", "", "name", 0, 0) || [];
-    for (const u of users) {
-      if (u.id === actorId) continue;
-      const name = String(u.getString("name") || "").toLowerCase();
-      const email = String(u.getString("email") || "").toLowerCase();
-      // match an @Name or @email token, or a bare email mention
+    const targets = [];
+    for (const u of users || []) {
+      targets.push({ id: u.id, name: String(u.getString("name") || ""), email: String(u.getString("email") || "") });
+    }
+    // opted-in admins (superusers) — they are not in `users`
+    try {
+      const se = require(__hooks + "/lib/settings_engine.js");
+      const enabled = se.getMentionAdminIds();
+      if (enabled.length) {
+        const su = $app.findRecordsByFilter("_superusers", "", "", 0, 0) || [];
+        for (const r of su || []) {
+          if (enabled.indexOf(r.id) === -1) continue;
+          targets.push({ id: r.id, name: r.getString("name") || "", email: String(r.getString("email") || "") });
+        }
+      }
+    } catch (_) { /* non-fatal */ }
+
+    for (const t of targets) {
+      if (t.id === actorId) continue;
+      const name = String(t.name || "").toLowerCase();
+      const email = String(t.email || "").toLowerCase();
       const hit =
         (name && haystack.indexOf("@" + name) !== -1) ||
         (email && (haystack.indexOf("@" + email) !== -1 || haystack.indexOf(email) !== -1));
       if (hit) {
-        notify(u.id, "mention", threadId, subject, noteRec.id, actor ? actor.name : "", bodyText);
+        notify(t.id, "mention", threadId, subject, noteRec.id, actor ? actor.name : "", bodyText);
       }
     }
   } catch (err) {

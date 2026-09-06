@@ -89,6 +89,7 @@ export async function adminSession() {
   await refreshThreads();
   loadDirectory();
   loadNotifications();
+  ensureNotifications();
 }
 
 export async function loadSession() {
@@ -104,6 +105,7 @@ export async function loadSession() {
   await refreshThreads();
   loadDirectory();
   loadNotifications();
+  ensureNotifications();
 }
 
 export async function refreshThreads() {
@@ -136,7 +138,7 @@ export async function loadDirectory() {
   try {
     const res = await pbRequest("GET", "/mailbox/users");
     const map = {};
-    for (const u of res.users || []) map[u.id] = { id: u.id, name: u.name, email: u.email };
+    for (const u of res.users || []) map[u.id] = { id: u.id, name: u.name, email: u.email, kind: u.kind || 'agent' };
     appState.users = map;
   } catch {
     /* non-fatal */
@@ -198,6 +200,9 @@ export function testConnection(subject, serviceAccountJson) {
 }
 export function setPollSync(enabled) {
   return pbRequest("POST", "/mailbox/settings/sync-mode", { enabled });
+}
+export function saveMentionAdmins(ids) {
+  return pbRequest("POST", "/mailbox/settings/mention-admins", { ids });
 }
 
 // ---- ticket automations (follow-up / auto-close) ----------------------------
@@ -433,6 +438,19 @@ async function rtLoop() {
       await new Promise((r) => setTimeout(r, 2500));
     }
   }
+}
+
+// Ask for browser notification permission once (browsers need a prompt; we fire
+// it right after login so it's visible). Returns true when granted.
+export function ensureNotifications() {
+  try {
+    if (!("Notification" in window)) return false;
+    if (Notification.permission === "granted") return true;
+    if (Notification.permission === "denied") return false;
+    // 'default' -> ask
+    Notification.requestPermission();
+    return false;
+  } catch (_) { return false; }
 }
 
 // ---- app-wide presence loop (roster) --------------------------------------

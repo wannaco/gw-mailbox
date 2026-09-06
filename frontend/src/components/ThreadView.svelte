@@ -595,7 +595,12 @@
   let busyAssign = $state(false);
 
   const threadTags = $derived(Array.isArray(thread?.tags) ? thread.tags : []);
-  const assigneeOptions = $derived(Object.values(appState.users).sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email)));
+  // Assignee list = agents only (admins are mentionable but not assignable).
+  const assigneeOptions = $derived(
+    Object.values(appState.users)
+      .filter((u) => (u.kind || 'agent') !== 'admin')
+      .sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email))
+  );
 
   async function loadCatalog() {
     try {

@@ -23,6 +23,27 @@ function ensureSettings() {
   return rec;
 }
 
+
+function getMentionAdminIds() {
+  const rec = ensureSettings();
+  try { const v = rec.get("mention_admin_ids"); return Array.isArray(v) ? v : []; }
+  catch (_) { return []; }
+}
+
+function setMentionAdminIds(ids) {
+  const rec = ensureSettings();
+  rec.set("mention_admin_ids", Array.isArray(ids) ? ids : []);
+  $app.save(rec);
+  return getMentionAdminIds();
+}
+
+function listSuperusers() {
+  try {
+    const rows = $app.findRecordsByFilter("_superusers", "", "", 0, 0) || [];
+    return (rows || []).map((r) => ({ id: r.id, name: r.getString("name") || "", email: r.getString("email") || "" }));
+  } catch (_) { return []; }
+}
+
 function getSettings() {
   return ensureSettings();
 }
@@ -122,6 +143,8 @@ function handleGetSettings(e) {
     serviceAccountConfigured: !!saEmail,
     serviceAccountEmail: saEmail,
     pollSync: rec.getBool("poll_sync") || $os.getenv("MAILBOX_POLL_SYNC") === "1",
+    mentionAdminIds: getMentionAdminIds(),
+    admins: listSuperusers(),
     envOverrides: {
       pollSyncEnv: $os.getenv("MAILBOX_POLL_SYNC") === "1"
     }
@@ -186,6 +209,16 @@ function handleTestConnection(e) {
     // "error code: 502", so return the real message as a successful response.
     e.json(200, { ok: false, error: "connection_failed", message: (err && err.message) || String(err) });
   }
+}
+
+function handleSetMentionAdmins(e) {
+  if (h.addCorsHeaders(e, "POST, OPTIONS")) return;
+  const admin = requireAdmin(e);
+  if (!admin) return;
+  let body = {};
+  try { body = JSON.parse(toString(e.request.body) || "{}"); } catch (_) { body = {}; }
+  const ids = Array.isArray(body.ids) ? body.ids.map((x) => String(x)) : [];
+  e.json(200, { ok: true, mentionAdminIds: setMentionAdminIds(ids) });
 }
 
 function handleSetPollSync(e) {
@@ -352,6 +385,10 @@ module.exports = {
   handleRemoveServiceAccount,
   handleTestConnection,
   handleSetPollSync,
+  handleSetMentionAdmins,
+  getMentionAdminIds,
+  setMentionAdminIds,
+  listSuperusers,
   handleListInboxes,
   handleCreateInbox,
   handleUpdateInbox,
