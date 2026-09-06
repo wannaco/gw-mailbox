@@ -657,7 +657,7 @@ function handleReply(e) {
 function sendOutboundEmail(thread, uid, subject, bodyText) {
   const raw = buildReplyRaw(
     uid, thread.getString("customer_email"), thread.getString("customer_name"),
-    [], subject, bodyText, "", lastThreadMsgId(thread.id) // thread into the customer conversation
+    [], subject, bodyText, "", [], lastThreadMsgId(thread.id) // thread into the customer conversation
   );
   const sent = h.googleRequest({
     url: h.GMAIL_BASE + "/users/" + encodeURIComponent(uid) + "/messages/send",
