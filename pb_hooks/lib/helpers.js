@@ -50,7 +50,14 @@ function fail(e, status, code, message, extra) {
 // Actor object from a request event (used for internal notes + audit).
 function actorFromEvent(e) {
   if (e.hasSuperuserAuth && e.hasSuperuserAuth()) {
-    return { id: "superuser", name: "Admin", email: "admin@local", isSuperuser: true };
+    // Superuser = observe/admin role: carry the REAL _superusers record email
+    // so notes/replies/audit rows pass PB's email validation ("admin@local"
+    // does not). Fall back to a valid synthetic address only if no record is
+    // reachable on the event.
+    const su = e.auth;
+    const name = (su && (su.getString("name") || "")) || "Admin";
+    const email = (su && su.getString("email")) || "admin@mailbox.local";
+    return { id: "superuser", recordId: su ? su.id : "", name: name, email: email, isSuperuser: true };
   }
   if (e.auth) {
     return {

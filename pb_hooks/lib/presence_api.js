@@ -46,6 +46,19 @@ function handlePresenceHeartbeat(e) {
   const access = h.requireThreadAccess(e, threadId, actor);
   if (!access) return;
 
+  // Superusers are observe-only: they are not agents (no `users` record exists
+  // for them), so no thread_presence row is persisted — but they still get the
+  // composing lock + snapshot so the draft banner works while the admin views.
+  if (actor.isSuperuser) {
+    const lock = h.composingLock(threadId, "");
+    return e.json(200, {
+      ok: true,
+      changed: false,
+      lock: lock ? { agentName: lock.agentName, userId: lock.userId } : null,
+      presence: h.presenceSnapshot(threadId)
+    });
+  }
+
   const res = h.heartbeatPresence(threadId, actor.id, status);
   e.json(200, {
     ok: true,
