@@ -166,6 +166,7 @@ function handleThread(threadRec, cfg) {
     h.log("follow-up automation: nudge #" + (count + 1), "sent on", threadRec.id);
   } catch (err) {
     h.warn("follow-up send failed for", threadRec.id, (err && err.message) || err);
+    throw err; // surface to run-now / cron per-thread catcher
   }
 }
 
