@@ -209,7 +209,9 @@ function handleDirectory(e) {
   const actor = h.actorFromEvent(e);
   if (!actor) return h.fail(e, 401, "unauthorized", "Auth required");
 
-  const rows = $app.findRecordsByFilter("users", "", "name", 0, 500);
+  // NOTE: this PB fork's signature is findRecordsByFilter(collection, filter,
+  // sort, limit, offset, params) — limit then offset. limit 0 = no limit.
+  const rows = $app.findRecordsByFilter("users", "", "name", 0, 0);
   const users = (rows || []).map((r) => ({
     id: r.id,
     name: r.getString("name"),
