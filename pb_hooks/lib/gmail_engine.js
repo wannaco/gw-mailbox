@@ -128,6 +128,19 @@ function isoToPb(iso) {
   return h.isoToPbString(iso);
 }
 
+// SLA deadline anchored to the message's REAL date (not the import time).
+// When old mail is backfilled, the create hook's "now + hours" stamp would
+// otherwise give month-old tickets a fresh deadline ("Due in 3h") — anchor to
+// the email's received time so stale mail reads overdue instead.
+function slaAnchorFromPb(pbDate) {
+  try {
+    const hours = h.effectiveSlaHours() || 24;
+    return new DateTime(pbDate).add(hours * 3600 * 1e9).string();
+  } catch (_) {
+    return "";
+  }
+}
+
 function upsertThreadAndMessage(inboxRec, norm) {
   const counters = { threadsCreated: 0, threadsUpdated: 0, messagesAdded: 0, skipped: 0 };
   const uid = inboxUserEmail(inboxRec);
@@ -145,6 +158,7 @@ function upsertThreadAndMessage(inboxRec, norm) {
       customer_name: norm.customer ? norm.customer.name : "",
       status: "new",
       last_message_at: dateStr,
+      sla_due_at: dateStr ? slaAnchorFromPb(dateStr) : "",
       tags: []
     });
     $app.save(thread);
@@ -172,6 +186,19 @@ function upsertThreadAndMessage(inboxRec, norm) {
       if (prevStatus === "waiting_customer" || prevStatus === "closed") {
         thread.set("status", "in_progress");
         // keep assigned_agent — the handling agent resumes
+      }
+      // A fresh customer message on a still-unanswered (new) ticket restarts
+      // the first-response SLA window from THIS message — not from whenever the
+      // thread row was first imported (which made old backfilled tickets show
+      // a fake "Due in Xh" countdown).
+      if (thread.getString("status") === "new" && dateStr) {
+        try {
+          const anchor = new DateTime(slaAnchorFromPb(dateStr));
+          const cur = thread.getDateTime("sla_due_at");
+          if (!cur || cur.isZero() || anchor.after(cur)) {
+            thread.set("sla_due_at", anchor.string());
+          }
+        } catch (_) { /* non-fatal */ }
       }
     }
     $app.save(thread);
