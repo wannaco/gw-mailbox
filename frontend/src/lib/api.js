@@ -450,7 +450,9 @@ export function startPresenceLoop() {
   beatPresence();
   fetchRoster();
   rosterTimer = setInterval(() => {
-    if (!document.hidden) beatPresence();
+    if (document.hidden) return;
+    beatPresence();
+    fetchRoster(); // keep the roster live even when no SSE event fires
   }, 8000);
   document.addEventListener("visibilitychange", visChange);
 }
