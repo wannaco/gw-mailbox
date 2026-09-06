@@ -147,9 +147,11 @@ function handleThread(threadRec, cfg) {
 
   // 2) still below max -> send the next follow-up nudge
   if (!uid || !threadRec.getString("customer_email")) return;
+  // Nudge MUST reuse the thread's EXACT subject (no "Re:" prefix, no suffix) —
+  // any subject change makes Gmail deliver it as a NEW conversation.
   const subject = cfg.followup_subject && String(cfg.followup_subject).trim()
     ? fillTemplate(cfg.followup_subject, threadRec)
-    : "Re: " + (threadRec.getString("subject") || "(no subject)");
+    : (threadRec.getString("subject") || "(no subject)");
   const body = fillTemplate(cfg.followup_body, threadRec);
 
   try {

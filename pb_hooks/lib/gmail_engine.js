@@ -162,13 +162,16 @@ function upsertThreadAndMessage(inboxRec, norm) {
     }
     const isCustomerMail = norm.from.email && norm.from.email.toLowerCase() !== uid.toLowerCase();
     if (isCustomerMail) {
-      // A real customer reply means the follow-up/auto-close sequence starts
-      // fresh (or the ticket is reopened if it had been closed).
+      // A real customer reply means the follow-up/auto-close sequence resets,
+      // and the ticket leaves waiting/closed -> back to the queue, UNASSIGNED,
+      // so any agent can pick it up (never left stuck on a customer).
       thread.set("followup_sent", 0);
       thread.set("followup_next_at", "");
       thread.set("followup_last_at", "");
-      if (thread.getString("status") === "closed") {
-        thread.set("status", "new"); // reopened by new customer activity
+      const prevStatus = thread.getString("status");
+      if (prevStatus === "closed" || prevStatus === "waiting_customer") {
+        thread.set("status", "new");
+        thread.set("assigned_agent", "");
       }
     }
     $app.save(thread);
@@ -499,7 +502,11 @@ function buildReplyRaw(uid, toAddr, toName, ccList, subject, text, htmlBody, att
     .filter((c) => c && c.toLowerCase() !== String(uid).toLowerCase())
     .filter((v, i, a) => a.indexOf(v) === i);
   let subj = sanitizeHeaderValue(subject);
-  if (!/^re:\s*/i.test(subj)) subj = "Re: " + subj;
+  // Replying into an EXISTING thread (follow-ups, in-thread replies) must keep
+  // the exact subject — Gmail threads by subject+References; changing it makes
+  // the message land as a NEW conversation in the customer's mailbox.
+  const hasParent = String(inReplyTo || "").trim() !== "";
+  if (!hasParent && !/^re:\s*/i.test(subj)) subj = "Re: " + subj;
   const plain = String(text || "").trim();
   const hasHtml = !!(htmlBody && String(htmlBody).trim());
   const html = hasHtml
@@ -627,6 +634,7 @@ function handleReply(e) {
       cc_emails: ccEmails,
       body_html: safeHtml || "",
       body_plain: text || h.htmlToPlain(safeHtml),
+      gmail_msgid_header: sentMessageIdHeader(sent),
       msg_date: h.dateToPbString(new Date()),
       is_internal_note: false
     });
@@ -675,6 +683,7 @@ function sendOutboundEmail(thread, uid, subject, bodyText) {
     cc_emails: [],
     body_html: "",
     body_plain: bodyText || "",
+    gmail_msgid_header: sentMessageIdHeader(sent),
     msg_date: h.dateToPbString(new Date()),
     is_internal_note: false
   });

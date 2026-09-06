@@ -497,7 +497,7 @@
 
       <div style="margin:6px 0">
         <label class="field-row">
-          <span>Email subject (optional — default is “Re: &lt;ticket subject&gt;”)</span>
+          <span>Email subject (optional — leave empty to reuse the ticket's exact subject so the nudge stays in the same thread)</span>
           <input type="text" bind:value={auto.followup_subject} placeholder={"Re: {{" + "subject}}"} />
         </label>
       </div>
