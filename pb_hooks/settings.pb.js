@@ -73,6 +73,10 @@ routerAdd("POST", "/api/mailbox/settings/mention-admins", (e) => {
   require(__hooks + "/lib/settings_engine.js").handleSetMentionAdmins(e);
 }, $apis.requireSuperuserAuth());
 
+routerAdd("POST", "/api/mailbox/settings/sla", (e) => {
+  require(__hooks + "/lib/settings_engine.js").handleSaveSla(e);
+}, $apis.requireSuperuserAuth());
+
 routerAdd("POST", "/api/mailbox/settings/automations/run", (e) => {
   require(__hooks + "/lib/automations_engine.js").handleRunNow(e);
 }, $apis.requireSuperuserAuth());

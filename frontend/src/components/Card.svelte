@@ -1,5 +1,5 @@
 <script>
-  import { appState, agentInitials } from "../lib/appState.svelte.js";
+  import { appState, agentInitials, slaOf } from "../lib/appState.svelte.js";
   import { timeAgo, avatarColor } from "../lib/utils.js";
 
   let { thread, open } = $props();
@@ -17,6 +17,7 @@
   );
   const assignedEmail = $derived(thread.assigned_agent ? appState.users[thread.assigned_agent]?.email || "" : "");
   const isMine = $derived(thread.assigned_agent && thread.assigned_agent === appState.me?.id);
+  const sla = $derived(slaOf(thread));
 
   function openCard() {
     if (!dragActive) open(thread.id);
@@ -26,6 +27,7 @@
 <article
   class="card"
   class:composing={someoneComposing}
+  class:overdue={sla?.kind === "breached"}
   class:dragging={dragActive}
   role="button"
   tabindex="0"
@@ -74,6 +76,9 @@
         <span class="a-name">{assigned}</span>
       </span>
     {/if}
+    {#if sla}
+      <span class="sla-chip" class:breached={sla.kind === "breached"} style="background:{sla.color}18;color:{sla.color}" title={sla.title}>{sla.text}</span>
+    {/if}
   </div>
 </article>
 
@@ -104,6 +109,10 @@
 
   .card.composing {
     border-left-color: var(--m3-tertiary);
+  }
+
+  .card.overdue {
+    border-left-color: #ba1a1a;
   }
 
   .top {
@@ -231,5 +240,23 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .sla-chip {
+    font: var(--m3-type-label-sm);
+    font-weight: 700;
+    border-radius: 999px;
+    padding: 1px 8px;
+    white-space: nowrap;
+    border: 1px solid currentColor;
+    flex: 0 0 auto;
+    margin-left: auto;
+  }
+  .sla-chip.breached {
+    animation: sla-pulse 1.8s ease-in-out infinite;
+  }
+  @keyframes sla-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.55; }
   }
 </style>

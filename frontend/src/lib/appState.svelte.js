@@ -28,6 +28,7 @@ export const appState = $state({
   presence: {}, // `${threadId}:${userId}` -> { thread, user, status, agentName, updatedAt }
   roster: [], // online teammates: { actor, kind, name, email, status, thread, thread_subject, inbox }
   myActivity: { thread: "", status: "online" }, // this client's presence state
+  slaConfig: { enabled: true, hours: 24 }, // from /me (settings override)
   notifications: [], // { id, kind, thread, thread_subject, message_id, actor_name, body_snippet, read, created_at }
   jumpToMessage: null, // message id to scroll/flash after opening a thread
   composerState: "idle", // idle | composing (this client)
@@ -48,6 +49,30 @@ export function toast(kind, message) {
 
 export function statusMeta(value) {
   return STATUSES.find((s) => s.value === value) || STATUSES[0];
+}
+
+// SLA state for a thread row/card. The clock runs on NEW tickets (the hourly
+// monitor escalates breaches out of new). Returns null when the SLA is off, the
+// thread isn't new, or no due time exists; otherwise a chip descriptor.
+export function slaOf(thread) {
+  const cfg = appState.slaConfig || { enabled: true, hours: 24 };
+  if (!cfg.enabled) return null;
+  if (!thread || (thread.status || "") !== "new") return null;
+  const raw = thread.sla_due_at;
+  if (!raw) return null;
+  const due = new Date(String(raw).replace(" ", "T") + (String(raw).includes("Z") ? "" : "Z"));
+  if (!Number.isFinite(due.getTime())) return null;
+  const now = Date.now();
+  const rem = due.getTime() - now;
+  if (rem <= 0) return { kind: "breached", text: "SLA overdue", color: "#ba1a1a", title: `Overdue since ${due.toLocaleString()}` };
+  const hours = Math.max(1, Number(cfg.hours) || 24);
+  // Amber when we're in the last 20% of the SLA window (min 2h) — never spammy.
+  const warnMs = Math.max(2 * 3600e3, hours * 0.2 * 3600e3);
+  if (rem <= warnMs) {
+    const h = Math.max(1, Math.round(rem / 3600e3));
+    return { kind: "soon", text: `Due in ${h}h`, color: "#b06000", title: `SLA due ${due.toLocaleString()}` };
+  }
+  return null;
 }
 
 export function threadsOfActiveInbox() {
@@ -128,6 +153,7 @@ export function resetSession() {
   appState.roster = [];
   appState.notifications = [];
   appState.jumpToMessage = null;
+  appState.slaConfig = { enabled: true, hours: 24 };
   appState.myActivity = { thread: "", status: "online" };
   appState.openThreadId = "";
   appState.activeInboxId = "";

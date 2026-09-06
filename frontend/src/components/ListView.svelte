@@ -1,5 +1,5 @@
 <script>
-  import { appState, statusMeta, threadUnread } from "../lib/appState.svelte.js";
+  import { appState, statusMeta, threadUnread, slaOf } from "../lib/appState.svelte.js";
   import { timeAgo, avatarColor } from "../lib/utils.js";
   import { agentInitials } from "../lib/appState.svelte.js";
   import * as api from "../lib/api.js";
@@ -105,6 +105,7 @@
 
     {#each rows as t (t.id)}
       {@const comp = composingOf(t.id)}
+      {@const sla = slaOf(t)}
       <button
         class="row"
         class:hot={isHot(t)}
@@ -151,6 +152,11 @@
           <span class="status-pill" style="background:{statusMeta(t.status).dot}22;color:{statusMeta(t.status).dot}">
             {statusMeta(t.status).label}
           </span>
+          {#if sla}
+            <span class="sla-chip" class:breached={sla.kind === "breached"} style="background:{sla.color}18;color:{sla.color}" title={sla.title}>
+              {sla.text}
+            </span>
+          {/if}
         </span>
       </button>
     {/each}
@@ -429,6 +435,22 @@
     border-radius: 4px;
     padding: 1px 7px;
     white-space: nowrap;
+  }
+
+  .sla-chip {
+    font: var(--m3-type-label-sm);
+    font-weight: 700;
+    border-radius: 999px;
+    padding: 1px 8px;
+    white-space: nowrap;
+    border: 1px solid currentColor;
+  }
+  .sla-chip.breached {
+    animation: sla-pulse 1.8s ease-in-out infinite;
+  }
+  @keyframes sla-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.55; }
   }
 
   .empty {

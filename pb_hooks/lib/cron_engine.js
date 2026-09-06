@@ -15,6 +15,11 @@ var BATCH = 200;
 // ---------------------------------------------------------------------------
 function runSlaMonitor() {
   h.log("SLA monitor run started");
+  const cfg = h.readSlaConfig();
+  if (!cfg.sla_enabled) {
+    h.log("SLA monitor skipped — disabled in Settings (sla_enabled=false)");
+    return;
+  }
   const breached = [];
   let offset = 0;
 

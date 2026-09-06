@@ -150,6 +150,49 @@ function isSlaBreached(threadRec) {
 }
 
 // ---------------------------------------------------------------------------
+// SLA config (app_settings singleton) — SLA visibility + breach escalation.
+// Fields added by migration 1786000016_sla.js. Defaults keep the historical
+// behavior: enabled, first response due 24h after the ticket arrives.
+// ---------------------------------------------------------------------------
+function readSlaConfig() {
+  const out = { sla_enabled: true, sla_hours: 24 };
+  try {
+    const rec = $app.findFirstRecordByFilter("app_settings", "key = 'instance'");
+    if (!rec) return out;
+    try { out.sla_enabled = rec.getBool("sla_enabled"); } catch (_) { /* missing field */ }
+    try {
+      const v = rec.get("sla_hours");
+      const n = (v === undefined || v === null || v === "") ? out.sla_hours : Number(v);
+      if (!isNaN(n) && n > 0) out.sla_hours = n;
+    } catch (_) { /* missing field */ }
+  } catch (_) { /* row may not exist yet */ }
+  return out;
+}
+
+function saveSlaConfig(cfg) {
+  cfg = cfg || {};
+  const cur = readSlaConfig();
+  const hours = Number(cfg.sla_hours);
+  const enabled = cfg.sla_enabled !== undefined ? !!cfg.sla_enabled : cur.sla_enabled;
+  const coll = $app.findCollectionByNameOrId("app_settings");
+  let rec = null;
+  try { rec = $app.findFirstRecordByFilter("app_settings", "key = 'instance'"); } catch (_) { /* */ }
+  if (!rec) rec = new Record(coll, { key: "instance" });
+  rec.set("sla_enabled", enabled);
+  rec.set("sla_hours", !isNaN(hours) && hours > 0 ? hours : cur.sla_hours);
+  $app.save(rec);
+  return readSlaConfig();
+}
+
+// Convenience used by the thread-create hook: SLA hours from settings, falling
+// back to the MAILBOX_SLA_HOURS env and then the 24h default.
+function effectiveSlaHours() {
+  try { return readSlaConfig().sla_hours; } catch (_) { /* */ }
+  const env = parseInt($os.getenv("MAILBOX_SLA_HOURS") || "24", 10);
+  return !isNaN(env) && env > 0 ? env : 24;
+}
+
+// ---------------------------------------------------------------------------
 // Internal notes (messages with is_internal_note=true, no gmail id)
 // ---------------------------------------------------------------------------
 function escapeHtml(s) {
@@ -588,6 +631,7 @@ module.exports = {
   safeFindById, safeFindFirstByFilter, inboxIdsForUser, canViewThreadForUser, requireThreadAccess,
   // dates
   nowDateTime, dateToPbString, isoToPbString, isSlaBreached,
+  readSlaConfig, saveSlaConfig, effectiveSlaHours,
   // notes / presence
   addInternalNote, heartbeatPresence, releasePresence, presenceSnapshot, composingLock,
   // google

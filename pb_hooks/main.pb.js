@@ -78,14 +78,25 @@ routerAdd("POST", "/api/mailbox/notifications/read-all", (e) => {
 // ($os, DateTime, $app) and were verified to run from request contexts.
 // ---------------------------------------------------------------------------
 
-// New threads start on the "new" column; SLA defaults to now + MAILBOX_SLA_HOURS
-// (24) unless the ingest engine already set sla_due_at.
+// New threads start on the "new" column; SLA defaults to now + sla_hours
+// from app_settings (Settings -> SLA), falling back to MAILBOX_SLA_HOURS env
+// and then 24 — unless the ingest engine already set sla_due_at.
 onRecordCreate((e) => {
   const rec = e.record;
   if (!rec.getString("status")) rec.set("status", "new");
   const sla = rec.getDateTime("sla_due_at");
   if (!sla || sla.isZero()) {
-    const hours = parseInt($os.getenv("MAILBOX_SLA_HOURS") || "24", 10);
+    let hours = 24;
+    try {
+      const env = parseInt($os.getenv("MAILBOX_SLA_HOURS") || "24", 10);
+      hours = !isNaN(env) && env > 0 ? env : 24;
+      const s = $app.findFirstRecordByFilter("app_settings", "key = 'instance'");
+      if (s) {
+        const v = s.get("sla_hours");
+        const n = (v === undefined || v === null || v === "") ? hours : Number(v);
+        if (!isNaN(n) && n > 0) hours = n;
+      }
+    } catch (_) { /* settings row may not exist yet */ }
     rec.set("sla_due_at", new DateTime().add(hours * 3600 * 1e9));
   }
   e.next();

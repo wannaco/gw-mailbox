@@ -82,6 +82,7 @@ export async function adminSession() {
   loadReadCounts();
   appState.me = meRes.me; // superuser: isSuperuser true
   appState.inboxes = meRes.inboxes || [];
+  if (meRes.sla) appState.slaConfig = { enabled: !!meRes.sla.sla_enabled, hours: Number(meRes.sla.sla_hours) || 24 };
   if (appState.inboxes.length) {
     appState.activeInboxId =
       appState.inboxes.find((i) => i.id === appState.activeInboxId)?.id || appState.inboxes[0].id;
@@ -98,6 +99,7 @@ export async function loadSession() {
   loadReadCounts();
   appState.me = meRes.me;
   appState.inboxes = meRes.inboxes || [];
+  if (meRes.sla) appState.slaConfig = { enabled: !!meRes.sla.sla_enabled, hours: Number(meRes.sla.sla_hours) || 24 };
   if (appState.inboxes.length) {
     appState.activeInboxId =
       appState.inboxes.find((i) => i.id === appState.activeInboxId)?.id || appState.inboxes[0].id;
@@ -211,6 +213,11 @@ export async function getAutomations() {
 }
 export function saveAutomations(cfg) {
   return pbRequest("POST", "/mailbox/settings/automations", { automation: cfg });
+}
+
+// ---- SLA config (admin settings; chips read it via /me) ---------------------
+export function saveSla(cfg) {
+  return pbRequest("POST", "/mailbox/settings/sla", cfg);
 }
 
 // ---- mailboxes (admin settings) --------------------------------------------

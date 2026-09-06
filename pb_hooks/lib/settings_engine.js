@@ -17,7 +17,7 @@ function ensureSettings() {
   } catch (_) { /* missing */ }
   if (!rec) {
     const coll = $app.findCollectionByNameOrId("app_settings");
-    rec = new Record(coll, { key: "instance", poll_sync: false, service_account_key: "", key_client_email: "" });
+    rec = new Record(coll, { key: "instance", poll_sync: false, service_account_key: "", key_client_email: "", sla_enabled: true, sla_hours: 24 });
     $app.save(rec);
   }
   return rec;
@@ -145,6 +145,7 @@ function handleGetSettings(e) {
   if (!admin) return;
   const rec = ensureSettings();
   const saEmail = rec.getString("key_client_email");
+  const sla = h.readSlaConfig();
   e.json(200, {
     ok: true,
     serviceAccountConfigured: !!saEmail,
@@ -152,6 +153,8 @@ function handleGetSettings(e) {
     pollSync: rec.getBool("poll_sync") || $os.getenv("MAILBOX_POLL_SYNC") === "1",
     mentionAdminIds: getMentionAdminIds().map((a) => a.id),
     admins: listSuperusers(),
+    slaEnabled: sla.sla_enabled,
+    slaHours: sla.sla_hours,
     envOverrides: {
       pollSyncEnv: $os.getenv("MAILBOX_POLL_SYNC") === "1"
     }
@@ -380,6 +383,18 @@ function handleDeleteCanned(e) {
   e.json(200, { ok: true });
 }
 
+// SLA config (admin) — hours + master switch; also surfaces to every /me for
+// the board/list chips (agents read it there).
+function handleSaveSla(e) {
+  if (h.addCorsHeaders(e, "POST, OPTIONS")) return;
+  const admin = requireAdmin(e);
+  if (!admin) return;
+  let body = {};
+  try { body = JSON.parse(toString(e.request.body) || "{}"); } catch (_) { body = {}; }
+  const saved = h.saveSlaConfig(body);
+  e.json(200, { ok: true, slaEnabled: saved.sla_enabled, slaHours: saved.sla_hours });
+}
+
 module.exports = {
   getSettings,
   getStoredServiceAccount,
@@ -388,6 +403,7 @@ module.exports = {
   effectivePollSync,
   testConnection,
   handleGetSettings,
+  handleSaveSla,
   handleSaveServiceAccount,
   handleRemoveServiceAccount,
   handleTestConnection,

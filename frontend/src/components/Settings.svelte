@@ -45,6 +45,11 @@
   });
   let busyAuto = $state(false);
 
+  // SLA config
+  let slaEnabled = $state(true);
+  let slaHours = $state(24);
+  let busySla = $state(false);
+
   // admin mention visibility
   let admins = $state([]);          // [{id,name,email}] all superusers
   let mentionAdminIds = $state([]); // ids opted in to @mentions
@@ -59,6 +64,8 @@
       pollSync = !!s.pollSync;
       admins = s.admins || [];
       mentionAdminIds = s.mentionAdminIds || [];
+      if (typeof s.slaEnabled === "boolean") slaEnabled = s.slaEnabled;
+      if (typeof s.slaHours === "number") slaHours = s.slaHours;
     } catch (e) {
       isAdmin = false;
       if (e?.status !== 401 && e?.status !== 403) toast("error", e?.message || "Failed to load settings");
@@ -306,6 +313,21 @@
     }
   }
 
+  async function saveSla() {
+    busySla = true;
+    try {
+      const r = await api.saveSla({ sla_enabled: slaEnabled, sla_hours: parseInt(slaHours, 10) || 24 });
+      slaEnabled = !!r.slaEnabled;
+      slaHours = Number(r.slaHours) || 24;
+      appState.slaConfig = { enabled: slaEnabled, hours: slaHours };
+      toast("success", "SLA settings saved");
+    } catch (e) {
+      toast("error", e?.message || "Save failed");
+    } finally {
+      busySla = false;
+    }
+  }
+
   async function startWatch(inboxId) {
     busyWatch = inboxId;
     try {
@@ -544,6 +566,30 @@
       </div>
     </section>
 
+    <!-- SLA & escalation -->
+    <section class="card">
+      <h3>SLA &amp; escalation</h3>
+      <p class="muted">Every <b>new</b> ticket gets a first-response deadline (<span class="sla-now">now + {slaHours}h</span>). Tickets still <b>new</b> past their deadline surface <b class="sla-red">SLA overdue</b> in red on the list and board — and the hourly monitor escalates them (status → <i>Escalated</i>, internal note + webhook).</p>
+
+      <label class="switch-row" style="margin:10px 0">
+        <span><strong>Enable SLA tracking</strong>
+          <span class="muted">When off: no SLA chips, and breaches are never auto-escalated.</span></span>
+        <input type="checkbox" bind:checked={slaEnabled} />
+      </label>
+
+      <div class="auto-grid">
+        <label class="field-row">
+          <span>First-response SLA (hours)</span>
+          <input type="number" min="1" max="8760" bind:value={slaHours} />
+        </label>
+      </div>
+      <p class="muted" style="margin:8px 0 0">Applies to new tickets from the moment they arrive. Existing tickets keep their original deadline.</p>
+
+      <div class="row-btns" style="margin-top:12px">
+        <button class="md3-btn primary" onclick={saveSla} disabled={busySla}>{busySla ? "Saving…" : "Save SLA settings"}</button>
+      </div>
+    </section>
+
     <!-- Mentions & notifications -->
     <section class="card">
       <h3>Mentions &amp; notifications</h3>
@@ -659,6 +705,8 @@
     justify-content: space-between;
     gap: 12px;
   }
+  .sla-now { color: var(--m3-primary); font-weight: 600; }
+  .sla-red { color: #ba1a1a; font-weight: 700; }
 
   .switch-row > span {
     display: flex;

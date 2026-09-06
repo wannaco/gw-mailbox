@@ -190,7 +190,7 @@ function handleMe(e) {
 
   if (actor.isSuperuser) {
     const all = $app.findRecordsByFilter("inboxes", "is_active = true", "name", 0, 0);
-    e.json(200, { ok: true, me: actor, inboxes: (all || []).map(inboxSummary) });
+    e.json(200, { ok: true, me: actor, inboxes: (all || []).map(inboxSummary), sla: h.readSlaConfig() });
     return;
   }
 
@@ -204,7 +204,8 @@ function handleMe(e) {
       email: actor.email,
       googleEmail: actor.googleEmail || ""
     },
-    inboxes: (inboxes || []).filter((r) => r && r.getBool("is_active")).map(inboxSummary)
+    inboxes: (inboxes || []).filter((r) => r && r.getBool("is_active")).map(inboxSummary),
+    sla: h.readSlaConfig()
   });
 }
 
