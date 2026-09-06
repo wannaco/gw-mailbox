@@ -26,15 +26,21 @@ function ensureSettings() {
 
 function getMentionAdminIds() {
   const rec = ensureSettings();
-  try { const v = rec.get("mention_admin_ids"); return Array.isArray(v) ? v : []; }
-  catch (_) { return []; }
+  try {
+    const v = rec.get("mention_admin_ids");
+    return Array.isArray(v) ? v.filter((x) => x && typeof x === "object" && x.id) : [];
+  } catch (_) { return []; }
 }
 
+// Store the opted-in admins as full {id,name,email} objects so consumers never
+// need to query _superusers (which returns nothing in agent request contexts).
 function setMentionAdminIds(ids) {
+  const suList = listSuperusers();
+  const objs = suList.filter((s) => (ids || []).indexOf(s.id) !== -1);
   const rec = ensureSettings();
-  rec.set("mention_admin_ids", Array.isArray(ids) ? ids : []);
+  rec.set("mention_admin_ids", objs);
   $app.save(rec);
-  return getMentionAdminIds();
+  return objs;
 }
 
 function listSuperusers() {

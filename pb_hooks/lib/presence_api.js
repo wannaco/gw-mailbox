@@ -212,13 +212,12 @@ function handleMe(e) {
 // GET /api/mailbox/users — team directory for @mentions / assignee names
 // ---------------------------------------------------------------------------
 
-// Superuser record ids that opted in to being @mentionable (read direct from
-// app_settings to avoid cross-module require in router contexts).
-function mentionableAdminIds() {
+// Opted-in admins (stored as {id,name,email} objects in app_settings).
+function mentionableAdmins() {
   try {
     const rec = $app.findFirstRecordByFilter("app_settings", "key = 'instance'");
     const v = rec.get("mention_admin_ids");
-    return Array.isArray(v) ? v : [];
+    return Array.isArray(v) ? v.filter((x) => x && typeof x === "object" && x.id) : [];
   } catch (_) { return []; }
 }
 function handleDirectory(e) {
@@ -236,17 +235,13 @@ function handleDirectory(e) {
     kind: "agent"
   }));
   // Opted-in admins (superusers) are included so agents can @mention them.
+  // Entries come pre-stored (id/name/email) — no _superusers query needed here.
   try {
-    const enabledIds = mentionableAdminIds();
-    if (enabledIds.length) {
-      const su = $app.findRecordsByFilter("_superusers", "", "", 0, 0) || [];
-      for (const r of su || []) {
-        if (enabledIds.indexOf(r.id) === -1) continue;
-        const email = r.getString("email") || "";
-        const nm = r.getString("name") || email;
-        if (!users.find((u) => u.email === email)) {
-          users.push({ id: r.id, name: nm, email: email, kind: "admin" });
-        }
+    const admins = mentionableAdmins();
+    for (const a of admins) {
+      const email = a.email || "";
+      if (!users.find((u) => u.email === email)) {
+        users.push({ id: a.id, name: a.name || email, email: email, kind: "admin" });
       }
     }
   } catch (_) { /* settings row may not exist yet */ }

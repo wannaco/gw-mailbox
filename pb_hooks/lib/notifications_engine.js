@@ -36,13 +36,12 @@ function notify(recipientId, kind, threadId, subject, messageId, actorName, body
 }
 
 
-// Superuser record ids that opted in to being @mentionable (read app_settings
-// directly — avoids cross-module require in hook/runtime contexts).
-function mentionableAdminIds() {
+// Opted-in admins, stored as {id,name,email} objects in app_settings.
+function mentionableAdmins() {
   try {
     const rec = $app.findFirstRecordByFilter("app_settings", "key = 'instance'");
     const v = rec.get("mention_admin_ids");
-    return Array.isArray(v) ? v : [];
+    return Array.isArray(v) ? v.filter((x) => x && typeof x === "object" && x.id) : [];
   } catch (_) { return []; }
 }
 // Scan an internal-note body for @mentions of teammates (by name or email)
@@ -62,15 +61,12 @@ function notifyNoteMentions(threadRec, noteRec, actor, bodyText) {
     for (const u of users || []) {
       targets.push({ id: u.id, name: String(u.getString("name") || ""), email: String(u.getString("email") || "") });
     }
-    // opted-in admins (superusers) — they are not in `users`
+    // opted-in admins (superusers) — they are not in `users`, but their
+    // {id,name,email} is stored in app_settings when they opt in.
     try {
-      const enabled = mentionableAdminIds();
-      if (enabled.length) {
-        const su = $app.findRecordsByFilter("_superusers", "", "", 0, 0) || [];
-        for (const r of su || []) {
-          if (enabled.indexOf(r.id) === -1) continue;
-          targets.push({ id: r.id, name: r.getString("name") || "", email: String(r.getString("email") || "") });
-        }
+      const admins = mentionableAdmins();
+      for (const a of admins) {
+        targets.push({ id: a.id, name: a.name || "", email: String(a.email || "") });
       }
     } catch (_) { /* non-fatal */ }
 
