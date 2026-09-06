@@ -82,6 +82,11 @@ export async function adminSession() {
   loadReadCounts();
   appState.me = meRes.me; // superuser: isSuperuser true
   appState.inboxes = meRes.inboxes || [];
+  if (appState.inboxes.length) {
+    appState.activeInboxId =
+      appState.inboxes.find((i) => i.id === appState.activeInboxId)?.id || appState.inboxes[0].id;
+  }
+  await refreshThreads();
   loadDirectory();
   loadNotifications();
 }
