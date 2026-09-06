@@ -8,6 +8,7 @@
   const thread = $derived(appState.threads[threadId]);
 
   let tab = $state("conversation"); // conversation | notes
+  let detailsOpen = $state(false); // collapse prev tickets + labels by default
   let replyText = $state(""); // kept in sync from the rich editor (innerText)
   let noteText = $state("");
   let editorEl; // contenteditable ref (plain let, not rune)
@@ -849,23 +850,43 @@
       </select>
     </div>
 
-    {#if prevTickets.length}
-      <div class="prev-tickets">
-        <span class="pt-label">Previous tickets ({prevTickets.length})</span>
-        {#each prevTickets as pt (pt.id)}
-          <button type="button" class="pt-chip" onclick={() => (appState.openThreadId = pt.id)} title={pt.subject || "(no subject)"}>
-            {pt.subject || "(no subject)"}
-            <span class="pt-status" style="color:{statusMeta(pt.status).dot}">{statusMeta(pt.status).label}</span>
-          </button>
-        {/each}
-      </div>
-    {/if}
-
-    {#if threadTags.length}
-      <div class="tv-tags">
-        {#each threadTags as tg (tg)}
-          <span class="tgtag" style="background:{tagColor(tg)}22;color:{tagColor(tg)}">{tg}</span>
-        {/each}
+    {#if prevTickets.length || threadTags.length}
+      <div class="detail-row">
+        <button type="button" class="detail-toggle" onclick={() => (detailsOpen = !detailsOpen)} aria-expanded={detailsOpen}>
+          <svg class="chev" class:open={detailsOpen} width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
+          <span class="detail-summary">
+            {#if prevTickets.length}Previous tickets ({prevTickets.length}){/if}
+            {#if prevTickets.length && threadTags.length} · {/if}
+            {#if threadTags.length}Labels ({threadTags.length}){/if}
+          </span>
+        </button>
+        {#if detailsOpen}
+          <div class="detail-body">
+            {#if prevTickets.length}
+              <div class="dt-group">
+                <span class="dt-label">Previous tickets</span>
+                <div class="dt-chips">
+                  {#each prevTickets as pt (pt.id)}
+                    <button type="button" class="dt-chip" onclick={() => (appState.openThreadId = pt.id)} title={pt.subject || "(no subject)"}>
+                      {pt.subject || "(no subject)"}
+                      <span class="dt-status" style="color:{statusMeta(pt.status).dot}">{statusMeta(pt.status).label}</span>
+                    </button>
+                  {/each}
+                </div>
+              </div>
+            {/if}
+            {#if threadTags.length}
+              <div class="dt-group">
+                <span class="dt-label">Labels</span>
+                <div class="dt-chips">
+                  {#each threadTags as tg (tg)}
+                    <span class="dt-chip plain" style="background:{tagColor(tg)}22;color:{tagColor(tg)}">{tg}</span>
+                  {/each}
+                </div>
+              </div>
+            {/if}
+          </div>
+        {/if}
       </div>
     {/if}
 
@@ -1288,6 +1309,80 @@
     flex-wrap: wrap;
     gap: 6px;
     padding: 8px 16px 0;
+  }
+
+  /* collapsible detail row (prev tickets + labels) */
+  .detail-row {
+    padding: 8px 16px 0;
+  }
+
+  .detail-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--m3-on-surface-variant);
+    font: var(--m3-type-label-md);
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .detail-toggle:hover {
+    color: var(--m3-on-surface);
+  }
+  .chev {
+    transition: transform 0.15s ease;
+    color: var(--m3-on-surface-variant);
+  }
+  .chev.open {
+    transform: rotate(180deg);
+  }
+
+  .detail-body {
+    margin-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .dt-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .dt-label {
+    font: var(--m3-type-label-sm);
+    font-weight: 600;
+    color: var(--m3-on-surface-variant-2);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .dt-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .dt-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 220px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: var(--m3-surface-container-high);
+    font: var(--m3-type-label-sm);
+    color: var(--m3-on-surface);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .dt-chip:hover {
+    background: var(--m3-row-hover);
+  }
+  .dt-chip.plain {
+    font-weight: 600;
+  }
+  .dt-status {
+    font-weight: 600;
+    flex: 0 0 auto;
   }
 
   .prev-tickets {
