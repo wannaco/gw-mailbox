@@ -187,16 +187,15 @@
     openRecips = { ...openRecips, [id]: !openRecips[id] };
   }
 
-  // Candidates for "Reply all": everyone on the last inbound message except
-  // our own inbox address and the primary customer we're replying to.
+  // Candidates for "Reply all": everyone on the LAST message in the thread
+  // (inbound or outbound, mirroring Gmail) except our own inbox address and
+  // the primary customer we're replying to.
   function replyAllCandidates() {
-    const lastIn = msgsVisible
-      .filter((m) => !m.is_internal_note && m.sender_email && m.sender_email !== inboxEmail)
-      .slice(-1)[0];
-    if (!lastIn) return [];
+    const last = msgsVisible.filter((m) => !m.is_internal_note).slice(-1)[0];
+    if (!last) return [];
     const uid = inboxEmail.toLowerCase();
     const cust = (thread?.customer_email || "").toLowerCase();
-    return (lastIn.recipient_emails || []).filter(
+    return (last.recipient_emails || []).filter(
       (r) => r.toLowerCase() !== uid && r.toLowerCase() !== cust
     );
   }
