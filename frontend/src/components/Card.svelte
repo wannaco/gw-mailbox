@@ -45,6 +45,9 @@
 >
   <div class="top">
     <h4 class="subject">{thread.subject || "(no subject)"}</h4>
+    {#if (thread.message_count || 0) > 0}
+      <span class="mcount" title={`${thread.message_count} message${thread.message_count === 1 ? "" : "s"}`}>{thread.message_count}</span>
+    {/if}
     <span class="when">{timeAgo(thread.last_message_at)}</span>
   </div>
   <p class="snippet">{thread.snippet || ""}</p>
@@ -116,6 +119,18 @@
     font: var(--m3-type-label-sm);
     color: var(--m3-on-surface-variant-2);
     white-space: nowrap;
+  }
+
+  .mcount {
+    font: var(--m3-type-label-sm);
+    font-weight: 600;
+    color: var(--m3-primary);
+    border: 1px solid var(--m3-primary);
+    border-radius: 10px;
+    padding: 0 6px;
+    line-height: 16px;
+    white-space: nowrap;
+    flex: 0 0 auto;
   }
 
   .snippet {

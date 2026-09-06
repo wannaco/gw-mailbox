@@ -21,6 +21,7 @@ export const appState = $state({
   onlyMine: false,
   threads: {}, // threadId -> thread record (all permitted inboxes)
   messages: {}, // threadId -> message records
+  readCounts: {}, // threadId -> conversation messages known-read (for unread/new dots)
   openThreadId: "",
   view: "list", // list (Gmail-style) | board (kanban)
   screen: "mail", // mail | settings
@@ -48,6 +49,24 @@ export function statusMeta(value) {
 export function threadsOfActiveInbox() {
   const tid = appState.activeInboxId;
   return Object.values(appState.threads).filter((t) => t.inbox === tid);
+}
+
+// Number of conversation messages in a thread the user has NOT read yet.
+// 0 = read or nothing new. Powers the blue dot + bold row (Gmail-style).
+export function threadUnread(threadId) {
+  const total = appState.threads[threadId]?.message_count || 0;
+  if (!total) return 0;
+  const read = appState.readCounts[threadId] || 0;
+  return Math.max(0, total - read);
+}
+
+// Marks a thread as read up to its current message count (called while open).
+export function markThreadRead(threadId) {
+  const msgs = appState.messages[threadId] || [];
+  const fromMsgs = msgs.filter((m) => !m.is_internal_note).length;
+  const fromThread = appState.threads[threadId]?.message_count || 0;
+  const n = Math.max(fromMsgs, fromThread);
+  if (n > 0) appState.readCounts[threadId] = n;
 }
 
 export function presenceFor(threadId) {
@@ -83,6 +102,7 @@ export function resetSession() {
   appState.inboxes = [];
   appState.threads = {};
   appState.messages = {};
+  appState.readCounts = {};
   appState.presence = {};
   appState.openThreadId = "";
   appState.activeInboxId = "";

@@ -164,6 +164,15 @@ function upsertThreadAndMessage(inboxRec, norm) {
 
   const existingMsg = h.safeFindFirstByFilter("messages", "gmail_message_id = {:g}", { g: norm.gmail_message_id });
   if (existingMsg) {
+    // Records created before msg_date existed may lack an accurate date —
+    // refresh it from Gmail whenever we have a better value (no count bump:
+    // the migration already counted existing rows).
+    if (dateStr && existingMsg.getString("msg_date") !== dateStr) {
+      try {
+        existingMsg.set("msg_date", dateStr);
+        $app.save(existingMsg);
+      } catch (err) { /* non-fatal */ }
+    }
     counters.skipped++;
     return counters;
   }
@@ -179,7 +188,21 @@ function upsertThreadAndMessage(inboxRec, norm) {
   });
   $app.save(msg);
   counters.messagesAdded++;
+  bumpThreadMessageCount(thread, 1);
   return counters;
+}
+
+// Increments/decrements the thread's message_count (int field, never negative)
+// so the UI can show per-thread counts + realtime unread state.
+function bumpThreadMessageCount(threadRec, delta) {
+  if (!threadRec) return;
+  try {
+    const cur = threadRec.getInt("message_count") || 0;
+    threadRec.set("message_count", Math.max(0, cur + delta));
+    $app.save(threadRec);
+  } catch (err) {
+    h.warn("message_count bump failed", threadRec.id, (err && err.message) || err);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -573,6 +596,7 @@ function handleReply(e) {
       msg.set("attachments_meta", meta);
     }
     $app.save(msg);
+    bumpThreadMessageCount(thread, 1);
 
     e.json(200, { ok: true, gmail_message_id: sent.id || "", threadId: thread.id, messageId: msg.id });
   } catch (err) {

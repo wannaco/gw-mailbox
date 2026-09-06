@@ -1,5 +1,5 @@
 <script>
-  import { appState, toast, statusMeta, composingLock, agentInitials, STATUSES } from "../lib/appState.svelte.js";
+  import { appState, toast, statusMeta, composingLock, agentInitials, STATUSES, markThreadRead } from "../lib/appState.svelte.js";
   import * as api from "../lib/api.js";
   import { timeAgo, fmtDateTime, sanitizeHtml, isoLocalInput, avatarColor } from "../lib/utils.js";
 
@@ -21,7 +21,11 @@
   let loadingSlots = $state(false);
   let slotMsg = $state("");
 
-  const messages = $derived(appState.messages[threadId] || []);
+  const messages = $derived(
+    (appState.messages[threadId] || [])
+      .slice()
+      .sort((a, b) => msgEpoch(a) - msgEpoch(b) || String(a.id).localeCompare(String(b.id)))
+  );
   const lock = $derived(composingLock(threadId));
   const isComposing = $derived(replyText.trim().length > 0 || attachments.length > 0 || focused);
 
@@ -30,6 +34,23 @@
       ? messages.filter((m) => !m.is_internal_note)
       : messages.filter((m) => m.is_internal_note)
   );
+
+  // ---- message ordering -------------------------------------------------------
+  function msgEpoch(m) {
+    const s = String(m.msg_date || "").trim();
+    if (!s) return 0;
+    const t = new Date(s.includes("T") ? s : s.replace(" ", "T")).getTime();
+    return Number.isFinite(t) ? t : 0;
+  }
+
+  // While this thread is open, keep it marked read (new messages arriving live
+  // stay "read" because the agent is looking at them).
+  $effect(() => {
+    const tid = threadId;
+    const list = appState.messages[tid];
+    if (!tid || !list || !list.length) return;
+    markThreadRead(tid);
+  });
 
   // ---- presence lifecycle: heartbeat while open, seed snapshot, release -----
   async function sendHeartbeat(status) {

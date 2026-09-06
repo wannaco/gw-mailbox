@@ -1,5 +1,5 @@
 <script>
-  import { appState, statusMeta } from "../lib/appState.svelte.js";
+  import { appState, statusMeta, threadUnread } from "../lib/appState.svelte.js";
   import { timeAgo, avatarColor } from "../lib/utils.js";
   import { agentInitials } from "../lib/appState.svelte.js";
 
@@ -33,6 +33,8 @@
 
   // Unread-ish: new + escalated threads render bold, like Gmail.
   const isHot = (t) => t.status === "new" || t.status === "escalated";
+  const msgCount = (t) => t.message_count || 0;
+  const isUnread = (t) => threadUnread(t.id) > 0;
 
   const composingOf = (threadId) =>
     Object.values(appState.presence).find(
@@ -67,6 +69,7 @@
       <button
         class="row"
         class:hot={isHot(t)}
+        class:unread={isUnread(t)}
         onclick={() => open(t.id)}
         aria-label={t.subject || "Thread"}
       >
@@ -76,7 +79,13 @@
 
         <span class="mid">
           <span class="top">
+            {#if isUnread(t)}
+              <span class="unread-dot" title="New messages"></span>
+            {/if}
             <span class="subject">{t.subject || "(no subject)"}</span>
+            {#if msgCount(t) > 0}
+              <span class="mcount" class:unread={isUnread(t)} title={`${msgCount(t)} message${msgCount(t) === 1 ? "" : "s"}`}>{msgCount(t)}</span>
+            {/if}
             {#each (Array.isArray(t.tags) ? t.tags : []).slice(0, 3) as tag (tag)}
               <span class="tag">{tag}</span>
             {/each}
@@ -209,9 +218,35 @@
     text-overflow: ellipsis;
   }
 
-  .row.hot .subject {
+  .row.hot .subject,
+  .row.unread .subject {
     font-weight: 600;
     color: var(--m3-on-surface);
+  }
+
+  .unread-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--m3-primary);
+    flex: 0 0 auto;
+  }
+
+  .mcount {
+    font: var(--m3-type-label-sm);
+    color: var(--m3-on-surface-variant-2);
+    border: 1px solid var(--m3-outline-variant);
+    border-radius: 10px;
+    padding: 0 6px;
+    line-height: 16px;
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .mcount.unread {
+    color: var(--m3-primary);
+    border-color: var(--m3-primary);
+    font-weight: 600;
   }
 
   .tag {
