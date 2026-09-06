@@ -312,8 +312,40 @@ function upsertRecord(collection, data) {
     scheduleRosterRefresh();
   } else if (collection === "notifications") {
     // A notification that concerns me was created/updated -> refresh list.
+    // If it's new + unread and the tab is hidden/backgrounded, fire an OS
+    // notification (requires permission, requested on first mention).
+    const rec = data.record || data;
+    if (rec && rec.read === false && !document.hasFocus()) {
+      const kind = rec.kind === "mention" ? "mentioned you" : rec.kind === "assigned" ? "assigned a ticket" : "added a note";
+      const who = rec.actor_name || "Someone";
+      const subj = rec.thread_subject || "a thread";
+      const body = rec.body_snippet || "";
+      notifyNative(`${who} ${kind}`, `${subj}${body ? " — " + body : ""}`);
+    }
     loadNotifications();
   }
+}
+
+// Native browser notification (graceful: request permission once, silently skip
+// if denied/unsupported). Clicking it focuses the app + opens the thread.
+let notifPermAsked = false;
+function notifyNative(title, body) {
+  try {
+    if (!("Notification" in window)) return;
+    if (Notification.permission === "default" && !notifPermAsked) {
+      notifPermAsked = true;
+      Notification.requestPermission().then((p) => {
+        if (p === "granted") notifyNative(title, body);
+      });
+      return;
+    }
+    if (Notification.permission !== "granted") return;
+    const n = new Notification(title, { body, tag: "gwmb-" + title, icon: "/favicon.ico" });
+    n.onclick = () => {
+      window.focus();
+      try { n.close(); } catch (_) {}
+    };
+  } catch (_) { /* ignore */ }
 }
 
 function parseSseFrame(raw) {
