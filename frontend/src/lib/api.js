@@ -241,6 +241,17 @@ export function deleteLabelRecord(id) {
   return pbRequest("DELETE", `/mailbox/settings/labels/${id}`);
 }
 
+// ---- contacts -----------------------------------------------------------------
+export async function getContact(email, related, inboxId) {
+  let p = `/mailbox/contacts?email=${encodeURIComponent(email || "")}`;
+  if (related) p += "&related=1";
+  if (inboxId) p += `&inbox=${encodeURIComponent(inboxId)}`;
+  return pbRequest("GET", p);
+}
+export function saveContact(payload) {
+  return pbRequest("POST", "/mailbox/contacts/save", payload);
+}
+
 // ---- canned responses (slash commands) --------------------------------------
 export function listCanned() {
   return pbRequest("GET", "/collections/canned_responses/records?perPage=200");

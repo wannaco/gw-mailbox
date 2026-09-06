@@ -1,6 +1,7 @@
 <script>
   import { appState, toast, statusMeta, composingLock, agentInitials, userName, STATUSES, markThreadRead } from "../lib/appState.svelte.js";
   import * as api from "../lib/api.js";
+  import ContactPanel from "./ContactPanel.svelte";
   import { timeAgo, fmtDateTime, sanitizeHtml, isoLocalInput, avatarColor } from "../lib/utils.js";
 
   let { threadId } = $props();
@@ -9,6 +10,7 @@
 
   let tab = $state("conversation"); // conversation | notes
   let detailsOpen = $state(false); // collapse prev tickets + labels by default
+  let contactOpen = $state(false);
   let replyText = $state(""); // kept in sync from the rich editor (innerText)
   let noteText = $state("");
   let editorEl; // contenteditable ref (plain let, not rune)
@@ -840,6 +842,12 @@
         <span class="cust">
           {thread.customer_name ? thread.customer_name + " · " : ""}{thread.customer_email || "no customer"}
           {#if thread.last_message_at} · {timeAgo(thread.last_message_at)}{/if}
+          {#if thread.customer_email}
+            <button type="button" class="contact-btn" onclick={() => (contactOpen = true)} title="View / edit contact">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+              Contact
+            </button>
+          {/if}
         </span>
       </div>
       <select class="status-select" value={thread.status} onchange={setStatus}
@@ -1266,6 +1274,10 @@
     {/if}
   </footer>
   </div>
+{/if}
+
+{#if contactOpen && thread?.customer_email}
+  <ContactPanel email={thread.customer_email} inboxId={thread.inbox} onClose={() => (contactOpen = false)} />
 {/if}
 
 <style>

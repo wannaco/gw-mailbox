@@ -56,6 +56,15 @@ routerAdd("GET", "/api/mailbox/notifications", (e) => {
   require(__hooks + "/lib/notifications_engine.js").handleListNotifications(e);
 }, $apis.requireAuth());
 
+// --- Contacts ----------------------------------------------------------------
+routerAdd("GET", "/api/mailbox/contacts", (e) => {
+  require(__hooks + "/lib/contacts_engine.js").handleGetContacts(e);
+}, $apis.requireAuth());
+
+routerAdd("POST", "/api/mailbox/contacts/save", (e) => {
+  require(__hooks + "/lib/contacts_engine.js").handleSaveContact(e);
+}, $apis.requireAuth());
+
 routerAdd("POST", "/api/mailbox/notifications/{id}/read", (e) => {
   require(__hooks + "/lib/notifications_engine.js").handleMarkRead(e);
 }, $apis.requireAuth());

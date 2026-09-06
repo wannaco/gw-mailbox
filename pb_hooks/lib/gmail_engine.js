@@ -214,6 +214,12 @@ function upsertThreadAndMessage(inboxRec, norm) {
   $app.save(msg);
   counters.messagesAdded++;
   bumpThreadMessageCount(thread, 1);
+  // Auto-create/refresh contact from an inbound customer message.
+  try {
+    if (norm.customer && norm.customer.email && norm.from.email && String(norm.from.email).toLowerCase() !== uid.toLowerCase()) {
+      require(__hooks + "/lib/contacts_engine.js").upsertFromSender(norm.customer.email, norm.customer.name, norm.received_iso);
+    }
+  } catch (_) { /* non-fatal */ }
   return counters;
 }
 
