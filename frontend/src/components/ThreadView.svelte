@@ -32,6 +32,20 @@
       : messages.filter((m) => m.is_internal_note)
   );
 
+  // Other tickets from the same customer (in any inbox) — "previous tickets".
+  const prevTickets = $derived(
+    Object.values(appState.threads)
+      .filter((t) => {
+        if (t.id === threadId) return false;
+        if (!thread?.customer_email) return false;
+        return (
+          (t.customer_email || "").toLowerCase() === String(thread.customer_email).toLowerCase()
+        );
+      })
+      .sort((a, b) => String(b.last_message_at).localeCompare(String(a.last_message_at)))
+      .slice(0, 3)
+  );
+
   // ---- message ordering -------------------------------------------------------
   function msgEpoch(m) {
     const s = String(m.msg_date || "").trim();
@@ -830,6 +844,18 @@
       </select>
     </div>
 
+    {#if prevTickets.length}
+      <div class="prev-tickets">
+        <span class="pt-label">Previous tickets ({prevTickets.length})</span>
+        {#each prevTickets as pt (pt.id)}
+          <button type="button" class="pt-chip" onclick={() => (appState.openThreadId = pt.id)} title={pt.subject || "(no subject)"}>
+            {pt.subject || "(no subject)"}
+            <span class="pt-status" style="color:{statusMeta(pt.status).dot}">{statusMeta(pt.status).label}</span>
+          </button>
+        {/each}
+      </div>
+    {/if}
+
     {#if threadTags.length}
       <div class="tv-tags">
         {#each threadTags as tg (tg)}
@@ -1257,6 +1283,44 @@
     flex-wrap: wrap;
     gap: 6px;
     padding: 8px 16px 0;
+  }
+
+  .prev-tickets {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    padding: 8px 16px 0;
+  }
+
+  .pt-label {
+    font: var(--m3-type-label-sm);
+    font-weight: 600;
+    color: var(--m3-on-surface-variant);
+  }
+
+  .pt-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 200px;
+    padding: 2px 10px;
+    border-radius: 999px;
+    background: var(--m3-surface-container-high);
+    font: var(--m3-type-label-sm);
+    color: var(--m3-on-surface);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .pt-chip:hover {
+    background: var(--m3-row-hover);
+  }
+
+  .pt-status {
+    font-weight: 600;
+    flex: 0 0 auto;
   }
 
   .tgtag {
