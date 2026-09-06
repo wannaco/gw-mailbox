@@ -8,8 +8,11 @@
   const thread = $derived(appState.threads[threadId]);
 
   let tab = $state("conversation"); // conversation | notes
-  let replyText = $state("");
+  let replyText = $state(""); // kept in sync from the rich editor (innerText)
   let noteText = $state("");
+  let editorEl; // contenteditable ref (plain let, not rune)
+  let attachInput; // hidden file input ref
+  let attachments = $state([]); // {name,size,mime,dataUrl}
   let busySend = $state(false);
   let busyNote = $state(false);
   let focused = $state(false);
@@ -20,7 +23,7 @@
 
   const messages = $derived(appState.messages[threadId] || []);
   const lock = $derived(composingLock(threadId));
-  const isComposing = $derived(replyText.length > 0 || focused);
+  const isComposing = $derived(replyText.trim().length > 0 || attachments.length > 0 || focused);
 
   const msgsVisible = $derived(
     tab === "conversation"
@@ -69,15 +72,78 @@
     };
   });
 
+  // ---- rich editor helpers ----------------------------------------------------
+  function fmtBytes(n) {
+    if (n < 1024) return n + " B";
+    if (n < 1048576) return (n / 1024).toFixed(1) + " KB";
+    return (n / 1048576).toFixed(1) + " MB";
+  }
+
+  function editorHtml() {
+    return editorEl ? editorEl.innerHTML : "";
+  }
+  function editorText() {
+    return editorEl ? (editorEl.innerText || "") : "";
+  }
+  function onEditorInput() {
+    replyText = editorText();
+  }
+
+  function exec(cmd, val) {
+    if (!editorEl) return;
+    editorEl.focus();
+    try {
+      document.execCommand(cmd, false, val || null);
+    } catch (_) { /* ignored */ }
+    onEditorInput();
+  }
+  function addLink() {
+    const url = window.prompt("Link URL (https://...)");
+    if (url) exec("createLink", url);
+  }
+
+  // ---- attachment handling ----------------------------------------------------
+  function onFilesPicked(ev) {
+    const files = Array.from(ev.target.files || []);
+    attachInput && (attachInput.value = "");
+    for (const f of files) {
+      if (f.size > 25 * 1024 * 1024) {
+        toast("error", f.name + " is over 25MB");
+        continue;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        attachments = [...attachments, { name: f.name, size: f.size, mime: f.type || "application/octet-stream", dataUrl: String(reader.result || "") }];
+      };
+      reader.readAsDataURL(f);
+    }
+  }
+  function removeAttachment(i) {
+    attachments = attachments.filter((_, idx) => idx !== i);
+  }
+
   // ---- actions --------------------------------------------------------------
   async function sendReply() {
-    const text = replyText.trim();
-    if (!text || busySend || lock) return;
+    const text = editorText().trim();
+    const html = editorHtml();
+    const hasAtt = attachments.length > 0;
+    if ((!text && !html.replace(/<[^>]*>/g, "").trim() && !hasAtt) || busySend || lock) return;
     busySend = true;
     try {
-      await api.sendReply(threadId, text);
-      toast("success", "Reply sent");
+      await api.sendReply(threadId, {
+        body: text,
+        html: html,
+        attachments: attachments.map((a) => ({
+          name: a.name,
+          mime: a.mime,
+          data: a.dataUrl // server strips the data: prefix
+        }))
+      });
+      toast("success", hasAtt ? "Reply sent with " + attachments.length + " attachment" + (attachments.length > 1 ? "s" : "") : "Reply sent");
+      if (editorEl) editorEl.innerHTML = "";
+      attachments = [];
       replyText = "";
+      await api.fetchMessages(threadId); // show the sent message immediately
     } catch (e) {
       toast("error", "Send failed: " + (e?.message || ""));
     } finally {
@@ -228,8 +294,24 @@
         {#if m.body_html && !m.is_internal_note}
           <!-- svelte-ignore a11y_no_raw_html -->
           <div class="html-body">{@html sanitizeHtml(m.body_html)}</div>
+        {:else if !m.is_internal_note}
+          <div class="text-body">{m.body_plain}</div>
         {:else}
           <div class="text-body">{m.body_plain}</div>
+        {/if}
+        {#if !m.is_internal_note && m.attachments && m.attachments.length}
+          <div class="msg-attach">
+            {#each m.attachments as fname, fi (fname)}
+              {@const meta = (Array.isArray(m.attachments_meta) && m.attachments_meta[fi]) || {}}
+              <a
+                class="attach-chip"
+                href={`${api.PB_URL}/api/files/${m.collectionId}/${m.id}/${encodeURIComponent(fname)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={meta.name || fname}
+              >📎 {meta.name || fname}{meta.size ? ` (${fmtBytes(meta.size)})` : ""}</a>
+            {/each}
+          </div>
         {/if}
       </article>
     {/each}
@@ -237,15 +319,46 @@
 
   <footer class="tv-composer">
     {#if tab === "conversation"}
-      <textarea
-        bind:value={replyText}
-        rows="2"
-        placeholder={lock ? `Reply locked — ${lock.agentName} is composing…` : "Reply to " + (thread.customer_email || "customer")}
-        disabled={!!lock}
-        onfocus={() => (focused = true)}
-        onblur={() => (focused = false)}
-      ></textarea>
-      <button class="md3-btn primary" onclick={sendReply} disabled={busySend || !replyText.trim() || !!lock}>
+      <div class="rich-wrap" class:disabled={!!lock}>
+        <div class="rich-toolbar" contenteditable="false">
+          <button type="button" title="Bold" disabled={!!lock} onclick={() => exec("bold")}><b>B</b></button>
+          <button type="button" title="Italic" disabled={!!lock} onclick={() => exec("italic")}><i>I</i></button>
+          <button type="button" title="Underline" disabled={!!lock} onclick={() => exec("underline")}><u>U</u></button>
+          <button type="button" title="Strikethrough" disabled={!!lock} onclick={() => exec("strikeThrough")}><s>S</s></button>
+          <span class="sep"></span>
+          <button type="button" title="Bulleted list" disabled={!!lock} onclick={() => exec("insertUnorderedList")}>•≡</button>
+          <button type="button" title="Numbered list" disabled={!!lock} onclick={() => exec("insertOrderedList")}>1≡</button>
+          <button type="button" title="Quote" disabled={!!lock} onclick={() => exec("formatBlock", "blockquote")}>❝</button>
+          <span class="sep"></span>
+          <button type="button" title="Insert link" disabled={!!lock} onclick={addLink}>🔗</button>
+          <button type="button" title="Clear formatting" disabled={!!lock} onclick={() => exec("removeFormat")}>✕</button>
+          <button type="button" class="attach-btn" title="Attach files" disabled={!!lock} onclick={() => attachInput && attachInput.click()}>📎</button>
+          <input type="file" multiple hidden bind:this={attachInput} onchange={onFilesPicked} />
+          <span class="spacer"></span>
+          <span class="hint">{lock ? `Locked — ${lock.agentName} is composing` : "Reply to " + (thread.customer_email || "customer")}</span>
+        </div>
+        <div
+          class="rich-body"
+          contenteditable={!lock}
+          role="textbox"
+          aria-multiline="true"
+          bind:this={editorEl}
+          oninput={onEditorInput}
+          onfocus={() => (focused = true)}
+          onblur={() => (focused = false)}
+        ></div>
+        {#if attachments.length}
+          <div class="attach-list">
+            {#each attachments as a, i (a.name + a.size)}
+              <span class="attach-chip">
+                📎 {a.name} <small>({fmtBytes(a.size)})</small>
+                <button type="button" title="Remove" onclick={() => removeAttachment(i)}>✕</button>
+              </span>
+            {/each}
+          </div>
+        {/if}
+      </div>
+      <button class="md3-btn primary" onclick={sendReply} disabled={busySend || lock || (attachments.length === 0 && !replyText.trim())}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z"/></svg>
         Send
       </button>
@@ -436,24 +549,139 @@
     border-top: 1px solid var(--m3-outline-variant);
   }
 
-  .tv-composer textarea {
+  .rich-wrap {
     flex: 1;
-    resize: vertical;
-    min-height: 44px;
-    max-height: 160px;
-    border-radius: var(--m3-shape-sm);
+    min-width: 0;
     border: 1px solid var(--m3-outline-variant);
-    background: var(--m3-surface-container);
-    padding: 10px 12px;
-    outline: none;
+    border-radius: var(--m3-shape-sm);
+    background: var(--m3-surface-container-lowest);
+    overflow: hidden;
   }
 
-  .tv-composer textarea:focus {
+  .rich-wrap:focus-within {
     border: 2px solid var(--m3-primary);
   }
 
-  .tv-composer textarea:disabled {
-    opacity: 0.55;
+  .rich-wrap.disabled {
+    opacity: 0.6;
+  }
+
+  .rich-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex-wrap: wrap;
+    padding: 4px 6px;
+    border-bottom: 1px solid var(--m3-outline-variant);
+    background: var(--m3-surface-container);
+    user-select: none;
+  }
+
+  .rich-toolbar button {
+    min-width: 28px;
+    height: 28px;
+    padding: 0 6px;
+    border-radius: 6px;
+    color: var(--m3-on-surface-variant);
+    font-size: 0.85rem;
+    line-height: 1;
+  }
+
+  .rich-toolbar button:hover {
+    background: var(--m3-row-hover);
+  }
+
+  .rich-toolbar button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .rich-toolbar .sep {
+    width: 1px;
+    height: 18px;
+    margin: 0 4px;
+    background: var(--m3-outline-variant);
+  }
+
+  .rich-toolbar .spacer {
+    flex: 1;
+  }
+
+  .rich-toolbar .hint {
+    font: var(--m3-type-label-sm);
+    color: var(--m3-on-surface-variant-2);
+    padding-right: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 45%;
+  }
+
+  .rich-body {
+    min-height: 64px;
+    max-height: 240px;
+    overflow-y: auto;
+    padding: 8px 10px;
+    outline: none;
+    font: var(--m3-type-body-md);
+    line-height: 1.5;
+  }
+
+  .rich-body:empty::before {
+    content: attr(data-placeholder);
+    color: var(--m3-on-surface-variant-2);
+    pointer-events: none;
+  }
+
+  .attach-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 4px 8px 8px;
+    border-top: 1px solid var(--m3-outline-variant);
+  }
+
+  .attach-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 220px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: var(--m3-surface-container-high);
+    font: var(--m3-type-label-sm);
+    color: var(--m3-on-surface);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .attach-chip small {
+    color: var(--m3-on-surface-variant-2);
+  }
+
+  .attach-chip button {
+    color: var(--m3-on-surface-variant);
+    font-size: 0.8rem;
+    padding: 0 2px;
+    border-radius: 50%;
+  }
+
+  .attach-chip button:hover {
+    background: var(--m3-row-hover);
+  }
+
+  .msg-attach {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+  }
+
+  .msg-attach .attach-chip {
+    background: var(--m3-primary-container);
+    color: var(--m3-on-primary-container);
+    text-decoration: none;
   }
 
   .close {

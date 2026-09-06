@@ -434,7 +434,18 @@ function utf8Bytes(str) {
   return out;
 }
 
-function buildReplyRaw(uid, thread, text, includeCc) {
+function escHtml(s) {
+  return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function chunkB64(b64) {
+  const out = [];
+  for (let i = 0; i < b64.length; i += 76) out.push(b64.slice(i, i + 76));
+  return out.join("\r\n");
+}
+
+function buildReplyRaw(uid, thread, text, htmlBody, attachments) {
+  attachments = attachments || [];
   const to = thread.getString("customer_email");
   const name = thread.getString("customer_name");
   let subject = thread.getString("subject") || "(no subject)";
@@ -442,19 +453,43 @@ function buildReplyRaw(uid, thread, text, includeCc) {
   subject = sanitizeHeaderValue(subject);
 
   const plain = String(text || "").trim();
-  const html = plain.split(/\n+/).map((p) => "<p>" + p.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") + "</p>").join("");
+  const hasHtml = !!(htmlBody && String(htmlBody).trim());
+  const html = hasHtml
+    ? String(htmlBody).trim()
+    : "<html><body>" + plain.split(/\n+/).map((p) => "<p>" + escHtml(p) + "</p>").join("") + "</body></html>";
 
-  const boundary = "gwmb_" + $security.randomString(12);
-  let raw = "To: " + (name ? sanitizeHeaderValue(name) + " <" + to + ">" : to) + "\r\n" +
+  const bMixed = "gwmb_m_" + $security.randomString(12);
+  const bAlt = "gwmb_a_" + $security.randomString(12);
+  let raw =
+    "To: " + (name ? sanitizeHeaderValue(name) + " <" + to + ">" : to) + "\r\n" +
     "From: " + sanitizeHeaderValue(uid) + "\r\n" +
     "Subject: " + subject + "\r\n" +
-    "MIME-Version: 1.0\r\n" +
-    "Content-Type: multipart/alternative; boundary=\"" + boundary + "\"\r\n\r\n" +
-    "--" + boundary + "\r\n" +
-    "Content-Type: text/plain; charset=UTF-8\r\n\r\n" + plain + "\r\n" +
-    "--" + boundary + "\r\n" +
-    "Content-Type: text/html; charset=UTF-8\r\n\r\n" + html + "\r\n" +
-    "--" + boundary + "--\r\n";
+    "MIME-Version: 1.0\r\n";
+
+  const altPart =
+    "Content-Type: multipart/alternative; boundary=\"" + bAlt + "\"\r\n\r\n" +
+    "--" + bAlt + "\r\n" +
+    "Content-Type: text/plain; charset=UTF-8\r\n\r\n" + plain + "\r\n\r\n" +
+    "--" + bAlt + "\r\n" +
+    "Content-Type: text/html; charset=UTF-8\r\n\r\n" + html + "\r\n\r\n" +
+    "--" + bAlt + "--\r\n";
+
+  if (attachments.length) {
+    raw += "Content-Type: multipart/mixed; boundary=\"" + bMixed + "\"\r\n\r\n" +
+      "--" + bMixed + "\r\n" + altPart;
+    for (const att of attachments) {
+      const attName = h.mimeHeaderValue(att.name);
+      const mime = h.mimeHeaderValue(att.mime) || "application/octet-stream";
+      raw += "--" + bMixed + "\r\n" +
+        "Content-Type: " + mime + "; name=\"" + attName + "\"\r\n" +
+        "Content-Transfer-Encoding: base64\r\n" +
+        "Content-Disposition: attachment; filename=\"" + attName + "\"\r\n\r\n" +
+        chunkB64(att.b64) + "\r\n";
+    }
+    raw += "--" + bMixed + "--\r\n";
+  } else {
+    raw += "Content-Type: " + altPart;
+  }
   return h.b64urlEncodeBinary(utf8Bytes(raw));
 }
 
@@ -470,8 +505,13 @@ function handleReply(e) {
 
   let body = {};
   try { body = JSON.parse(toString(e.request.body) || "{}"); } catch (_) {}
-  const text = (body.body || body.text || "").toString().trim();
-  if (!text) return h.fail(e, 400, "empty_reply", "Reply body is required");
+
+  const htmlBody = (body.html || "").toString();
+  const text = (body.body || body.text || h.htmlToPlain(htmlBody) || "").toString().trim();
+  const hasAttachments = Array.isArray(body.attachments) && body.attachments.length > 0;
+  if (!text && !hasAttachments && !htmlBody.trim()) {
+    return h.fail(e, 400, "empty_reply", "Reply body is required");
+  }
 
   const inbox = h.safeFindById("inboxes", thread.getString("inbox"));
   const uid = inbox ? inbox.getString("email_address") : "";
@@ -480,8 +520,26 @@ function handleReply(e) {
     return h.fail(e, 400, "no_customer", "Thread has no customer_email to reply to");
   }
 
+  // Sanitize rich HTML server-side; decode attachments to base64 payloads.
+  const safeHtml = htmlBody.trim() ? h.sanitizeHtmlBasic(htmlBody) : "";
+  const atts = [];
+  if (hasAttachments) {
+    let total = 0;
+    for (const att of body.attachments) {
+      const nm = String(att.name || "attachment").replace(/[^\w.\- ]+/g, "_");
+      const dataStr = String(att.data || "");
+      const comma = dataStr.indexOf(",");
+      const b64 = comma >= 0 ? dataStr.slice(comma + 1) : dataStr;
+      total += Math.ceil((b64.length * 3) / 4);
+      if (total > 25 * 1024 * 1024) {
+        return h.fail(e, 400, "attachments_too_large", "Total attachment size exceeds 25MB");
+      }
+      atts.push({ name: nm, mime: String(att.mime || "application/octet-stream"), b64: b64, bytes: h.b64ToBytes(b64) });
+    }
+  }
+
   try {
-    const raw = buildReplyRaw(uid, thread, text);
+    const raw = buildReplyRaw(uid, thread, text || h.htmlToPlain(safeHtml), safeHtml, atts);
     const sent = h.googleRequest({
       url: h.GMAIL_BASE + "/users/" + encodeURIComponent(uid) + "/messages/send",
       method: "POST",
@@ -489,10 +547,31 @@ function handleReply(e) {
       scopes: [h.GMAIL_SCOPE, h.GMAIL_SEND_SCOPE],
       subject: uid
     });
-    h.addInternalNote(threadId, actor, "📤 Reply sent to " + thread.getString("customer_email") + ": " + text.slice(0, 120), {
-      gmail_message_id: sent.id
+
+    // Persist the sent message (with attachments) into the conversation.
+    const msgColl = $app.findCollectionByNameOrId("messages");
+    const msg = new Record(msgColl, {
+      thread: thread.id,
+      gmail_message_id: sent.id || "",
+      sender_email: uid,
+      recipient_emails: [thread.getString("customer_email")],
+      body_html: safeHtml || "",
+      body_plain: text || h.htmlToPlain(safeHtml),
+      is_internal_note: false
     });
-    e.json(200, { ok: true, gmail_message_id: sent.id || "", threadId: thread.id });
+    if (atts.length) {
+      const files = [];
+      const meta = [];
+      for (const a of atts) {
+        files.push($filesystem.fileFromBytes(a.bytes, a.name));
+        meta.push({ name: a.name, mime: a.mime, size: a.bytes.length });
+      }
+      msg.set("attachments", files);
+      msg.set("attachments_meta", meta);
+    }
+    $app.save(msg);
+
+    e.json(200, { ok: true, gmail_message_id: sent.id || "", threadId: thread.id, messageId: msg.id });
   } catch (err) {
     h.fail(e, 502, "send_failed", err.message || String(err));
   }

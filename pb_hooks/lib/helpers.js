@@ -506,6 +506,56 @@ function sendAlertWebhook(kind, payload) {
 // ---------------------------------------------------------------------------
 // Exports
 // ---------------------------------------------------------------------------
+// Decode (standard or URL-safe) base64 into raw bytes (Uint8Array) — no atob.
+function b64ToBytes(b64) {
+  let s = String(b64 || "").replace(/-/g, "+").replace(/_/g, "/");
+  while (s.length % 4 !== 0) s += "=";
+  let out = [];
+  let buffer = 0;
+  let bits = 0;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s.charAt(i);
+    if (ch === "=") break;
+    const idx = B64_CHARS.indexOf(ch);
+    if (idx === -1) continue;
+    buffer = (buffer << 6) | idx;
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      out.push((buffer >> bits) & 0xff);
+    }
+  }
+  return new Uint8Array(out);
+}
+
+// ASCII-safe header value (strip CR/LF/control chars).
+function mimeHeaderValue(v) {
+  return String(v || "").replace(/[\r\n]/g, " ").replace(/[^\x20-\x7E]/g, "").trim();
+}
+
+// Minimal HTML -> plain text (for the plain part + storage).
+function htmlToPlain(html) {
+  let s = String(html || "");
+  s = s.replace(/<br\s*\/?>/gi, "\n");
+  s = s.replace(/<\/(p|div|li|h[1-6]|blockquote|tr)>/gi, "\n");
+  s = s.replace(/<[^>]+>/g, "");
+  s = s.replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/&lt;/gi, "<")
+       .replace(/&gt;/gi, ">").replace(/&quot;/gi, '"').replace(/&#39;/g, "'");
+  return s.replace(/\n{3,}/g, "\n\n").trim();
+}
+
+// Server-side HTML sanitizer (remove scripts/styles/events/iframes etc.).
+function sanitizeHtmlBasic(html) {
+  let s = String(html || "");
+  s = s.replace(/<script[\s\S]*?<\/script>/gi, "");
+  s = s.replace(/<style[\s\S]*?<\/style>/gi, "");
+  s = s.replace(/<(iframe|object|embed|link|meta|form|input|button)[^>]*>/gi, "");
+  s = s.replace(/<\/(iframe|object|embed|link|meta|form|input|button)>/gi, "");
+  s = s.replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "");
+  s = s.replace(/(href|src)\s*=\s*(?:"|')?\s*javascript:/gi, '$1="#"');
+  return s;
+}
+
 module.exports = {
   // meta
   GMAIL_SCOPE, GMAIL_SEND_SCOPE, CAL_SCOPE, GMAIL_BASE, CAL_BASE, THREAD_STATUSES,
@@ -520,7 +570,8 @@ module.exports = {
   addInternalNote, heartbeatPresence, releasePresence, presenceSnapshot, composingLock,
   // google
   loadServiceAccount, getAccessToken, googleRequest, GoogleApiError,
-  b64urlEncode, b64urlEncodeBinary, b64DecodeUtf8,
+  b64urlEncode, b64urlEncodeBinary, b64EncodeBytes, b64DecodeUtf8, b64ToBytes,
+  mimeHeaderValue, htmlToPlain, sanitizeHtmlBasic,
   // alerts
   sendAlertWebhook
 };
