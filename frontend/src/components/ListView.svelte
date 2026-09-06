@@ -2,8 +2,28 @@
   import { appState, statusMeta, threadUnread } from "../lib/appState.svelte.js";
   import { timeAgo, avatarColor } from "../lib/utils.js";
   import { agentInitials } from "../lib/appState.svelte.js";
+  import * as api from "../lib/api.js";
 
   let { open } = $props();
+
+  // Filters: label filter (multi-select from catalog) + status filter (single)
+  let labelFilter = $state(""); // '' | label name
+  let statusFilter = $state(""); // '' | status value
+  let lblFilterOpen = $state(false);
+  let labelCatalog = $state([]); // [{name,color}]
+
+  async function loadCatalog() {
+    try {
+      const r = await api.listLabels();
+      labelCatalog = (r.items || []).map((l) => ({ name: l.name, color: l.color || "" }));
+    } catch { /* non-fatal */ }
+  }
+  $effect(() => { loadCatalog(); });
+
+  function labelColor(name) {
+    const hit = labelCatalog.find((l) => l.name === name);
+    return hit ? hit.color : "#888";
+  }
 
   // Same filtering/sorting as the board, but rendered as a Gmail-like list.
   const rows = $derived(
@@ -11,6 +31,8 @@
       .filter((t) => t.inbox === appState.activeInboxId)
       .filter((t) => {
         if (appState.onlyMine && t.assigned_agent !== appState.me?.id) return false;
+        if (statusFilter && (t.status || "new") !== statusFilter) return false;
+        if (labelFilter && !(Array.isArray(t.tags) ? t.tags : []).includes(labelFilter)) return false;
         if (!appState.search) return true;
         const q = appState.search.toLowerCase();
         return (
@@ -51,11 +73,27 @@
     <button class="md3-chip" class:is-active={appState.onlyMine} onclick={() => (appState.onlyMine = !appState.onlyMine)}>My tickets</button>
     {#each ["new", "in_progress", "waiting_customer", "escalated", "closed"] as st (st)}
       {#if (counts[st] || 0) > 0}
-        <span class="mini-chip" style="--dot:{statusMeta(st).dot}">
+        <button class="mini-chip" class:is-active={statusFilter === st} onclick={() => (statusFilter = statusFilter === st ? "" : st)}
+          style="--dot:{statusMeta(st).dot}">
           <span class="dot"></span>{statusMeta(st).label} {counts[st]}
-        </span>
+        </button>
       {/if}
     {/each}
+    {#if labelCatalog.length}
+      <div class="lblf-wrap">
+        <button class="md3-chip" class:is-active={!!labelFilter} onclick={() => (lblFilterOpen = !lblFilterOpen)}>Label{#if labelFilter}: {labelFilter}{/if}</button>
+        {#if lblFilterOpen}
+          <div class="lblf-menu">
+            <button class:sel={!labelFilter} onclick={() => { labelFilter = ""; lblFilterOpen = false; }}>All labels</button>
+            {#each labelCatalog as lb (lb.name)}
+              <button class:sel={labelFilter === lb.name} onclick={() => { labelFilter = labelFilter === lb.name ? "" : lb.name; lblFilterOpen = false; }}>
+                <span class="dot" style="background:{lb.color || '#888'}"></span>{lb.name}
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    {/if}
   </div>
 
   <div class="list">
@@ -155,6 +193,45 @@
     background: var(--dot, #888);
     display: inline-block;
   }
+  button.mini-chip {
+    cursor: pointer;
+    border-radius: 999px;
+    padding: 3px 8px;
+  }
+  button.mini-chip.is-active {
+    background: var(--m3-surface-container-high);
+    outline: 1px solid var(--m3-outline-variant);
+  }
+
+  .lblf-wrap { position: relative; }
+  .lblf-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    z-index: 60;
+    min-width: 170px;
+    background: var(--m3-surface-container-high);
+    border: 1px solid var(--m3-outline-variant);
+    border-radius: var(--m3-shape-sm);
+    box-shadow: var(--m3-elev-3);
+    padding: 5px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .lblf-menu button {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    text-align: left;
+    padding: 5px 8px;
+    border-radius: 7px;
+    font: var(--m3-type-body-sm);
+    color: var(--m3-on-surface);
+  }
+  .lblf-menu button:hover { background: var(--m3-row-hover); }
+  .lblf-menu button.sel { background: var(--m3-primary-container); }
+  .lblf-menu .dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
 
   .list {
     flex: 1;
