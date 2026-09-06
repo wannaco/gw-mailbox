@@ -60,6 +60,7 @@ function normalizeMessage(msg, inboxEmail) {
   const toList = collectAddresses(headerValue(headers, "To"));
   const ccList = collectAddresses(headerValue(headers, "Cc"));
   const to = toList.concat(ccList); // merged view (customer detection + legacy field)
+  const msgIdHdr = headerValue(headers, "Message-ID"); // for In-Reply-To/References
   const bodies = extractBodies(msg.payload, null);
   const internalDate = parseInt(msg.internalDate || "0", 10);
   const iso = internalDate ? new Date(internalDate).toISOString() : "";
@@ -79,6 +80,7 @@ function normalizeMessage(msg, inboxEmail) {
   return {
     gmail_message_id: msg.id,
     gmail_thread_id: msg.threadId,
+    gmail_msgid_header: msgIdHdr,
     subject: subject || "(no subject)",
     snippet: msg.snippet || "",
     from: from,
@@ -184,12 +186,20 @@ function upsertThreadAndMessage(inboxRec, norm) {
         $app.save(existingMsg);
       } catch (err) { /* non-fatal */ }
     }
+    // Backfill the Message-ID header too so threading headers work for old rows.
+    if (norm.gmail_msgid_header && existingMsg.getString("gmail_msgid_header") !== norm.gmail_msgid_header) {
+      try {
+        existingMsg.set("gmail_msgid_header", norm.gmail_msgid_header);
+        $app.save(existingMsg);
+      } catch (err) { /* non-fatal */ }
+    }
     counters.skipped++;
     return counters;
   }
   const msg = new Record($app.findCollectionByNameOrId("messages"), {
     thread: thread.id,
     gmail_message_id: norm.gmail_message_id,
+    gmail_msgid_header: norm.gmail_msgid_header || "",
     sender_email: norm.from.email || "",
     recipient_emails: norm.to,
     cc_emails: norm.cc_list || [],
@@ -480,7 +490,7 @@ function chunkB64(b64) {
   return out.join("\r\n");
 }
 
-function buildReplyRaw(uid, toAddr, toName, ccList, subject, text, htmlBody, attachments) {
+function buildReplyRaw(uid, toAddr, toName, ccList, subject, text, htmlBody, attachments, inReplyTo) {
   attachments = attachments || [];
   const to = sanitizeHeaderValue(toAddr);
   const name = sanitizeHeaderValue(toName || "");
@@ -498,12 +508,19 @@ function buildReplyRaw(uid, toAddr, toName, ccList, subject, text, htmlBody, att
 
   const bMixed = "gwmb_m_" + $security.randomString(12);
   const bAlt = "gwmb_a_" + $security.randomString(12);
+  // In-Reply-To / References make the message thread into the customer's
+  // existing conversation (Gmail threads by these, not by threadId alone).
   let raw =
     "To: " + (name ? name + " <" + to + ">" : to) + "\r\n" +
     "From: " + sanitizeHeaderValue(uid) + "\r\n" +
     (cc.length ? "Cc: " + cc.join(", ") + "\r\n" : "") +
-    "Subject: " + subj + "\r\n" +
-    "MIME-Version: 1.0\r\n";
+    "Subject: " + subj + "\r\n";
+  const ref = String(inReplyTo || "").trim();
+  if (ref) {
+    const id = ref.indexOf("<") === 0 ? ref : "<" + ref + ">";
+    raw += "In-Reply-To: " + id + "\r\nReferences: " + id + "\r\n";
+  }
+  raw += "MIME-Version: 1.0\r\n";
 
   const altPart =
     "Content-Type: multipart/alternative; boundary=\"" + bAlt + "\"\r\n\r\n" +
@@ -591,7 +608,7 @@ function handleReply(e) {
   }
 
   try {
-    const raw = buildReplyRaw(uid, toAddr, toName, ccEmails, thread.getString("subject"), text || h.htmlToPlain(safeHtml), safeHtml, atts);
+    const raw = buildReplyRaw(uid, toAddr, toName, ccEmails, thread.getString("subject"), text || h.htmlToPlain(safeHtml), safeHtml, atts, lastThreadMsgId(thread.id));
     const sent = h.googleRequest({
       url: h.GMAIL_BASE + "/users/" + encodeURIComponent(uid) + "/messages/send",
       method: "POST",
@@ -640,7 +657,7 @@ function handleReply(e) {
 function sendOutboundEmail(thread, uid, subject, bodyText) {
   const raw = buildReplyRaw(
     uid, thread.getString("customer_email"), thread.getString("customer_name"),
-    [], subject, bodyText, "" // plain-text only; alt part supplies escaped html
+    [], subject, bodyText, "", lastThreadMsgId(thread.id) // thread into the customer conversation
   );
   const sent = h.googleRequest({
     url: h.GMAIL_BASE + "/users/" + encodeURIComponent(uid) + "/messages/send",
@@ -665,6 +682,28 @@ function sendOutboundEmail(thread, uid, subject, bodyText) {
   bumpThreadMessageCount(thread, 1);
   return sent.id || "";
 }
+
+// The Message-ID header of the most recent synced message in a thread, used to
+// set In-Reply-To/References so replies & nudges thread into the customer's
+// conversation instead of arriving as a new email.
+function lastThreadMsgId(threadId) {
+  try {
+    const rows = $app.findRecordsByFilter(
+      "messages",
+      "thread = {:t} && gmail_msgid_header != ''",
+      "-msg_date", 0, 0,
+      { t: threadId }
+    );
+    if (rows && rows.length) {
+      const v = rows[0].getString("gmail_msgid_header");
+      return String(v || "").trim();
+    }
+  } catch (err) {
+    h.warn("lastThreadMsgId failed", (err && err.message) || err);
+  }
+  return "";
+}
+
 
 module.exports = {
   handleWebhookProbe,
