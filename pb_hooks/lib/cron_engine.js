@@ -86,7 +86,7 @@ function runPresenceSweeper() {
   // App-wide roster rows refresh every ~8s; anything older than 45s is a dead
   // tab/agent (offline is handled by the beat/offline routes; this is the
   // safety net for crashes / lost connections).
-  const apCutoff = new DateTime().add(-45 * 1e9);
+  const apCutoff = new DateTime().add(-180 * 1e9); // 3 min
   const staleAp = $app.findRecordsByFilter(
     "agent_presence",
     "updated_at <= {:cutoff}",

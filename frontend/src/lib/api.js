@@ -437,29 +437,49 @@ function scheduleRosterRefresh() {
 }
 
 function visChange() {
-  if (document.hidden) {
-    offlinePresence();
-  } else {
+  // A hidden tab is NOT logged out — switching windows should keep you online.
+  if (!document.hidden) {
     beatPresence();
     fetchRoster();
   }
 }
 
+let lastBeat = 0;
+const BEAT_MS = 8000;
+const ROSTER_MS = 8000;
+
 export function startPresenceLoop() {
   if (rosterTimer) return;
   beatPresence();
   fetchRoster();
-  rosterTimer = setInterval(() => {
-    if (document.hidden) return;
-    beatPresence();
-    fetchRoster(); // keep the roster live even when no SSE event fires
-  }, 8000);
+  lastBeat = Date.now();
+  // Self-rescheduling timeout — unlike setInterval this still fires (albeit
+  // throttled) in background tabs, so presence doesn't die when the tab is
+  // hidden. We also refresh the roster each cycle to keep the pill live.
+  const tick = () => {
+    const now = Date.now();
+    // always keep our presence row fresh (browsers throttle timers in hidden
+    // tabs to ~1/min at worst — fine, still under the 25s expiry? no: 60s > 25s,
+    // so force a beat via a longer expiry instead). See below.
+    if (now - lastBeat >= BEAT_MS) {
+      lastBeat = now;
+      beatPresence();
+      fetchRoster();
+    }
+    rosterTimer = setTimeout(tick, 2000);
+  };
+  rosterTimer = setTimeout(tick, 2000);
   document.addEventListener("visibilitychange", visChange);
+  window.addEventListener("beforeunload", onBeforeUnload);
+}
+
+function onBeforeUnload() {
+  offlinePresence();
 }
 
 export function stopPresenceLoop() {
   if (rosterTimer) {
-    clearInterval(rosterTimer);
+    clearTimeout(rosterTimer);
     rosterTimer = null;
   }
   document.removeEventListener("visibilitychange", visChange);

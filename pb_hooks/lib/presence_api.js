@@ -308,7 +308,7 @@ function handleRoster(e) {
   const actor = h.actorFromEvent(e);
   if (!actor) return h.fail(e, 401, "unauthorized", "Auth required");
 
-  const cutoff = new DateTime().add(-25 * 1e9); // 25 seconds
+  const cutoff = new DateTime().add(-180 * 1e9); // 3 minutes (hidden tabs beat less often)
   // NOTE: this PB fork's signature is findRecordsByFilter(collection, filter,
   // sort, limit, offset, params) — limit 0 = no limit, then offset 0.
   const rows = $app.findRecordsByFilter(
