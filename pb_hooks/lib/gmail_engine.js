@@ -496,7 +496,7 @@ function buildReplyRaw(uid, thread, text, htmlBody, attachments) {
 function handleReply(e) {
   if (h.addCorsHeaders(e, "POST, OPTIONS")) return;
   const actor = h.actorFromEvent(e);
-  if (!actor || actor.isSuperuser) return h.fail(e, 401, "unauthorized", "Agent auth required");
+  if (!actor) return h.fail(e, 401, "unauthorized", "Auth required");
 
   const threadId = e.request.pathValue("id");
   const access = h.requireThreadAccess(e, threadId, actor);

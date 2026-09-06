@@ -81,7 +81,7 @@ function handleAvailability(e) {
 
     e.json(200, { ok: true, calendar: calendarId, busy: busy, suggestedSlots: slots });
   } catch (err) {
-    h.fail(e, 502, "calendar_error", err.message || String(err));
+    e.json(200, { ok: false, error: "calendar_error", message: (err && err.message) || String(err) });
   }
 }
 
@@ -160,7 +160,7 @@ function handleBookMeet(e) {
       status: thread.getString("status")
     });
   } catch (err) {
-    h.fail(e, 502, "meet_create_failed", err.message || String(err));
+    e.json(200, { ok: false, error: "meet_create_failed", message: (err && err.message) || String(err) });
   }
 }
 
@@ -191,7 +191,7 @@ function handleCancelMeet(e) {
     h.addInternalNote(threadId, actor, "Meeting cancelled (event " + eventId + ").", { eventId: eventId });
     e.json(200, { ok: true });
   } catch (err) {
-    h.fail(e, 502, "meet_cancel_failed", err.message || String(err));
+    e.json(200, { ok: false, error: "meet_cancel_failed", message: (err && err.message) || String(err) });
   }
 }
 

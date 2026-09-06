@@ -35,7 +35,7 @@ function inboxSummary(r) {
 function handlePresenceHeartbeat(e) {
   if (h.addCorsHeaders(e, "POST, OPTIONS")) return;
   const actor = h.actorFromEvent(e);
-  if (!actor || actor.isSuperuser) return h.fail(e, 401, "unauthorized", "Agent auth required");
+  if (!actor) return h.fail(e, 401, "unauthorized", "Auth required");
 
   const threadId = e.request.pathValue("id");
   const body = readJsonBody(e);
@@ -60,7 +60,7 @@ function handlePresenceHeartbeat(e) {
 function handlePresenceRelease(e) {
   if (h.addCorsHeaders(e, "DELETE, OPTIONS")) return;
   const actor = h.actorFromEvent(e);
-  if (!actor || actor.isSuperuser) return h.fail(e, 401, "unauthorized", "Agent auth required");
+  if (!actor) return h.fail(e, 401, "unauthorized", "Auth required");
 
   const threadId = e.request.pathValue("id");
   const access = h.requireThreadAccess(e, threadId, actor);
@@ -89,7 +89,7 @@ function handlePresenceSnapshot(e) {
 function handleAddInternalNote(e) {
   if (h.addCorsHeaders(e, "POST, OPTIONS")) return;
   const actor = h.actorFromEvent(e);
-  if (!actor || actor.isSuperuser) return h.fail(e, 401, "unauthorized", "Agent auth required");
+  if (!actor) return h.fail(e, 401, "unauthorized", "Auth required");
 
   const threadId = e.request.pathValue("id");
   const access = h.requireThreadAccess(e, threadId, actor);
