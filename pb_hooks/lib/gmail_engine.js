@@ -162,16 +162,16 @@ function upsertThreadAndMessage(inboxRec, norm) {
     }
     const isCustomerMail = norm.from.email && norm.from.email.toLowerCase() !== uid.toLowerCase();
     if (isCustomerMail) {
-      // A real customer reply means the follow-up/auto-close sequence resets,
-      // and the ticket leaves waiting/closed -> back to the queue, UNASSIGNED,
-      // so any agent can pick it up (never left stuck on a customer).
+      // Customer replied: restart the follow-up/auto-close sequence so no more
+      // nudges trigger, and put the ticket back IN PROGRESS (kept assigned to
+      // the handling agent) so work continues immediately.
       thread.set("followup_sent", 0);
       thread.set("followup_next_at", "");
       thread.set("followup_last_at", "");
       const prevStatus = thread.getString("status");
-      if (prevStatus === "closed" || prevStatus === "waiting_customer") {
-        thread.set("status", "new");
-        thread.set("assigned_agent", "");
+      if (prevStatus === "waiting_customer" || prevStatus === "closed") {
+        thread.set("status", "in_progress");
+        // keep assigned_agent — the handling agent resumes
       }
     }
     $app.save(thread);
