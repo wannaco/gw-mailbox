@@ -25,7 +25,9 @@ migrate((app) => {
   for (const t of threads || []) {
     const last = t.getString("last_message_at") || "";
     if (!last) continue;
-    const msgs = app.findRecordsByFilter("messages", "thread = {:tid}", { tid: t.id }, 0, 0);
+    // NOTE: this PB fork's signature is findRecordsByFilter(collection, filter,
+    // sort, limit, offset, params) — params is the 6th argument.
+    const msgs = app.findRecordsByFilter("messages", "thread = {:tid}", "", 0, 0, { tid: t.id });
     for (const m of msgs || []) {
       if (m.getString("msg_date")) continue;
       try { m.set("msg_date", last); app.save(m); filled++; }
