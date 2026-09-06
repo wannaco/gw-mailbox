@@ -174,6 +174,7 @@ function upsertThreadAndMessage(inboxRec, norm) {
     recipient_emails: norm.to,
     body_html: norm.body_html,
     body_plain: norm.body_plain,
+    msg_date: dateStr || "",
     is_internal_note: false
   });
   $app.save(msg);
@@ -488,7 +489,8 @@ function buildReplyRaw(uid, thread, text, htmlBody, attachments) {
     }
     raw += "--" + bMixed + "--\r\n";
   } else {
-    raw += "Content-Type: " + altPart;
+    // altPart already starts with its own Content-Type header line.
+    raw += altPart;
   }
   return h.b64urlEncodeBinary(utf8Bytes(raw));
 }
@@ -557,6 +559,7 @@ function handleReply(e) {
       recipient_emails: [thread.getString("customer_email")],
       body_html: safeHtml || "",
       body_plain: text || h.htmlToPlain(safeHtml),
+      msg_date: h.dateToPbString(new Date()),
       is_internal_note: false
     });
     if (atts.length) {

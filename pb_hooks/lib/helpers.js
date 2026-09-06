@@ -169,6 +169,7 @@ function addInternalNote(threadId, actor, bodyText, meta) {
     recipient_emails: [],
     body_html: html,
     body_plain: bodyText || "",
+    msg_date: dateToPbString(new Date()),
     is_internal_note: true
   });
   $app.save(note);

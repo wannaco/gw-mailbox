@@ -90,7 +90,7 @@ function runSeed(app) {
         body_html: html || "<p>" + esc(plain).replace(/\n+/g, "</p><p>") + "</p>",
         is_internal_note: !!note
       });
-      if (whenIso) { try { m.set("created", whenIso); } catch (_) { /* autodate */ } }
+      if (whenIso) { try { m.set("msg_date", whenIso); } catch (_) { /* tolerate */ } }
       app.save(m);
       return m;
     }

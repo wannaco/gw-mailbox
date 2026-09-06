@@ -108,11 +108,16 @@ export async function refreshThreads() {
 
 export async function fetchMessages(threadId) {
   const filter = encodeURIComponent(`thread = "${threadId}"`);
+  // NOTE: this PB fork has no created/updated system fields — server-side
+  // sort=created returns 400. Fetch all and order by msg_date client-side.
   const res = await pbRequest(
     "GET",
-    `/collections/messages/records?perPage=200&sort=created&filter=${filter}`
+    `/collections/messages/records?perPage=200&filter=${filter}`
   );
-  appState.messages[threadId] = res.items || [];
+  const items = (res.items || []).slice().sort((a, b) =>
+    String(a.msg_date || "").localeCompare(String(b.msg_date || ""))
+  );
+  appState.messages[threadId] = items;
 }
 
 // ---- presence / notes / moves / replies / meet -----------------------------
@@ -134,7 +139,9 @@ export function moveThread(threadId, status, extra = {}) {
 }
 
 export function sendReply(threadId, body) {
-  return pbRequest("POST", `/mailbox/threads/${threadId}/reply`, { body });
+  // Send the payload AS the request body — the server expects
+  // { body, html, attachments } at the top level, not nested under "body".
+  return pbRequest("POST", `/mailbox/threads/${threadId}/reply`, body);
 }
 
 export function availability(threadId, start, end, durationMin = 30) {

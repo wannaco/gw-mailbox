@@ -289,7 +289,7 @@
             {agentInitials(m.sender_email)}
           </span>
           <span class="sender">{m.is_internal_note ? "Internal note · " + (m.sender_email || "system") : m.sender_email}</span>
-          <span class="when">{fmtDateTime(m.created)}</span>
+          <span class="when">{fmtDateTime(m.msg_date)}</span>
         </div>
         {#if m.body_html && !m.is_internal_note}
           <!-- svelte-ignore a11y_no_raw_html -->
