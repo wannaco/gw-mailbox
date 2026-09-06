@@ -56,5 +56,9 @@ routerAdd("DELETE", "/api/mailbox/settings/labels/{id}", (e) => {
   require(__hooks + "/lib/settings_engine.js").handleDeleteLabel(e);
 }, $apis.requireSuperuserAuth());
 
+routerAdd("DELETE", "/api/mailbox/settings/canned/{id}", (e) => {
+  require(__hooks + "/lib/settings_engine.js").handleDeleteCanned(e);
+}, $apis.requireSuperuserAuth());
+
 console.log("[gw-mailbox] settings.pb.js loaded — admin settings routes registered");
 

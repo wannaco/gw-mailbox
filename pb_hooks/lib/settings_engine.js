@@ -329,6 +329,17 @@ function handleDeleteLabel(e) {
   e.json(200, { ok: true });
 }
 
+// Canned responses (admin delete; agents create via PB any-auth rule)
+function handleDeleteCanned(e) {
+  if (h.addCorsHeaders(e, "DELETE, OPTIONS")) return;
+  if (!requireAdmin(e)) return;
+  const id = e.request.pathValue("id");
+  const rec = h.safeFindById("canned_responses", id);
+  if (!rec) return h.fail(e, 404, "not_found", "Canned response not found");
+  $app.delete(rec);
+  e.json(200, { ok: true });
+}
+
 module.exports = {
   getSettings,
   getStoredServiceAccount,
@@ -347,5 +358,6 @@ module.exports = {
   handleDeleteInbox,
   handleListLabels,
   handleCreateLabel,
-  handleDeleteLabel
+  handleDeleteLabel,
+  handleDeleteCanned
 };

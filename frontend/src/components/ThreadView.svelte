@@ -126,6 +126,142 @@
   }
   function onEditorInput() {
     replyText = editorText();
+    detectSlash();
+  }
+
+  // ---- canned responses / slash commands -------------------------------------
+  let canned = $state([]); // { id, title, body }
+  let slash = $state(null); // { query }
+  let slashIdx = $state(0);
+
+  async function loadCanned() {
+    try {
+      const r = await api.listCanned();
+      canned = (r.items || []).map((c) => ({ id: c.id, title: c.title, body: c.body }));
+    } catch { /* non-fatal */ }
+  }
+
+  $effect(() => {
+    if (threadId) loadCanned();
+  });
+
+  function editorTextBeforeCaret() {
+    const el = editorEl;
+    const sel = window.getSelection && window.getSelection();
+    if (!el || !sel || !sel.rangeCount) return "";
+    try {
+      const range = sel.getRangeAt(0).cloneRange();
+      range.selectNodeContents(el);
+      range.setEnd(sel.getRangeAt(0).startContainer, sel.getRangeAt(0).startOffset);
+      return range.toString();
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function detectSlash() {
+    const before = editorTextBeforeCaret();
+    const m = before.match(/(?:^|\s)\/([^\s\/]*)$/);
+    if (m) {
+      if (slash && slash.query === m[1]) return;
+      slash = { query: m[1] || "" };
+      slashIdx = 0;
+    } else {
+      slash = null;
+    }
+  }
+
+  const slashItems = $derived(
+    slash
+      ? canned.filter((c) => {
+          const q = (slash.query || "").toLowerCase();
+          if (!q) return true;
+          return (
+            (c.title || "").toLowerCase().includes(q) ||
+            (c.body || "").toLowerCase().includes(q)
+          );
+        }).slice(0, 8)
+      : []
+  );
+
+  // Walk backwards from the caret to select the `/query` token (generic).
+  function caretTokenRange(caretNode, caretOffset, marker) {
+    const doc = document;
+    const range = doc.createRange();
+    let node = caretNode;
+    let off = caretOffset;
+    let guard = 0;
+    while (node && guard++ < 80) {
+      if (node.nodeType === 3) {
+        const txt = node.nodeValue || "";
+        let i = off;
+        while (i > 0) {
+          const ch = txt[i - 1];
+          if (ch === marker) {
+            range.setStart(node, i - 1);
+            range.setEnd(caretNode, caretOffset);
+            return range;
+          }
+          if (/\s/.test(ch)) return null;
+          i--;
+        }
+        node = node.previousSibling;
+        if (node) off = node.nodeType === 3 ? (node.nodeValue || "").length : 0;
+      } else if (node.nodeType === 1) {
+        node = node.lastChild;
+        if (node) off = node.nodeType === 3 ? (node.nodeValue || "").length : 0;
+      } else {
+        node = node.previousSibling;
+        if (node) off = node.nodeType === 3 ? (node.nodeValue || "").length : 0;
+      }
+    }
+    return null;
+  }
+
+  function esc(s) {
+    return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  // Replace the /token with the canned body as rich paragraphs.
+  function pickCanned(c) {
+    const el = editorEl;
+    const sel = window.getSelection && window.getSelection();
+    if (el && sel && sel.rangeCount) {
+      const caret = sel.getRangeAt(0);
+      const range = caretTokenRange(caret.startContainer, caret.startOffset, "/");
+      if (range) {
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+      const paras = String(c.body || "")
+        .split(/\n+/)
+        .map((p) => "<p>" + esc(p).trim() + "</p>")
+        .join("");
+      try {
+        document.execCommand("insertHTML", false, paras);
+      } catch (_) {
+        document.execCommand("insertText", false, c.body || "");
+      }
+    } else if (el) {
+      el.innerHTML += "<p>" + esc(c.body || "").replace(/\n+/g, "</p><p>") + "</p>";
+    }
+    slash = null;
+    replyText = editorText();
+    el && el.focus();
+  }
+
+  function onEditorKeydown(ev) {
+    if (!slash || !slashItems.length) return;
+    if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+      ev.preventDefault();
+      const len = slashItems.length;
+      slashIdx = (slashIdx + (ev.key === "ArrowDown" ? 1 : -1) + len) % len;
+    } else if (ev.key === "Enter" || ev.key === "Tab") {
+      ev.preventDefault();
+      pickCanned(slashItems[slashIdx]);
+    } else if (ev.key === "Escape") {
+      slash = null;
+    }
   }
 
   function exec(cmd, val) {
@@ -752,16 +888,38 @@
             <span class="spacer"></span>
             <span class="hint">{lock ? `Locked — ${lock.agentName} is composing` : "Reply to " + (thread.customer_email || "customer")}</span>
           </div>
-          <div
-            class="rich-body"
-            contenteditable={!lock}
-            role="textbox"
-            aria-multiline="true"
-            bind:this={editorEl}
-            oninput={onEditorInput}
-            onfocus={() => (focused = true)}
-            onblur={() => (focused = false)}
-          ></div>
+          <div class="ed-rel">
+            {#if slashItems.length}
+              <ul class="slash-menu" role="listbox">
+                {#each slashItems as c, i (c.id)}
+                  <li
+                    role="option"
+                    class:sel={i === slashIdx}
+                    onmousedown={(ev) => {
+                      ev.preventDefault();
+                      pickCanned(c);
+                    }}
+                    onmouseenter={() => (slashIdx = i)}
+                  >
+                    <span class="sl-mark">/</span>
+                    <span class="sl-title">{c.title}</span>
+                    <span class="sl-prev">{c.body.replace(/\s+/g, " ").trim().slice(0, 60)}</span>
+                  </li>
+                {/each}
+              </ul>
+            {/if}
+            <div
+              class="rich-body"
+              contenteditable={!lock}
+              role="textbox"
+              aria-multiline="true"
+              bind:this={editorEl}
+              oninput={onEditorInput}
+              onkeydown={onEditorKeydown}
+              onfocus={() => (focused = true)}
+              onblur={() => (focused = false)}
+            ></div>
+          </div>
           {#if attachments.length}
             <div class="attach-list">
               {#each attachments as a, i (a.name + a.size)}
@@ -1325,6 +1483,63 @@
     font-size: 16px;
     line-height: 1.55;
     color: var(--m3-on-surface);
+  }
+
+  .ed-rel {
+    position: relative;
+  }
+
+  .slash-menu {
+    position: absolute;
+    top: 4px;
+    left: 8px;
+    right: 8px;
+    z-index: 70;
+    list-style: none;
+    margin: 0;
+    background: var(--m3-surface-container-high);
+    border: 1px solid var(--m3-outline-variant);
+    border-radius: var(--m3-shape-sm);
+    box-shadow: var(--m3-elev-3);
+    max-height: 220px;
+    overflow-y: auto;
+    padding: 4px;
+  }
+
+  .slash-menu li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+
+  .slash-menu li.sel {
+    background: var(--m3-primary-container);
+  }
+
+  .sl-mark {
+    font: var(--m3-type-title-sm);
+    color: var(--m3-primary);
+    font-weight: 700;
+    flex: 0 0 auto;
+  }
+
+  .sl-title {
+    font: var(--m3-type-body-md);
+    font-weight: 600;
+    color: var(--m3-on-surface);
+    flex: 0 0 auto;
+  }
+
+  .sl-prev {
+    font: var(--m3-type-body-sm);
+    color: var(--m3-on-surface-variant);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
   }
 
   .note-rich {

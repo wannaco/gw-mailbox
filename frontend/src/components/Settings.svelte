@@ -28,6 +28,10 @@
   let labels = $state([]);
   let newLabel = $state("");
   let newLabelColor = $state("#0b57d0");
+  // canned responses
+  let canned = $state([]);
+  let newCannedTitle = $state("");
+  let newCannedBody = $state("");
 
   const agentOptions = $derived(Object.values(appState.users));
 
@@ -51,6 +55,10 @@
       try {
         const lb = await api.listLabels();
         labels = (lb.items || []).map((l) => ({ id: l.id, name: l.name, color: l.color || "" }));
+      } catch (_) {}
+      try {
+        const cr = await api.listCanned();
+        canned = (cr.items || []).map((c) => ({ id: c.id, title: c.title, body: c.body }));
       } catch (_) {}
     }
   }
@@ -209,6 +217,30 @@
       await api.deleteLabelRecord(id);
       const lb = await api.listLabels();
       labels = (lb.items || []).map((l) => ({ id: l.id, name: l.name, color: l.color || "" }));
+    } catch (e) {
+      toast("error", e?.message || "Delete failed");
+    }
+  }
+
+  async function addCanned() {
+    if (!newCannedTitle.trim() || !newCannedBody.trim()) return;
+    try {
+      await api.createCannedRecord({ title: newCannedTitle.trim(), body: newCannedBody.trim() });
+      newCannedTitle = "";
+      newCannedBody = "";
+      const cr = await api.listCanned();
+      canned = (cr.items || []).map((c) => ({ id: c.id, title: c.title, body: c.body }));
+    } catch (e) {
+      toast("error", e?.message || "Could not add canned response");
+    }
+  }
+
+  async function removeCanned(id) {
+    if (!confirm("Delete this canned response?")) return;
+    try {
+      await api.deleteCannedRecord(id);
+      const cr = await api.listCanned();
+      canned = (cr.items || []).map((c) => ({ id: c.id, title: c.title, body: c.body }));
     } catch (e) {
       toast("error", e?.message || "Delete failed");
     }
@@ -373,6 +405,32 @@
         <input type="text" bind:value={newLabel} placeholder="New label (e.g. VIP, Billing, Urgent)" />
         <input type="color" bind:value={newLabelColor} style="width:44px;height:40px;padding:2px" title="Label color" />
         <button class="md3-btn primary small" onclick={addLabel} disabled={!newLabel.trim()}>Add label</button>
+      </div>
+    </section>
+
+    <!-- Canned responses -->
+    <section class="card">
+      <h3>Canned responses</h3>
+      <p class="muted">Quick replies inserted with “/” in the reply editor. Type e.g. <code>/hours</code> in a reply to use one.</p>
+      <ul class="inbox-list">
+        {#each canned as c (c.id)}
+          <li>
+            <span class="inbox-name">/{c.title}</span>
+            <span class="muted can-body">{c.body.replace(/\s+/g, " ").trim().slice(0, 80)}{c.body.length > 80 ? "…" : ""}</span>
+            <button class="md3-btn tonal small danger" onclick={() => removeCanned(c.id)}>Delete</button>
+          </li>
+        {:else}
+          <li class="muted">No canned responses yet — add one below.</li>
+        {/each}
+      </ul>
+      <div class="add-inbox">
+        <input type="text" bind:value={newCannedTitle} placeholder="Command (e.g. hours)" style="max-width:180px" />
+      </div>
+      <div style="margin:6px 0">
+        <textarea class="canned-body" rows="3" bind:value={newCannedBody} placeholder="Response text… (type / + this command in a reply to insert)"></textarea>
+      </div>
+      <div class="row-btns">
+        <button class="md3-btn primary small" onclick={addCanned} disabled={!newCannedTitle.trim() || !newCannedBody.trim()}>Add response</button>
       </div>
     </section>
   {/if}
@@ -549,6 +607,30 @@
 
   .danger {
     color: var(--m3-error);
+  }
+
+  .can-body {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .canned-body {
+    width: 100%;
+    border: 1px solid var(--m3-outline-variant);
+    border-radius: var(--m3-shape-sm);
+    padding: 8px 10px;
+    font: var(--m3-type-body-sm);
+    background: var(--m3-surface-container-lowest);
+    resize: vertical;
+  }
+
+  code {
+    background: var(--m3-surface-container-high);
+    border-radius: 4px;
+    padding: 0 5px;
   }
 
   .inbox-name {

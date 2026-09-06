@@ -218,6 +218,17 @@ export function deleteLabelRecord(id) {
   return pbRequest("DELETE", `/mailbox/settings/labels/${id}`);
 }
 
+// ---- canned responses (slash commands) --------------------------------------
+export function listCanned() {
+  return pbRequest("GET", "/collections/canned_responses/records?perPage=200");
+}
+export function createCannedRecord(payload) {
+  return pbRequest("POST", "/collections/canned_responses/records", payload);
+}
+export function deleteCannedRecord(id) {
+  return pbRequest("DELETE", `/mailbox/settings/canned/${id}`);
+}
+
 // ---- realtime --------------------------------------------------------------
 
 let rtActive = false;
