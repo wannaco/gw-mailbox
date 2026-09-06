@@ -163,11 +163,22 @@ function handleTestConnection(e) {
   const saJson = body.serviceAccountJson || "";
   try {
     const profile = testConnection(subject, saJson);
+    let sendAuthorized = false;
+    let sendError = "";
+    try {
+      // Probe the SEND scope separately: sending needs modify+send DWD scope.
+      h.getAccessToken([h.GMAIL_SCOPE, h.GMAIL_SEND_SCOPE], subject);
+      sendAuthorized = true;
+    } catch (err2) {
+      sendError = (err2 && err2.message) || String(err2);
+    }
     e.json(200, {
       ok: true,
       emailAddress: profile.emailAddress || subject,
       historyId: profile.historyId || null,
-      messagesTotal: profile.messagesTotal || 0
+      messagesTotal: profile.messagesTotal || 0,
+      sendAuthorized: sendAuthorized,
+      sendError: sendError
     });
   } catch (err) {
     h.warn("test-connection failed for", subject, "->", (err && err.message) || String(err));

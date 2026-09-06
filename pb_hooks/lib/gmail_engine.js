@@ -573,7 +573,9 @@ function handleReply(e) {
 
     e.json(200, { ok: true, gmail_message_id: sent.id || "", threadId: thread.id, messageId: msg.id });
   } catch (err) {
-    h.fail(e, 502, "send_failed", err.message || String(err));
+    h.warn("send failed for", thread.id, "->", (err && err.message) || String(err));
+    // 200-with-error: proxy rewrites 5xx -> useless "error code: 502".
+    e.json(200, { ok: false, error: "send_failed", message: (err && err.message) || String(err) });
   }
 }
 
