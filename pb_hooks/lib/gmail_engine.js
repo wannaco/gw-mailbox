@@ -714,6 +714,18 @@ function lastThreadMsgId(threadId) {
 }
 
 
+// Pull the RFC Message-ID header off a sent message so the reply chain can
+// keep threading through our own outbound copies too.
+function sentMessageIdHeader(sentMsg) {
+  try {
+    for (const hdr of (sentMsg && sentMsg.payload && sentMsg.payload.headers) || []) {
+      if (hdr.name && hdr.name.toLowerCase() === "message-id") return String(hdr.value || "").trim();
+    }
+  } catch (_) { /* ignore */ }
+  return "";
+}
+
+
 module.exports = {
   handleWebhookProbe,
   handleWebhookPush,
