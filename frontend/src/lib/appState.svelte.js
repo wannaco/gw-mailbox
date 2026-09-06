@@ -67,6 +67,18 @@ export function markThreadRead(threadId) {
   const fromThread = appState.threads[threadId]?.message_count || 0;
   const n = Math.max(fromMsgs, fromThread);
   if (n > 0) appState.readCounts[threadId] = n;
+  persistReadCounts();
+}
+
+const READ_KEY = "gwmb.readCounts";
+function persistReadCounts() {
+  try { localStorage.setItem(READ_KEY, JSON.stringify(appState.readCounts)); } catch (_) { /* private mode */ }
+}
+export function loadReadCounts() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(READ_KEY) || "{}");
+    if (saved && typeof saved === "object") appState.readCounts = saved;
+  } catch (_) { /* ignore */ }
 }
 
 export function presenceFor(threadId) {
