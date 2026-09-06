@@ -50,15 +50,17 @@
     // jump to a specific message (from a notification) once the list is ready
     const target = appState.jumpToMessage;
     if (target) {
-      requestAnimationFrame(() => {
+      const rec = list.find((m) => m.id === target);
+      if (rec && rec.is_internal_note) tab = "notes";
+      setTimeout(() => {
         const el = document.querySelector(`[data-msg-id="${CSS.escape(target)}"]`);
         if (el) {
           el.scrollIntoView({ block: "center" });
           el.classList.add("flash");
-          setTimeout(() => el.classList.remove("flash"), 1800);
+          setTimeout(() => el.classList.remove("flash"), 2000);
         }
         appState.jumpToMessage = null;
-      });
+      }, 150);
     }
   });
 
