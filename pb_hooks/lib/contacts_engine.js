@@ -96,24 +96,37 @@ function handleGetContacts(e) {
 }
 
 // Related cases: threads from this contact (optionally within one inbox).
+// Query form proven elsewhere in this fork: findRecordsByFilter(collection,
+// filter, sort, limit, offset, params). limit 0 = unlimited, but offset is
+// HONORED (passing 100 here silently skipped everything on prod — the bug
+// that made related cases always []). So: filter by email via params (offset
+// 0), scope inbox + order by last_message_at in JS (only this customer's
+// rows are fetched — tiny).
 function threadsForContact(email, inboxId) {
   try {
     const want = String(email || "").toLowerCase();
-    const rows = $app.findRecordsByFilter("threads", "", "-last_message_at", 0, 100) || [];
-    return (rows || []).filter((t) => {
-      if (String(t.getString("customer_email") || "").toLowerCase() !== want) return false;
-      if (inboxId && t.getString("inbox") !== inboxId) return false;
-      return true;
-    }).map((t) => ({
-      id: t.id,
-      subject: t.getString("subject"),
-      status: t.getString("status"),
-      last_message_at: t.getString("last_message_at"),
-      inbox: t.getString("inbox"),
-      message_count: t.getInt("message_count") || 0
-    }));
+    const rows = $app.findRecordsByFilter(
+      "threads", "customer_email = {:e}", "", 0, 0, { e: want }
+    ) || [];
+    const out = [];
+    for (let i = 0; i < rows.length; i++) {
+      const t = rows[i];
+      if (inboxId && t.getString("inbox") !== inboxId) continue;
+      out.push({
+        id: t.id,
+        subject: t.getString("subject"),
+        status: t.getString("status"),
+        last_message_at: t.getString("last_message_at"),
+        inbox: t.getString("inbox"),
+        message_count: t.getInt("message_count") || 0
+      });
+    }
+    out.sort(function (a, b) {
+      return String(b.last_message_at).localeCompare(String(a.last_message_at));
+    });
+    return out.slice(0, 100);
   } catch (err) {
-    h.warn("related threads failed", (err && err.message) || err);
+    h.warn("related threads failed", email, (err && err.message) || err);
     return [];
   }
 }
