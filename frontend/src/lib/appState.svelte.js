@@ -66,15 +66,17 @@ export function slaOf(thread) {
   if (!Number.isFinite(due.getTime())) return null;
   const now = Date.now();
   const rem = due.getTime() - now;
-  if (rem <= 0) return { kind: "breached", text: "SLA overdue", color: "#ba1a1a", title: `Overdue since ${due.toLocaleString()}` };
   const hours = Math.max(1, Number(cfg.hours) || 24);
-  // Amber when we're in the last 20% of the SLA window (min 2h) — never spammy.
+  if (rem <= 0) return { kind: "breached", text: "SLA overdue", color: "#ba1a1a", title: `Overdue since ${due.toLocaleString()}` };
+  // Always surface a chip on NEW tickets so a missing pill never reads as
+  // broken. Green "on track" until the last 20% of the SLA window (min 2h),
+  // amber "Due in Xh" inside that window, red pulsing once past due.
   const warnMs = Math.max(2 * 3600e3, hours * 0.2 * 3600e3);
+  const h = Math.max(1, Math.round(rem / 3600e3));
   if (rem <= warnMs) {
-    const h = Math.max(1, Math.round(rem / 3600e3));
     return { kind: "soon", text: `Due in ${h}h`, color: "#b06000", title: `SLA due ${due.toLocaleString()}` };
   }
-  return null;
+  return { kind: "ok", text: `SLA ${h}h`, color: "#188038", title: `SLA due ${due.toLocaleString()} — on track` };
 }
 
 export function threadsOfActiveInbox() {
