@@ -498,14 +498,14 @@
       <div style="margin:6px 0">
         <label class="field-row">
           <span>Email subject (optional — default is “Re: &lt;ticket subject&gt;”)</span>
-          <input type="text" bind:value={auto.followup_subject} placeholder="Re: {{subject}}" />
+          <input type="text" bind:value={auto.followup_subject} placeholder={"Re: {{" + "subject}}"} />
         </label>
       </div>
       <label class="field-row">
         <span>Follow-up body</span>
         <textarea class="canned-body" rows="4" bind:value={auto.followup_body}
-          placeholder="Hi {{customer_name}}, just checking in…"></textarea>
-        <span class="hint">Placeholders: {'{{customer_name}}'} {'{{customer_email}}'} {'{{subject}}'} {'{{inbox}}'}</span>
+          placeholder={"Hi {{" + "customer_name}}, just checking in…"}></textarea>
+        <span class="hint">Placeholders: {`{{customer_name}}`} {`{{customer_email}}`} {`{{subject}}`} {`{{inbox}}`}</span>
       </label>
 
       <div class="row-btns" style="margin-top:10px">
