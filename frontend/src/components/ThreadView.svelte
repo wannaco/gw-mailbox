@@ -706,74 +706,82 @@
 
   <footer class="tv-composer">
     {#if tab === "conversation"}
-      <div class="send-recip">
-        <div class="sr-mode" role="group" aria-label="Reply mode">
-          <button type="button" class="sr-btn" class:on={replyMode === "reply"} onclick={() => setReplyMode("reply")}>Reply</button>
-          {#if canReplyAll}
-            <button type="button" class="sr-btn" class:on={replyMode === "replyAll"} onclick={() => setReplyMode("replyAll")} title="Reply to everyone on the last message">Reply all</button>
+      <div class="composer-col">
+        <div class="composer-top">
+          <div class="send-recip">
+            <div class="sr-mode" role="group" aria-label="Reply mode">
+              <button type="button" class="sr-btn" class:on={replyMode === "reply"} onclick={() => setReplyMode("reply")}>Reply</button>
+              {#if canReplyAll}
+                <button type="button" class="sr-btn" class:on={replyMode === "replyAll"} onclick={() => setReplyMode("replyAll")} title="Reply to everyone on the last message">Reply all</button>
+              {/if}
+            </div>
+            {#if replyMode === "replyAll" && ccList.length}
+              <div class="sr-cc">
+                <span class="sr-cc-label">Cc:</span>
+                {#each ccList as c (c)}
+                  <span class="cc-chip">
+                    {c}
+                    <button type="button" title="Remove" onclick={() => removeCc(c)}>✕</button>
+                  </span>
+                {/each}
+              </div>
+            {/if}
+          </div>
+          {#if replyMode === "replyAll"}
+            <div class="sr-addcc">
+              <input type="text" placeholder="add cc…" bind:value={newCc} onkeydown={(ev) => { if (ev.key === "Enter") { ev.preventDefault(); addCc(); } }} />
+              <button type="button" class="md3-btn tonal small" onclick={addCc}>+</button>
+            </div>
           {/if}
         </div>
-        {#if replyMode === "replyAll" && ccList.length}
-          <div class="sr-cc">
-            <span class="sr-cc-label">Cc:</span>
-            {#each ccList as c (c)}
-              <span class="cc-chip">
-                {c}
-                <button type="button" title="Remove" onclick={() => removeCc(c)}>✕</button>
-              </span>
-            {/each}
+        <div class="rich-wrap" class:disabled={!!lock}>
+          <div class="rich-toolbar" contenteditable="false">
+            <button type="button" title="Bold" disabled={!!lock} onclick={() => exec("bold")}><b>B</b></button>
+            <button type="button" title="Italic" disabled={!!lock} onclick={() => exec("italic")}><i>I</i></button>
+            <button type="button" title="Underline" disabled={!!lock} onclick={() => exec("underline")}><u>U</u></button>
+            <button type="button" title="Strikethrough" disabled={!!lock} onclick={() => exec("strikeThrough")}><s>S</s></button>
+            <span class="sep"></span>
+            <button type="button" title="Bulleted list" disabled={!!lock} onclick={() => exec("insertUnorderedList")}>•≡</button>
+            <button type="button" title="Numbered list" disabled={!!lock} onclick={() => exec("insertOrderedList")}>1≡</button>
+            <button type="button" title="Quote" disabled={!!lock} onclick={() => exec("formatBlock", "blockquote")}>❝</button>
+            <span class="sep"></span>
+            <button type="button" title="Insert link" disabled={!!lock} onclick={addLink}>🔗</button>
+            <button type="button" title="Clear formatting" disabled={!!lock} onclick={() => exec("removeFormat")}>✕</button>
+            <button type="button" class="attach-btn" title="Attach files" disabled={!!lock} onclick={() => attachInput && attachInput.click()}>📎</button>
+            <input type="file" multiple hidden bind:this={attachInput} onchange={onFilesPicked} />
+            <span class="spacer"></span>
+            <span class="hint">{lock ? `Locked — ${lock.agentName} is composing` : "Reply to " + (thread.customer_email || "customer")}</span>
           </div>
-        {/if}
-        {#if replyMode === "replyAll"}
-          <div class="sr-addcc">
-            <input type="text" placeholder="add cc…" bind:value={newCc} onkeydown={(ev) => { if (ev.key === "Enter") { ev.preventDefault(); addCc(); } }} />
-            <button type="button" class="md3-btn tonal small" onclick={addCc}>+</button>
+          <div
+            class="rich-body"
+            contenteditable={!lock}
+            role="textbox"
+            aria-multiline="true"
+            bind:this={editorEl}
+            oninput={onEditorInput}
+            onfocus={() => (focused = true)}
+            onblur={() => (focused = false)}
+          ></div>
+          {#if attachments.length}
+            <div class="attach-list">
+              {#each attachments as a, i (a.name + a.size)}
+                <span class="attach-chip">
+                  📎 {a.name} <small>({fmtBytes(a.size)})</small>
+                  <button type="button" title="Remove" onclick={() => removeAttachment(i)}>✕</button>
+                </span>
+              {/each}
+            </div>
+          {/if}
+          <div class="rich-footer">
+            <span class="rf-to">To: {thread.customer_email || "—"}{#if replyMode === "replyAll" && ccList.length} · cc {ccList.length}{/if}</span>
+            <span class="spacer"></span>
+            <button class="send-btn" onclick={sendReply} disabled={busySend || lock || (attachments.length === 0 && !replyText.trim())}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+              Send
+            </button>
           </div>
-        {/if}
-      </div>
-      <div class="rich-wrap" class:disabled={!!lock}>
-        <div class="rich-toolbar" contenteditable="false">
-          <button type="button" title="Bold" disabled={!!lock} onclick={() => exec("bold")}><b>B</b></button>
-          <button type="button" title="Italic" disabled={!!lock} onclick={() => exec("italic")}><i>I</i></button>
-          <button type="button" title="Underline" disabled={!!lock} onclick={() => exec("underline")}><u>U</u></button>
-          <button type="button" title="Strikethrough" disabled={!!lock} onclick={() => exec("strikeThrough")}><s>S</s></button>
-          <span class="sep"></span>
-          <button type="button" title="Bulleted list" disabled={!!lock} onclick={() => exec("insertUnorderedList")}>•≡</button>
-          <button type="button" title="Numbered list" disabled={!!lock} onclick={() => exec("insertOrderedList")}>1≡</button>
-          <button type="button" title="Quote" disabled={!!lock} onclick={() => exec("formatBlock", "blockquote")}>❝</button>
-          <span class="sep"></span>
-          <button type="button" title="Insert link" disabled={!!lock} onclick={addLink}>🔗</button>
-          <button type="button" title="Clear formatting" disabled={!!lock} onclick={() => exec("removeFormat")}>✕</button>
-          <button type="button" class="attach-btn" title="Attach files" disabled={!!lock} onclick={() => attachInput && attachInput.click()}>📎</button>
-          <input type="file" multiple hidden bind:this={attachInput} onchange={onFilesPicked} />
-          <span class="spacer"></span>
-          <span class="hint">{lock ? `Locked — ${lock.agentName} is composing` : "Reply to " + (thread.customer_email || "customer")}</span>
         </div>
-        <div
-          class="rich-body"
-          contenteditable={!lock}
-          role="textbox"
-          aria-multiline="true"
-          bind:this={editorEl}
-          oninput={onEditorInput}
-          onfocus={() => (focused = true)}
-          onblur={() => (focused = false)}
-        ></div>
-        {#if attachments.length}
-          <div class="attach-list">
-            {#each attachments as a, i (a.name + a.size)}
-              <span class="attach-chip">
-                📎 {a.name} <small>({fmtBytes(a.size)})</small>
-                <button type="button" title="Remove" onclick={() => removeAttachment(i)}>✕</button>
-              </span>
-            {/each}
-          </div>
-        {/if}
       </div>
-      <button class="md3-btn primary" onclick={sendReply} disabled={busySend || lock || (attachments.length === 0 && !replyText.trim())}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z"/></svg>
-        Send
-      </button>
     {:else}
       <div class="note-editor">
         {#if mentionItems.length}
@@ -1118,24 +1126,138 @@
 
   .tv-composer {
     flex: 0 0 auto;
-    display: flex;
-    gap: 8px;
-    align-items: flex-end;
-    padding: 10px 16px;
+    display: block;
+    padding: 10px 16px 12px;
     border-top: 1px solid var(--m3-outline-variant);
   }
 
-  .rich-wrap {
-    flex: 1;
-    min-width: 0;
-    border: 1px solid var(--m3-outline-variant);
-    border-radius: var(--m3-shape-sm);
-    background: var(--m3-surface-container-lowest);
-    overflow: hidden;
+  .composer-col {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
   }
 
-  .rich-wrap:focus-within {
-    border: 2px solid var(--m3-primary);
+  .composer-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .send-recip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+
+  .sr-mode {
+    display: inline-flex;
+    gap: 2px;
+    background: var(--m3-surface-container-high);
+    border-radius: 999px;
+    padding: 2px;
+  }
+
+  .sr-btn {
+    font: var(--m3-type-label-md);
+    font-weight: 600;
+    color: var(--m3-on-surface-variant);
+    border-radius: 999px;
+    padding: 4px 12px;
+  }
+
+  .sr-btn.on {
+    background: var(--m3-primary);
+    color: var(--m3-on-primary);
+  }
+
+  .sr-cc {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
+    min-width: 0;
+  }
+
+  .sr-cc-label {
+    font: var(--m3-type-label-sm);
+    color: var(--m3-on-surface-variant);
+  }
+
+  .cc-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font: var(--m3-type-label-sm);
+    background: var(--m3-secondary-container);
+    color: var(--m3-on-secondary-container);
+    border-radius: 999px;
+    padding: 2px 8px;
+    max-width: 190px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .cc-chip button {
+    color: var(--m3-on-secondary-container);
+    font-size: 0.75rem;
+    flex: 0 0 auto;
+  }
+
+  .sr-addcc {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .sr-addcc input {
+    width: 150px;
+    border: 1px solid var(--m3-outline-variant);
+    border-radius: 999px;
+    padding: 4px 12px;
+    font: var(--m3-type-label-sm);
+    background: var(--m3-surface-container-lowest);
+  }
+
+  .rich-footer {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px 8px;
+    border-top: 1px solid var(--m3-outline-variant);
+  }
+
+  .rich-footer .rf-to {
+    font: var(--m3-type-label-sm);
+    color: var(--m3-on-surface-variant);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .send-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--m3-primary);
+    color: var(--m3-on-primary);
+    border-radius: 999px;
+    padding: 7px 16px;
+    font: var(--m3-type-label-lg);
+    font-weight: 600;
+  }
+
+  .send-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .rich-footer .spacer {
+    flex: 1;
   }
 
   .rich-wrap.disabled {
@@ -1375,83 +1497,6 @@
     overflow-wrap: anywhere;
   }
 
-  .send-recip {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    align-items: flex-start;
-    max-width: 230px;
-  }
-
-  .sr-mode {
-    display: inline-flex;
-    gap: 4px;
-    background: var(--m3-surface-container-high);
-    border-radius: 999px;
-    padding: 2px;
-  }
-
-  .sr-btn {
-    font: var(--m3-type-label-sm);
-    font-weight: 600;
-    color: var(--m3-on-surface-variant);
-    border-radius: 999px;
-    padding: 3px 10px;
-  }
-
-  .sr-btn.on {
-    background: var(--m3-primary);
-    color: var(--m3-on-primary);
-  }
-
-  .sr-cc {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    align-items: center;
-  }
-
-  .sr-cc-label {
-    font: var(--m3-type-label-sm);
-    color: var(--m3-on-surface-variant);
-  }
-
-  .cc-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font: var(--m3-type-label-sm);
-    background: var(--m3-surface-container-high);
-    border-radius: 999px;
-    padding: 2px 8px;
-    max-width: 170px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .cc-chip button {
-    color: var(--m3-on-surface-variant);
-    font-size: 0.75rem;
-    flex: 0 0 auto;
-  }
-
-  .sr-addcc {
-    display: flex;
-    gap: 4px;
-    width: 100%;
-  }
-
-  .sr-addcc input {
-    flex: 1;
-    min-width: 0;
-    border: 1px solid var(--m3-outline-variant);
-    border-radius: var(--m3-shape-sm);
-    padding: 3px 8px;
-    font: var(--m3-type-label-sm);
-    background: var(--m3-surface-container-lowest);
-  }
-
   @media (max-width: 720px) {
     .tv-head {
       padding: 8px 10px 6px;
@@ -1496,16 +1541,21 @@
     article {
       padding: 8px 9px;
     }
-    .send-recip {
-      max-width: none;
+    .tv-composer {
+      padding: 8px 10px 10px;
+    }
+    .composer-top {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+    .sr-addcc {
+      width: 100%;
+    }
+    .sr-addcc input {
       flex: 1;
     }
     .rich-toolbar .hint {
       display: none;
-    }
-    .tv-composer {
-      flex-wrap: wrap;
-      padding: 8px 10px;
     }
     .rich-toolbar button {
       min-width: 26px;
