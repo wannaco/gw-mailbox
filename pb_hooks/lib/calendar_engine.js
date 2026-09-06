@@ -115,19 +115,39 @@ function handleBookMeet(e) {
     description: String(body.description || "Meeting booked from " + summary + " (#" + threadId + ")").slice(0, 4000),
     start: { dateTime: new Date(startIso).toISOString(), timeZone: tz() },
     end: { dateTime: new Date(endIso).toISOString(), timeZone: tz() },
+    guestsCanModify: true,
+    guestsCanSeeOtherGuests: false,
     conferenceData: {
       createRequest: {
         requestId: $security.randomString(32),
         conferenceSolutionKey: { type: "hangoutsMeet" }
       }
     },
-    attendees: [{ email: customerEmail, displayName: customerName }]
+    attendees: [{ email: customerEmail, displayName: customerName, responseStatus: "accepted" }]
   };
-  if (actor.email && actor.email !== customerEmail) {
-    eventPayload.attendees.push({ email: actor.email, displayName: actor.name });
-  }
+
+  // The agent creating the booking is added as an attendee (they get the Meet
+  // invite + link). If they act AS the mailbox this is a no-op self-add; when
+  // they're a real user we keep them so they can be promoted to co-host by the
+  // host or modify the event (guestsCanModify). The explicit hostEmail (when
+  // supplied by the UI) is ALSO added as an attendee so Meet knows who booked.
+  const agentEmail = (body.hostEmail || actor.email || "").toString().trim();
+  const allEmails = [customerEmail, agentEmail]
+    .concat((body.attendees || []).map((a) => a && a.email))
+    .filter((e) => e)
+    .map((e) => String(e).toLowerCase());
+  const seen = {};
+  const addEmail = (email, displayName) => {
+    const e = String(email || "").trim().toLowerCase();
+    if (!e || seen[e]) return;
+    seen[e] = true;
+    eventPayload.attendees.push({ email: e, displayName: displayName || "" });
+  };
+  // customer already first
+  seen[String(customerEmail).toLowerCase()] = true;
+  addEmail(agentEmail, actor.name);
   for (const extra of body.attendees || []) {
-    if (extra && extra.email) eventPayload.attendees.push({ email: extra.email, displayName: extra.name || "" });
+    if (extra && extra.email) addEmail(extra.email, extra.name);
   }
 
   try {

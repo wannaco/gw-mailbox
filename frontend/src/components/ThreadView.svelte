@@ -730,6 +730,27 @@
     meetErr = "";
   }
 
+  // Change duration: keep the selection anchored at its start, but if the new
+  // length pushes past a busy cell / the day's end, clear it so the agent picks
+  // a fresh slot (never silently book over something).
+  function setDuration(d) {
+    meetDur = d;
+    meetErr = "";
+    if (selStart) {
+      const s = selStart.getTime();
+      const e = s + d * 60000;
+      const dayEnd = dayStart(selectedDay).getTime() + CELL_END * 60000;
+      const clashes = busyList.some(
+        (b) => new Date(b.start).getTime() < e && new Date(b.end).getTime() > s
+      );
+      if (clashes || e > dayEnd) {
+        selStart = null; // make them re-pick
+      }
+    }
+  }
+
+  const meName = $derived(appState.me?.name || appState.me?.email || "");
+
   async function createMeeting() {
     if (!selStart) {
       meetErr = "Pick a free time slot first.";
@@ -743,7 +764,8 @@
         start: isoLocalInput(selStart),
         end: isoLocalInput(end),
         summary: meetSummary.trim() || thread.subject || "Support meeting",
-        description: meetNote.trim() || undefined
+        description: meetNote.trim() || undefined,
+        hostEmail: appState.me?.email || undefined
       });
       if (res && res.ok === false) {
         meetErr = res.message || "Booking failed.";
@@ -939,7 +961,7 @@
               <span class="mm-lbl">Duration</span>
               <div class="mm-seg" role="group">
                 {#each [15, 30, 45, 60] as d (d)}
-                  <button type="button" class:on={meetDur === d} onclick={() => { meetDur = d; meetErr = ""; }}>{d}m</button>
+                  <button type="button" class:on={meetDur === d} onclick={() => setDuration(d)}>{d}m</button>
                 {/each}
               </div>
             </div>
@@ -953,7 +975,7 @@
           </div>
           {#if meetErr}<p class="mm-err">{meetErr}</p>{/if}
           <div class="mm-actions">
-            <span class="mm-with muted">With: {thread.customer_name || thread.customer_email || "—"}</span>
+            <span class="mm-with muted">With: {thread.customer_name || thread.customer_email || "—"}{#if meName} · Host: {meName}{/if}</span>
             <span class="spacer"></span>
             <button class="md3-btn tonal" onclick={closeMeet} disabled={meeting}>Cancel</button>
             <button class="md3-btn primary" onclick={createMeeting} disabled={meeting || busyLoading}>
