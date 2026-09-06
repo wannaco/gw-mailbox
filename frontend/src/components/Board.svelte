@@ -75,7 +75,7 @@
     selIds = visible.map((t) => t.id);
   }
 
-  const ACTION_LABEL = { spam: "spam", archive: "archive", closed: "closed", delete: "deleted" };
+  const ACTION_LABEL = { spam: "spam", archived: "archive", closed: "closed", delete: "deleted" };
   async function runBulk(action) {
     if (!selIds.length) return;
     const n = selIds.length;
@@ -127,7 +127,7 @@
       {/if}
       <span class="bb-spacer"></span>
       <button class="md3-btn small" onclick={() => runBulk("closed")} disabled={!selIds.length}>Close</button>
-      <button class="md3-btn small" onclick={() => runBulk("archive")} disabled={!selIds.length}>Archive</button>
+      <button class="md3-btn small" onclick={() => runBulk("archived")} disabled={!selIds.length}>Archive</button>
       <button class="md3-btn small danger" onclick={() => runBulk("spam")} disabled={!selIds.length}>Mark spam</button>
       {#if appState.me?.isSuperuser}
         <button class="md3-btn small danger solid" onclick={() => runBulk("delete")} disabled={!selIds.length}>Delete</button>
