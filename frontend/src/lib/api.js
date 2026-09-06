@@ -223,15 +223,19 @@ function upsertRecord(collection, data) {
       delete appState.presence[key];
     } else {
       const existing = appState.presence[key];
+      const dir = appState.users[record.user];
+      const nm = dir?.name || existing?.agentName || "";
       appState.presence[key] = {
         ...(existing || {}),
         thread: record.thread,
         user: record.user,
         status: record.status,
         updatedAt: record.updated_at,
-        agentName: existing?.agentName || ""
+        agentName: nm
       };
     }
+  } else if (collection === "agent_presence") {
+    scheduleRosterRefresh();
   }
 }
 
@@ -269,6 +273,7 @@ async function rtLoop() {
         "threads",
         "messages",
         "thread_presence",
+        "agent_presence",
         `thread_presence/${appState.openThreadId || "*"}`,
         `messages/${appState.openThreadId || "*"}`
       ];
@@ -318,6 +323,86 @@ async function rtLoop() {
       await new Promise((r) => setTimeout(r, 2500));
     }
   }
+}
+
+// ---- app-wide presence loop (roster) --------------------------------------
+let rosterTimer = null;
+let rosterRefreshPending = false;
+let rosterRefreshT = null;
+
+// Send my heartbeat: { thread, status } — status = online (no thread) |
+// viewing | composing_reply. Fired every ~8s while the app is visible and
+// immediately on activity changes.
+export async function beatPresence() {
+  const act = appState.myActivity || { thread: "", status: "online" };
+  try {
+    await pbRequest("POST", "/mailbox/presence/beat", {
+      thread: act.thread || "",
+      status: act.status || (act.thread ? "viewing" : "online")
+    });
+  } catch {
+    /* transient — next tick retries */
+  }
+}
+
+export async function offlinePresence() {
+  try {
+    await pbRequest("POST", "/mailbox/presence/offline", {});
+  } catch {
+    /* ignore */
+  }
+}
+
+export async function fetchRoster() {
+  try {
+    const res = await pbRequest("GET", "/mailbox/presence/roster");
+    appState.roster = res.roster || [];
+  } catch {
+    /* non-fatal */
+  }
+}
+
+function scheduleRosterRefresh() {
+  if (rosterRefreshPending) return;
+  rosterRefreshPending = true;
+  rosterRefreshT = setTimeout(() => {
+    rosterRefreshPending = false;
+    fetchRoster();
+  }, 400);
+}
+
+function visChange() {
+  if (document.hidden) {
+    offlinePresence();
+  } else {
+    beatPresence();
+    fetchRoster();
+  }
+}
+
+export function startPresenceLoop() {
+  if (rosterTimer) return;
+  beatPresence();
+  fetchRoster();
+  rosterTimer = setInterval(() => {
+    if (!document.hidden) beatPresence();
+  }, 8000);
+  document.addEventListener("visibilitychange", visChange);
+}
+
+export function stopPresenceLoop() {
+  if (rosterTimer) {
+    clearInterval(rosterTimer);
+    rosterTimer = null;
+  }
+  document.removeEventListener("visibilitychange", visChange);
+  if (rosterRefreshT) {
+    clearTimeout(rosterRefreshT);
+    rosterRefreshT = null;
+  }
+  rosterRefreshPending = false;
+  offlinePresence();
+  appState.roster = [];
 }
 
 export function startRealtime() {

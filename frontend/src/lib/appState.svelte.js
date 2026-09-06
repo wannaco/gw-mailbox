@@ -26,6 +26,8 @@ export const appState = $state({
   view: "list", // list (Gmail-style) | board (kanban)
   screen: "mail", // mail | settings
   presence: {}, // `${threadId}:${userId}` -> { thread, user, status, agentName, updatedAt }
+  roster: [], // online teammates: { actor, kind, name, email, status, thread, thread_subject, inbox }
+  myActivity: { thread: "", status: "online" }, // this client's presence state
   composerState: "idle", // idle | composing (this client)
   realtimeOn: false,
   toasts: [] // { id, kind: info|error|success, message }
@@ -116,6 +118,8 @@ export function resetSession() {
   appState.messages = {};
   appState.readCounts = {};
   appState.presence = {};
+  appState.roster = [];
+  appState.myActivity = { thread: "", status: "online" };
   appState.openThreadId = "";
   appState.activeInboxId = "";
   appState.realtimeOn = false;

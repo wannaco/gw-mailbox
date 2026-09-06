@@ -220,6 +220,121 @@ function handleDirectory(e) {
   e.json(200, { ok: true, users: users });
 }
 
+// ---------------------------------------------------------------------------
+// App-wide presence roster (see migration 1786000007). Heartbeat every ~8s
+// while the app is visible; delete on tab hide/close.
+// ---------------------------------------------------------------------------
+function actorRow(actor, threadId, status) {
+  // One row per actor, upserted server-side (rules close the API to clients).
+  let row = null;
+  try {
+    row = $app.findFirstRecordByFilter(
+      "agent_presence",
+      "actor = {:a}",
+      { a: actor.recordId || actor.id }
+    );
+  } catch (_) { /* not found */ }
+  if (!row) {
+    row = new Record($app.findCollectionByNameOrId("agent_presence"), {
+      actor: actor.recordId || actor.id,
+      kind: actor.isSuperuser ? "admin" : "agent",
+      name: actor.name || actor.email || "",
+      email: actor.email || "",
+      status: status || "online"
+    });
+  } else {
+    row.set("status", status || "online");
+  }
+  row.set("updated_at", new DateTime());
+
+  // Resolve current thread -> subject + inbox (subject only when permitted).
+  if (threadId) {
+    const t = h.safeFindById("threads", threadId);
+    if (t) {
+      const canView = actor.isSuperuser || h.canViewThreadForUser(t, actor.recordId || actor.id);
+      row.set("thread", threadId);
+      row.set("inbox", t.getString("inbox") || "");
+      row.set("thread_subject", canView ? (t.getString("subject") || "(no subject)") : "");
+    } else {
+      row.set("thread", "");
+      row.set("inbox", "");
+      row.set("thread_subject", "");
+    }
+  } else {
+    row.set("thread", "");
+    row.set("inbox", "");
+    row.set("thread_subject", "");
+  }
+  $app.save(row);
+  return row;
+}
+
+// Fresh roster (heartbeats within the last 25s) for every online teammate,
+// EXCLUDING the requesting actor (they already know their own state).
+function handlePresenceBeat(e) {
+  if (h.addCorsHeaders(e, "POST, OPTIONS")) return;
+  const actor = h.actorFromEvent(e);
+  if (!actor) return h.fail(e, 401, "unauthorized", "Auth required");
+
+  const body = readJsonBody(e);
+  const threadId = (body.thread || "").toString();
+  const status = ["viewing", "composing_reply", "online"].indexOf(body.status) !== -1
+    ? body.status
+    : threadId ? "viewing" : "online";
+
+  try {
+    actorRow(actor, threadId, status);
+  } catch (err) {
+    h.warn("presence beat failed", actor.email, (err && err.message) || err);
+  }
+  e.json(200, { ok: true });
+}
+
+function handlePresenceOffline(e) {
+  if (h.addCorsHeaders(e, "POST, OPTIONS")) return;
+  const actor = h.actorFromEvent(e);
+  if (!actor) return h.fail(e, 401, "unauthorized", "Auth required");
+
+  const key = actor.recordId || actor.id;
+  try {
+    const row = $app.findFirstRecordByFilter("agent_presence", "actor = {:a}", { a: key });
+    if (row) $app.delete(row);
+  } catch (_) { /* nothing to clear */ }
+  e.json(200, { ok: true });
+}
+
+function handleRoster(e) {
+  if (h.addCorsHeaders(e, "GET, OPTIONS")) return;
+  const actor = h.actorFromEvent(e);
+  if (!actor) return h.fail(e, 401, "unauthorized", "Auth required");
+
+  const cutoff = new DateTime().add(-25 * 1e9); // 25 seconds
+  // NOTE: this PB fork's signature is findRecordsByFilter(collection, filter,
+  // sort, limit, offset, params) — limit 0 = no limit, then offset 0.
+  const rows = $app.findRecordsByFilter(
+    "agent_presence",
+    "updated_at >= {:cutoff}",
+    "-updated_at",
+    0,
+    0,
+    { cutoff: cutoff.string() }
+  );
+  const me = actor.recordId || actor.id;
+  const roster = (rows || [])
+    .filter((r) => r.getString("actor") !== me)
+    .map((r) => ({
+      actor: r.getString("actor"),
+      kind: r.getString("kind"),
+      name: r.getString("name"),
+      email: r.getString("email"),
+      status: r.getString("status"),
+      thread: r.getString("thread"),
+      thread_subject: r.getString("thread_subject"),
+      inbox: r.getString("inbox")
+    }));
+  e.json(200, { ok: true, roster });
+}
+
 module.exports = {
   handlePresenceHeartbeat,
   handlePresenceRelease,
@@ -227,5 +342,8 @@ module.exports = {
   handleAddInternalNote,
   handleMoveThread,
   handleMe,
-  handleDirectory
+  handleDirectory,
+  handlePresenceBeat,
+  handlePresenceOffline,
+  handleRoster
 };

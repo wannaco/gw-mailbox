@@ -82,6 +82,28 @@ function runPresenceSweeper() {
       h.warn("presence sweep delete failed", row.id, err.message || err);
     }
   }
+
+  // App-wide roster rows refresh every ~8s; anything older than 45s is a dead
+  // tab/agent (offline is handled by the beat/offline routes; this is the
+  // safety net for crashes / lost connections).
+  const apCutoff = new DateTime().add(-45 * 1e9);
+  const staleAp = $app.findRecordsByFilter(
+    "agent_presence",
+    "updated_at <= {:cutoff}",
+    "",
+    0,
+    0,
+    { cutoff: apCutoff.string() }
+  );
+  for (const row of staleAp || []) {
+    try {
+      $app.delete(row);
+      removed++;
+    } catch (err) {
+      h.warn("roster sweep delete failed", row.id, err.message || err);
+    }
+  }
+
   if (removed > 0) h.log("presence sweeper removed", removed, "stale row(s)");
 }
 

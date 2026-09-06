@@ -1,5 +1,5 @@
 <script>
-  import { appState, toast, statusMeta, composingLock, agentInitials, STATUSES, markThreadRead } from "../lib/appState.svelte.js";
+  import { appState, toast, statusMeta, composingLock, agentInitials, userName, STATUSES, markThreadRead } from "../lib/appState.svelte.js";
   import * as api from "../lib/api.js";
   import { timeAgo, fmtDateTime, sanitizeHtml, isoLocalInput, avatarColor } from "../lib/utils.js";
 
@@ -51,6 +51,24 @@
     if (!tid || !list || !list.length) return;
     markThreadRead(tid);
   });
+
+  // Publish MY app-wide presence while this thread is open (roster heartbeat).
+  $effect(() => {
+    const tid = threadId;
+    if (!tid) return;
+    appState.myActivity = {
+      thread: tid,
+      status: isComposing ? "composing_reply" : "viewing"
+    };
+  });
+
+  // Who ELSE is currently on this thread (viewing or composing) — live via
+  // thread_presence snapshot + SSE. Excludes this client's own presence row.
+  const othersOnThread = $derived(
+    Object.values(appState.presence)
+      .filter((p) => p.thread === threadId && p.user !== appState.me?.id && p.user !== "")
+      .sort((a, b) => (a.status === b.status ? 0 : a.status === "composing_reply" ? -1 : 1))
+  );
 
   // ---- presence lifecycle: heartbeat while open, seed snapshot, release -----
   async function sendHeartbeat(status) {
@@ -421,6 +439,21 @@
     </div>
   </header>
 
+  {#if othersOnThread.length}
+    <div class="tv-presence">
+      {#each othersOnThread as p (p.user)}
+        <span class="pv-chip" title={`${p.agentName || userName(p.user)} — ${p.status === "composing_reply" ? "composing a reply" : "viewing this thread"}`}>
+          {#if p.status === "composing_reply"}
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.8 9.94l-3.75-3.75L3 17.25zM20.7 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+          {:else}
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4.5C7 4.5 2.7 7.6 1 12c1.7 4.4 6 7.5 11 7.5s9.3-3.1 11-7.5c-1.7-4.4-6-7.5-11-7.5zm0 12.5a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg>
+          {/if}
+          <span class="pv-name">{p.agentName || userName(p.user)}</span>
+        </span>
+      {/each}
+    </div>
+  {/if}
+
   {#if lock}
     <div class="lock-banner">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.8 9.94l-3.75-3.75L3 17.25zM20.7 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
@@ -662,6 +695,29 @@
     background: var(--m3-tertiary-container);
     color: var(--m3-on-tertiary-container);
     font: var(--m3-type-body-md);
+  }
+
+  .tv-presence {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    padding: 8px 16px 0;
+  }
+
+  .pv-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: var(--m3-secondary-container);
+    color: var(--m3-on-secondary-container);
+    font: var(--m3-type-label-sm);
+  }
+
+  .pv-name {
+    font-weight: 600;
   }
 
   .meet-panel {

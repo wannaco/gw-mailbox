@@ -10,6 +10,7 @@
   import Settings from "./components/Settings.svelte";
   import ThreadView from "./components/ThreadView.svelte";
   import Snackbar from "./components/Snackbar.svelte";
+  import PresenceRoster from "./components/PresenceRoster.svelte";
 
   let theme = $state("light");
 
@@ -32,6 +33,7 @@
     try {
       await api.loadSession();
       api.startRealtime();
+      api.startPresenceLoop();
     } catch {
       logout();
       toast("error", "Session expired — sign in again");
@@ -44,6 +46,7 @@
     localStorage.setItem("gwmb.token", res.token);
     await api.loadSession();
     api.startRealtime();
+    api.startPresenceLoop();
   }
 
   async function handleAdminLogin(email, password) {
@@ -52,10 +55,13 @@
     localStorage.setItem("gwmb.token", res.token);
     await api.adminSession();
     appState.screen = "mail";
+    api.startRealtime();
+    api.startPresenceLoop();
   }
 
   function logout() {
     api.stopRealtime();
+    api.stopPresenceLoop();
     resetSession();
     localStorage.removeItem("gwmb.token");
   }
@@ -102,6 +108,7 @@
           <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 17a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-12V3m0 18v-2M4.22 4.22l1.42 1.42m12.72 12.72 1.42 1.42M3 12h2m14 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
         {/if}
       </button>
+      <PresenceRoster />
       <div class="me">
         <span class="avatar" style="background:{avatarColor(appState.me?.name || appState.me?.email)}">
           {agentInitials(appState.me?.name || appState.me?.email)}
