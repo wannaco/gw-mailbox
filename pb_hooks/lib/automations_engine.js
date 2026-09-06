@@ -25,8 +25,14 @@ var CFG_DEFAULTS = {
 function cfgBool(rec, name, dflt) {
   try { return rec.getBool(name); } catch (_) { return dflt; }
 }
+// Honor 0 as a valid value (getInt(...) || dflt treats 0 as missing).
 function cfgNum(rec, name, dflt) {
-  try { return rec.getInt(name) || dflt; } catch (_) { return dflt; }
+  try {
+    const v = rec.get(name);
+    if (v === undefined || v === null || v === "") return dflt;
+    const n = Number(v);
+    return isNaN(n) ? dflt : n;
+  } catch (_) { return dflt; }
 }
 
 function readAutoConfig() {
