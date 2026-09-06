@@ -615,7 +615,7 @@ function handleReply(e) {
   }
 
   try {
-    const raw = buildReplyRaw(uid, toAddr, toName, ccEmails, thread.getString("subject"), text || h.htmlToPlain(safeHtml), safeHtml, atts, lastThreadMsgId(thread.id));
+    const raw = buildReplyRaw(uid, toAddr, toName, ccEmails, thread.getString("subject"), text || h.htmlToPlain(safeHtml), safeHtml, atts, lastThreadMsgId(thread.id, uid));
     const sent = h.googleRequest({
       url: h.GMAIL_BASE + "/users/" + encodeURIComponent(uid) + "/messages/send",
       method: "POST",
@@ -665,7 +665,7 @@ function handleReply(e) {
 function sendOutboundEmail(thread, uid, subject, bodyText) {
   const raw = buildReplyRaw(
     uid, thread.getString("customer_email"), thread.getString("customer_name"),
-    [], subject, bodyText, "", [], lastThreadMsgId(thread.id) // thread into the customer conversation
+    [], subject, bodyText, "", [], lastThreadMsgId(thread.id, uid) // thread into the customer conversation
   );
   const sent = h.googleRequest({
     url: h.GMAIL_BASE + "/users/" + encodeURIComponent(uid) + "/messages/send",
@@ -695,8 +695,13 @@ function sendOutboundEmail(thread, uid, subject, bodyText) {
 // The Message-ID header of the most recent synced message in a thread, used to
 // set In-Reply-To/References so replies & nudges thread into the customer's
 // conversation instead of arriving as a new email.
-function lastThreadMsgId(threadId) {
+// The Message-ID header of the last EXTERNAL (non-inbox) message in a thread —
+// i.e. the message we are actually replying to. Replying to OUR OWN sent copy
+// (from the mailbox address) does not thread in Gmail; the parent must be the
+// customer's / external last message.
+function lastThreadMsgId(threadId, inboxEmail) {
   try {
+    const want = String(inboxEmail || "").toLowerCase();
     const rows = $app.findRecordsByFilter(
       "messages",
       "thread = {:t} && gmail_msgid_header != ''",
@@ -704,8 +709,14 @@ function lastThreadMsgId(threadId) {
       { t: threadId }
     );
     if (rows && rows.length) {
-      const v = rows[0].getString("gmail_msgid_header");
-      return String(v || "").trim();
+      for (const r of rows) {
+        const sender = String(r.getString("sender_email") || "").toLowerCase();
+        // Only an external sender (customer/cc party) is a valid reply parent.
+        if (sender && sender !== want) {
+          const v = r.getString("gmail_msgid_header");
+          if (v) return String(v).trim();
+        }
+      }
     }
   } catch (err) {
     h.warn("lastThreadMsgId failed", (err && err.message) || err);
