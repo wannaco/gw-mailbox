@@ -190,6 +190,36 @@ function handleGetAutomations(e) {
   e.json(200, { ok: true, automation: readAutoConfig() });
 }
 
+// Manual "run now" (superuser) — processes every due waiting_customer ticket
+// and returns a per-thread summary (useful for testing + ops).
+function handleRunNow(e) {
+  if (h.addCorsHeaders(e, "POST, OPTIONS")) return;
+  const actor = h.actorFromEvent(e);
+  if (!actor || !actor.isSuperuser) return h.fail(e, 403, "admin_required", "Superuser access required");
+  const cfg = readAutoConfig();
+  const out = { ok: true, enabled: cfg.followup_enabled, processed: 0, actions: [], errors: [] };
+  try {
+    const rows = $app.findRecordsByFilter("threads", "status = {:s}", "", 0, 0, { s: "waiting_customer" }) || [];
+    for (const t of rows) {
+      try {
+        if (!threadDue(t, cfg)) { out.actions.push({ id: t.id, result: "not_due" }); continue; }
+        const before = t.getInt("followup_sent") || 0;
+        handleThread(t, cfg);
+        out.processed++;
+        const after = t.getInt("followup_sent") || 0;
+        const st = t.getString("status");
+        out.actions.push({ id: t.id, result: after > before ? "nudge_sent" : (st === "closed" ? "auto_closed" : "noop"), followup_sent: after, status: st });
+      } catch (err) {
+        out.errors.push({ id: t.id, error: (err && err.message) || String(err) });
+      }
+    }
+  } catch (err) {
+    out.ok = false;
+    out.errors.push({ scan: (err && err.message) || String(err) });
+  }
+  e.json(200, out);
+}
+
 function handleSaveAutomations(e) {
   if (h.addCorsHeaders(e, "POST, OPTIONS")) return;
   const actor = h.actorFromEvent(e);
@@ -206,5 +236,6 @@ module.exports = {
   resetFollowups,
   runFollowupAutomations,
   handleGetAutomations,
-  handleSaveAutomations
+  handleSaveAutomations,
+  handleRunNow
 };

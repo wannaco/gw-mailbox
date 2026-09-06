@@ -69,5 +69,9 @@ routerAdd("POST", "/api/mailbox/settings/automations", (e) => {
   require(__hooks + "/lib/automations_engine.js").handleSaveAutomations(e);
 }, $apis.requireSuperuserAuth());
 
+routerAdd("POST", "/api/mailbox/settings/automations/run", (e) => {
+  require(__hooks + "/lib/automations_engine.js").handleRunNow(e);
+}, $apis.requireSuperuserAuth());
+
 console.log("[gw-mailbox] settings.pb.js loaded — admin settings routes registered");
 
