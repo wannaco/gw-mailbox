@@ -10,7 +10,7 @@
     Object.values(appState.threads)
       .filter((t) => t.inbox === appState.activeInboxId)
       .filter((t) => {
-        if (appState.onlyMine && t.assigned_agent && t.assigned_agent !== appState.me?.id) return false;
+        if (appState.onlyMine && t.assigned_agent !== appState.me?.id) return false;
         if (!appState.search) return true;
         const q = appState.search.toLowerCase();
         return (
@@ -48,6 +48,7 @@
 <div class="list-wrap">
   <div class="toolbar">
     <span class="count">{rows.length} conversations</span>
+    <button class="md3-chip" class:is-active={appState.onlyMine} onclick={() => (appState.onlyMine = !appState.onlyMine)}>My tickets</button>
     {#each ["new", "in_progress", "waiting_customer", "escalated", "closed"] as st (st)}
       {#if (counts[st] || 0) > 0}
         <span class="mini-chip" style="--dot:{statusMeta(st).dot}">
@@ -100,7 +101,10 @@
             <span class="snippet-text">{t.snippet || ""}</span>
           </span>
           {#if assignedName(t)}
-            <span class="assignee-line">Assigned: {assignedName(t)}</span>
+            <span class="assignee-pill" class:mine={t.assigned_agent === appState.me?.id} title={`Assigned to ${assignedName(t)}`}>
+              <span class="ap-ava" style="background:{avatarColor(t.assigned_agent)}">{agentInitials(assignedName(t))}</span>
+              <span class="ap-name">{assignedName(t)}</span>
+            </span>
           {/if}
         </span>
 
@@ -290,9 +294,42 @@
     color: var(--m3-on-surface);
   }
 
-  .assignee-line {
+  .assignee-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    align-self: flex-start;
+    background: var(--m3-secondary-container);
+    color: var(--m3-on-secondary-container);
+    border-radius: 999px;
+    padding: 1px 9px 1px 3px;
     font: var(--m3-type-label-sm);
-    color: var(--m3-on-surface-variant-2);
+    font-weight: 500;
+    max-width: 100%;
+  }
+
+  .assignee-pill.mine {
+    background: var(--m3-primary-container);
+    color: var(--m3-on-primary-container);
+  }
+
+  .ap-ava {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    color: #fff;
+    font-size: 8px;
+    font-weight: 700;
+    flex: 0 0 auto;
+  }
+
+  .ap-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .right {

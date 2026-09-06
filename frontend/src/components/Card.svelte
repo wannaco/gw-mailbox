@@ -15,6 +15,8 @@
   const assigned = $derived(
     thread.assigned_agent ? appState.users[thread.assigned_agent]?.name || thread.assigned_agent : ""
   );
+  const assignedEmail = $derived(thread.assigned_agent ? appState.users[thread.assigned_agent]?.email || "" : "");
+  const isMine = $derived(thread.assigned_agent && thread.assigned_agent === appState.me?.id);
 
   function openCard() {
     if (!dragActive) open(thread.id);
@@ -67,7 +69,10 @@
       </span>
     {/if}
     {#if assigned}
-      <span class="assignee" title={`Assigned: ${assigned}`}>{agentInitials(assigned)}</span>
+      <span class="assignee" class:mine={isMine} title={`Assigned to ${assigned}`}>
+        <span class="a-ava" style="background:{avatarColor(assignedEmail || thread.assigned_agent)}">{agentInitials(assigned)}</span>
+        <span class="a-name">{assigned}</span>
+      </span>
     {/if}
   </div>
 </article>
@@ -194,13 +199,37 @@
   .assignee {
     display: inline-flex;
     align-items: center;
+    gap: 5px;
+    max-width: 118px;
+    background: var(--m3-secondary-container);
+    color: var(--m3-on-secondary-container);
+    border-radius: 999px;
+    padding: 1px 8px 1px 3px;
+    font: var(--m3-type-label-sm);
+    overflow: hidden;
+  }
+
+  .assignee.mine {
+    background: var(--m3-primary-container);
+    color: var(--m3-on-primary-container);
+  }
+
+  .a-ava {
+    display: inline-flex;
+    align-items: center;
     justify-content: center;
-    width: 20px;
-    height: 20px;
+    width: 16px;
+    height: 16px;
     border-radius: 50%;
-    background: var(--m3-secondary);
-    color: var(--m3-on-secondary);
-    font-size: 9px;
+    color: #fff;
+    font-size: 8px;
     font-weight: 700;
+    flex: 0 0 auto;
+  }
+
+  .a-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 </style>

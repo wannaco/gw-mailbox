@@ -12,7 +12,8 @@
     Object.values(appState.threads)
       .filter((t) => t.inbox === appState.activeInboxId)
       .filter((t) => {
-        if (appState.onlyMine && t.assigned_agent && t.assigned_agent !== appState.me?.id) return false;
+        // “My tickets”: only threads assigned to ME — unassigned excluded too.
+        if (appState.onlyMine && t.assigned_agent !== appState.me?.id) return false;
         if (!appState.search) return true;
         const q = appState.search.toLowerCase();
         return (
