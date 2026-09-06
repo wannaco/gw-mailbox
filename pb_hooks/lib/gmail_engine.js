@@ -57,7 +57,9 @@ function normalizeMessage(msg, inboxEmail) {
   const headers = msg.payload && msg.payload.headers ? msg.payload.headers : [];
   const subject = headerValue(headers, "Subject");
   const from = parseAddress(headerValue(headers, "From"));
-  const to = collectAddresses(headerValue(headers, "To") + "," + headerValue(headers, "Cc"));
+  const toList = collectAddresses(headerValue(headers, "To"));
+  const ccList = collectAddresses(headerValue(headers, "Cc"));
+  const to = toList.concat(ccList); // merged view (customer detection + legacy field)
   const bodies = extractBodies(msg.payload, null);
   const internalDate = parseInt(msg.internalDate || "0", 10);
   const iso = internalDate ? new Date(internalDate).toISOString() : "";
@@ -81,6 +83,8 @@ function normalizeMessage(msg, inboxEmail) {
     snippet: msg.snippet || "",
     from: from,
     to: to,
+    to_list: toList,
+    cc_list: ccList,
     customer: customer,
     body_plain: bodies.text || "",
     body_html: bodies.html || "",
@@ -181,6 +185,7 @@ function upsertThreadAndMessage(inboxRec, norm) {
     gmail_message_id: norm.gmail_message_id,
     sender_email: norm.from.email || "",
     recipient_emails: norm.to,
+    cc_emails: norm.cc_list || [],
     body_html: norm.body_html,
     body_plain: norm.body_plain,
     msg_date: dateStr || "",
@@ -468,14 +473,16 @@ function chunkB64(b64) {
   return out.join("\r\n");
 }
 
-function buildReplyRaw(uid, thread, text, htmlBody, attachments) {
+function buildReplyRaw(uid, toAddr, toName, ccList, subject, text, htmlBody, attachments) {
   attachments = attachments || [];
-  const to = thread.getString("customer_email");
-  const name = thread.getString("customer_name");
-  let subject = thread.getString("subject") || "(no subject)";
-  if (!/^re:\s*/i.test(subject)) subject = "Re: " + subject;
-  subject = sanitizeHeaderValue(subject);
-
+  const to = sanitizeHeaderValue(toAddr);
+  const name = sanitizeHeaderValue(toName || "");
+  const cc = (ccList || [])
+    .map((c) => String(c || "").trim())
+    .filter((c) => c && c.toLowerCase() !== String(uid).toLowerCase())
+    .filter((v, i, a) => a.indexOf(v) === i);
+  let subj = sanitizeHeaderValue(subject);
+  if (!/^re:\s*/i.test(subj)) subj = "Re: " + subj;
   const plain = String(text || "").trim();
   const hasHtml = !!(htmlBody && String(htmlBody).trim());
   const html = hasHtml
@@ -485,9 +492,10 @@ function buildReplyRaw(uid, thread, text, htmlBody, attachments) {
   const bMixed = "gwmb_m_" + $security.randomString(12);
   const bAlt = "gwmb_a_" + $security.randomString(12);
   let raw =
-    "To: " + (name ? sanitizeHeaderValue(name) + " <" + to + ">" : to) + "\r\n" +
+    "To: " + (name ? name + " <" + to + ">" : to) + "\r\n" +
     "From: " + sanitizeHeaderValue(uid) + "\r\n" +
-    "Subject: " + subject + "\r\n" +
+    (cc.length ? "Cc: " + cc.join(", ") + "\r\n" : "") +
+    "Subject: " + subj + "\r\n" +
     "MIME-Version: 1.0\r\n";
 
   const altPart =
@@ -541,9 +549,21 @@ function handleReply(e) {
   const inbox = h.safeFindById("inboxes", thread.getString("inbox"));
   const uid = inbox ? inbox.getString("email_address") : "";
   if (!uid) return h.fail(e, 400, "inbox_missing", "Thread inbox has no email_address");
-  if (!thread.getString("customer_email")) {
-    return h.fail(e, 400, "no_customer", "Thread has no customer_email to reply to");
+
+  // Reply target: explicit To (reply-all keeps the same customer as primary)
+  // else the thread customer. Cc is only included when the client asks
+  // (reply-all) and never contains our own inbox address.
+  const toAddr = (body.to || "").toString().trim() || thread.getString("customer_email");
+  const toName = thread.getString("customer_name");
+  if (!toAddr) {
+    return h.fail(e, 400, "no_customer", "Thread has no recipient to reply to");
   }
+  const ccRaw = Array.isArray(body.cc)
+    ? body.cc.map((c) => String(c || "").trim()).filter((c) => c)
+    : [];
+  const ccEmails = ccRaw.filter(
+    (c) => c.toLowerCase() !== String(uid).toLowerCase() && c.toLowerCase() !== String(toAddr).toLowerCase()
+  ).filter((v, i, a) => a.indexOf(v) === i);
 
   // Sanitize rich HTML server-side; decode attachments to base64 payloads.
   const safeHtml = htmlBody.trim() ? h.sanitizeHtmlBasic(htmlBody) : "";
@@ -564,7 +584,7 @@ function handleReply(e) {
   }
 
   try {
-    const raw = buildReplyRaw(uid, thread, text || h.htmlToPlain(safeHtml), safeHtml, atts);
+    const raw = buildReplyRaw(uid, toAddr, toName, ccEmails, thread.getString("subject"), text || h.htmlToPlain(safeHtml), safeHtml, atts);
     const sent = h.googleRequest({
       url: h.GMAIL_BASE + "/users/" + encodeURIComponent(uid) + "/messages/send",
       method: "POST",
@@ -579,7 +599,8 @@ function handleReply(e) {
       thread: thread.id,
       gmail_message_id: sent.id || "",
       sender_email: uid,
-      recipient_emails: [thread.getString("customer_email")],
+      recipient_emails: [toAddr].concat(ccEmails),
+      cc_emails: ccEmails,
       body_html: safeHtml || "",
       body_plain: text || h.htmlToPlain(safeHtml),
       msg_date: h.dateToPbString(new Date()),

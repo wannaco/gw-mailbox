@@ -161,6 +161,65 @@
     attachments = attachments.filter((_, idx) => idx !== i);
   }
 
+  // ---- recipients / reply-all ------------------------------------------------
+  let replyMode = $state("reply"); // reply | replyAll
+  let ccList = $state([]); // extra Cc recipients for this send
+  let newCc = $state("");
+  let openRecips = $state({}); // messageId -> bool (expand "to N")
+
+  const inboxEmail = $derived(
+    (appState.inboxes.find((i) => i.id === appState.activeInboxId) || {}).email_address || ""
+  );
+
+  // Split a message's stored recipients into To vs Cc for display.
+  function msgRecips(m) {
+    const all = Array.isArray(m.recipient_emails) ? m.recipient_emails : [];
+    const cc = Array.isArray(m.cc_emails) ? m.cc_emails.filter((c) => all.includes(c)) : [];
+    const to = all.filter((a) => !cc.includes(a));
+    return { to, cc };
+  }
+
+  function msgRecipCount(m) {
+    return (m.recipient_emails || []).length;
+  }
+
+  function toggleRecips(id) {
+    openRecips = { ...openRecips, [id]: !openRecips[id] };
+  }
+
+  // Candidates for "Reply all": everyone on the last inbound message except
+  // our own inbox address and the primary customer we're replying to.
+  function replyAllCandidates() {
+    const lastIn = msgsVisible
+      .filter((m) => !m.is_internal_note && m.sender_email && m.sender_email !== inboxEmail)
+      .slice(-1)[0];
+    if (!lastIn) return [];
+    const uid = inboxEmail.toLowerCase();
+    const cust = (thread?.customer_email || "").toLowerCase();
+    return (lastIn.recipient_emails || []).filter(
+      (r) => r.toLowerCase() !== uid && r.toLowerCase() !== cust
+    );
+  }
+
+  const canReplyAll = $derived(replyAllCandidates().length > 0);
+
+  function setReplyMode(mode) {
+    replyMode = mode;
+    if (mode === "replyAll") ccList = replyAllCandidates();
+    else ccList = [];
+  }
+
+  function removeCc(email) {
+    ccList = ccList.filter((c) => c.toLowerCase() !== String(email).toLowerCase());
+  }
+
+  function addCc() {
+    const v = newCc.trim().toLowerCase();
+    if (!v || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) return;
+    if (!ccList.some((c) => c.toLowerCase() === v)) ccList = [...ccList, v];
+    newCc = "";
+  }
+
   // ---- actions --------------------------------------------------------------
   async function sendReply() {
     const text = editorText().trim();
@@ -172,6 +231,7 @@
       await api.sendReply(threadId, {
         body: text,
         html: html,
+        cc: replyMode === "replyAll" ? ccList : [],
         attachments: attachments.map((a) => ({
           name: a.name,
           mime: a.mime,
@@ -182,6 +242,8 @@
       if (editorEl) editorEl.innerHTML = "";
       attachments = [];
       replyText = "";
+      ccList = [];
+      replyMode = "reply";
       await api.fetchMessages(threadId); // show the sent message immediately
     } catch (e) {
       toast("error", "Send failed: " + (e?.message || ""));
@@ -603,6 +665,22 @@
           <span class="sender">{m.is_internal_note ? "Internal note · " + (m.sender_email || "system") : m.sender_email}</span>
           <span class="when">{fmtDateTime(m.msg_date)}</span>
         </div>
+        {#if !m.is_internal_note && msgRecipCount(m) > 0}
+          {@const rp = msgRecips(m)}
+          <div class="msg-recip">
+            {#if openRecips[m.id]}
+              <div class="recip-lines">
+                <span><b>To:</b> {rp.to.join(", ") || "—"}</span>
+                {#if rp.cc.length}<span><b>Cc:</b> {rp.cc.join(", ")}</span>{/if}
+              </div>
+              <button type="button" class="recip-toggle" onclick={() => toggleRecips(m.id)}>hide</button>
+            {:else}
+              <button type="button" class="recip-toggle" onclick={() => toggleRecips(m.id)}>
+                to {msgRecipCount(m)}{m.sender_email && m.sender_email !== inboxEmail ? " · " : ""}{#if rp.cc.length}(+{rp.cc.length} cc){/if}
+              </button>
+            {/if}
+          </div>
+        {/if}
         {#if m.body_html && (!m.is_internal_note || !m.body_html.startsWith("<p><strong>Internal note"))}
           <!-- svelte-ignore a11y_no_raw_html -->
           <div class="html-body">{@html sanitizeHtml(m.body_html)}</div>
@@ -629,6 +707,31 @@
 
   <footer class="tv-composer">
     {#if tab === "conversation"}
+      <div class="send-recip">
+        <div class="sr-mode" role="group" aria-label="Reply mode">
+          <button type="button" class="sr-btn" class:on={replyMode === "reply"} onclick={() => setReplyMode("reply")}>Reply</button>
+          {#if canReplyAll}
+            <button type="button" class="sr-btn" class:on={replyMode === "replyAll"} onclick={() => setReplyMode("replyAll")} title="Reply to everyone on the last message">Reply all</button>
+          {/if}
+        </div>
+        {#if replyMode === "replyAll" && ccList.length}
+          <div class="sr-cc">
+            <span class="sr-cc-label">Cc:</span>
+            {#each ccList as c (c)}
+              <span class="cc-chip">
+                {c}
+                <button type="button" title="Remove" onclick={() => removeCc(c)}>✕</button>
+              </span>
+            {/each}
+          </div>
+        {/if}
+        {#if replyMode === "replyAll"}
+          <div class="sr-addcc">
+            <input type="text" placeholder="add cc…" bind:value={newCc} onkeydown={(ev) => { if (ev.key === "Enter") { ev.preventDefault(); addCc(); } }} />
+            <button type="button" class="md3-btn tonal small" onclick={addCc}>+</button>
+          </div>
+        {/if}
+      </div>
       <div class="rich-wrap" class:disabled={!!lock}>
         <div class="rich-toolbar" contenteditable="false">
           <button type="button" title="Bold" disabled={!!lock} onclick={() => exec("bold")}><b>B</b></button>
@@ -1239,5 +1342,175 @@
   .close {
     flex: 0 0 auto;
     margin-top: 2px;
+  }
+
+  /* ---- message recipients + reply-all composer ---- */
+  .msg-recip {
+    margin: 0 0 6px;
+    font: var(--m3-type-label-sm);
+    color: var(--m3-on-surface-variant);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .recip-toggle {
+    color: var(--m3-primary);
+    padding: 1px 6px;
+    border-radius: 999px;
+    font: var(--m3-type-label-sm);
+  }
+
+  .recip-toggle:hover {
+    background: var(--m3-row-hover);
+  }
+
+  .recip-lines {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .recip-lines span {
+    overflow-wrap: anywhere;
+  }
+
+  .send-recip {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: flex-start;
+    max-width: 230px;
+  }
+
+  .sr-mode {
+    display: inline-flex;
+    gap: 4px;
+    background: var(--m3-surface-container-high);
+    border-radius: 999px;
+    padding: 2px;
+  }
+
+  .sr-btn {
+    font: var(--m3-type-label-sm);
+    font-weight: 600;
+    color: var(--m3-on-surface-variant);
+    border-radius: 999px;
+    padding: 3px 10px;
+  }
+
+  .sr-btn.on {
+    background: var(--m3-primary);
+    color: var(--m3-on-primary);
+  }
+
+  .sr-cc {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
+  }
+
+  .sr-cc-label {
+    font: var(--m3-type-label-sm);
+    color: var(--m3-on-surface-variant);
+  }
+
+  .cc-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font: var(--m3-type-label-sm);
+    background: var(--m3-surface-container-high);
+    border-radius: 999px;
+    padding: 2px 8px;
+    max-width: 170px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .cc-chip button {
+    color: var(--m3-on-surface-variant);
+    font-size: 0.75rem;
+    flex: 0 0 auto;
+  }
+
+  .sr-addcc {
+    display: flex;
+    gap: 4px;
+    width: 100%;
+  }
+
+  .sr-addcc input {
+    flex: 1;
+    min-width: 0;
+    border: 1px solid var(--m3-outline-variant);
+    border-radius: var(--m3-shape-sm);
+    padding: 3px 8px;
+    font: var(--m3-type-label-sm);
+    background: var(--m3-surface-container-lowest);
+  }
+
+  @media (max-width: 720px) {
+    .tv-head {
+      padding: 8px 10px 6px;
+    }
+    .tv-title h3 {
+      font-size: 1.05rem;
+      line-height: 1.25;
+    }
+    .status-select,
+    .assignee-sel {
+      font-size: 0.8rem;
+      padding: 4px 8px 4px 18px;
+    }
+    .tv-actions {
+      gap: 4px;
+      margin-top: 6px;
+    }
+    .tv-actions .md3-chip,
+    .tv-actions .md3-btn {
+      font-size: 0.78rem;
+      padding: 4px 8px;
+    }
+    .tv-tags {
+      padding: 6px 10px 0;
+      gap: 4px;
+    }
+    .tgtag {
+      font-size: 0.7rem;
+      padding: 1px 7px;
+    }
+    .tv-presence {
+      padding: 6px 10px 0;
+    }
+    .pv-chip {
+      padding: 2px 7px;
+      font-size: 0.72rem;
+    }
+    .tv-body {
+      padding: 8px 10px;
+      gap: 8px;
+    }
+    article {
+      padding: 8px 9px;
+    }
+    .send-recip {
+      max-width: none;
+      flex: 1;
+    }
+    .rich-toolbar .hint {
+      display: none;
+    }
+    .tv-composer {
+      flex-wrap: wrap;
+      padding: 8px 10px;
+    }
+    .rich-toolbar button {
+      min-width: 26px;
+      height: 27px;
+    }
   }
 </style>

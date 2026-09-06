@@ -383,6 +383,10 @@
     max-width: 680px;
     margin: 0 auto;
     padding: 24px 20px 60px;
+    height: 100%;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    box-sizing: border-box;
   }
 
   h2 {
