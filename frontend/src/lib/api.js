@@ -195,6 +195,14 @@ export function setPollSync(enabled) {
   return pbRequest("POST", "/mailbox/settings/sync-mode", { enabled });
 }
 
+// ---- ticket automations (follow-up / auto-close) ----------------------------
+export async function getAutomations() {
+  return pbRequest("GET", "/mailbox/settings/automations");
+}
+export function saveAutomations(cfg) {
+  return pbRequest("POST", "/mailbox/settings/automations", { automation: cfg });
+}
+
 // ---- mailboxes (admin settings) --------------------------------------------
 export function listMailboxes() {
   return pbRequest("GET", "/mailbox/settings/inboxes");

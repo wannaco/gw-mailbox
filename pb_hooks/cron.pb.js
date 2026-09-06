@@ -15,6 +15,10 @@ cronAdd("gw-presence-sweeper", "* * * * *", () => {
   require(__hooks + "/lib/cron_engine.js").runPresenceSweeper();
 });
 
+cronAdd("gw-followup-automation", "* * * * *", () => {
+  require(__hooks + "/lib/automations_engine.js").runFollowupAutomations();
+});
+
 cronAdd("gw-mail-poll-sync", "* * * * *", () => {
   require(__hooks + "/lib/cron_engine.js").runMailPollSync();
 });

@@ -159,8 +159,15 @@ function upsertThreadAndMessage(inboxRec, norm) {
       thread.set("last_message_at", dateStr);
     }
     const isCustomerMail = norm.from.email && norm.from.email.toLowerCase() !== uid.toLowerCase();
-    if (isCustomerMail && thread.getString("status") === "closed") {
-      thread.set("status", "new"); // reopened by new customer activity
+    if (isCustomerMail) {
+      // A real customer reply means the follow-up/auto-close sequence starts
+      // fresh (or the ticket is reopened if it had been closed).
+      thread.set("followup_sent", 0);
+      thread.set("followup_next_at", "");
+      thread.set("followup_last_at", "");
+      if (thread.getString("status") === "closed") {
+        thread.set("status", "new"); // reopened by new customer activity
+      }
     }
     $app.save(thread);
     counters.threadsUpdated++;
@@ -627,12 +634,45 @@ function handleReply(e) {
   }
 }
 
+// Send an outbound email FROM the mailbox INTO the thread (follow-ups etc.) and
+// persist a local sent-message copy so the UI shows it immediately. Mirrors the
+// send path in handleReply.
+function sendOutboundEmail(thread, uid, subject, bodyText) {
+  const raw = buildReplyRaw(
+    uid, thread.getString("customer_email"), thread.getString("customer_name"),
+    [], subject, bodyText, "" // plain-text only; alt part supplies escaped html
+  );
+  const sent = h.googleRequest({
+    url: h.GMAIL_BASE + "/users/" + encodeURIComponent(uid) + "/messages/send",
+    method: "POST",
+    body: { raw: raw, threadId: thread.getString("gmail_thread_id") },
+    scopes: [h.GMAIL_SCOPE, h.GMAIL_SEND_SCOPE],
+    subject: uid
+  });
+  const msgColl = $app.findCollectionByNameOrId("messages");
+  const msg = new Record(msgColl, {
+    thread: thread.id,
+    gmail_message_id: sent.id || "",
+    sender_email: uid,
+    recipient_emails: [thread.getString("customer_email")],
+    cc_emails: [],
+    body_html: "",
+    body_plain: bodyText || "",
+    msg_date: h.dateToPbString(new Date()),
+    is_internal_note: false
+  });
+  $app.save(msg);
+  bumpThreadMessageCount(thread, 1);
+  return sent.id || "";
+}
+
 module.exports = {
   handleWebhookProbe,
   handleWebhookPush,
   handleWatch,
   handleSync,
   handleReply,
+  sendOutboundEmail,
   // exposed for tests / future cron replay
   syncInbox,
   findInboxByEmail

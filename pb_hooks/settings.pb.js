@@ -60,5 +60,14 @@ routerAdd("DELETE", "/api/mailbox/settings/canned/{id}", (e) => {
   require(__hooks + "/lib/settings_engine.js").handleDeleteCanned(e);
 }, $apis.requireSuperuserAuth());
 
+// Ticket automations (follow-up / auto-close) config
+routerAdd("GET", "/api/mailbox/settings/automations", (e) => {
+  require(__hooks + "/lib/automations_engine.js").handleGetAutomations(e);
+}, $apis.requireSuperuserAuth());
+
+routerAdd("POST", "/api/mailbox/settings/automations", (e) => {
+  require(__hooks + "/lib/automations_engine.js").handleSaveAutomations(e);
+}, $apis.requireSuperuserAuth());
+
 console.log("[gw-mailbox] settings.pb.js loaded — admin settings routes registered");
 

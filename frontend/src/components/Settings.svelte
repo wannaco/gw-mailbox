@@ -33,6 +33,18 @@
   let newCannedTitle = $state("");
   let newCannedBody = $state("");
 
+  // ticket automations (follow-up / auto-close)
+  let auto = $state({
+    followup_enabled: false,
+    followup_delay_h: 48,
+    followup_interval_h: 48,
+    followup_max: 2,
+    autoclose_enabled: true,
+    followup_subject: "",
+    followup_body: ""
+  });
+  let busyAuto = $state(false);
+
   const agentOptions = $derived(Object.values(appState.users));
 
   async function refresh() {
@@ -59,6 +71,10 @@
       try {
         const cr = await api.listCanned();
         canned = (cr.items || []).map((c) => ({ id: c.id, title: c.title, body: c.body }));
+      } catch (_) {}
+      try {
+        const a = await api.getAutomations();
+        if (a && a.automation) auto = Object.assign({}, auto, a.automation);
       } catch (_) {}
     }
   }
@@ -243,6 +259,19 @@
       canned = (cr.items || []).map((c) => ({ id: c.id, title: c.title, body: c.body }));
     } catch (e) {
       toast("error", e?.message || "Delete failed");
+    }
+  }
+
+  async function saveAuto() {
+    busyAuto = true;
+    try {
+      const r = await api.saveAutomations(auto);
+      auto = r.automation || auto;
+      toast("success", "Automation settings saved");
+    } catch (e) {
+      toast("error", e?.message || "Save failed");
+    } finally {
+      busyAuto = false;
     }
   }
 
@@ -431,6 +460,56 @@
       </div>
       <div class="row-btns">
         <button class="md3-btn primary small" onclick={addCanned} disabled={!newCannedTitle.trim() || !newCannedBody.trim()}>Add response</button>
+      </div>
+    </section>
+
+    <!-- Ticket automations -->
+    <section class="card">
+      <h3>Ticket automations</h3>
+      <p class="muted">When a ticket sits in <b>Waiting on customer</b>, auto-send follow-up nudges and optionally auto-close if the customer never replies.</p>
+
+      <label class="switch-row" style="margin:10px 0">
+        <span><strong>Enable follow-ups</strong>
+          <span class="muted">Send nudge emails to the customer after a delay.</span></span>
+        <input type="checkbox" bind:checked={auto.followup_enabled} />
+      </label>
+
+      <div class="auto-grid">
+        <label class="field-row">
+          <span>Wait before first follow-up (hours)</span>
+          <input type="number" min="0" bind:value={auto.followup_delay_h} />
+        </label>
+        <label class="field-row">
+          <span>Resend every (hours)</span>
+          <input type="number" min="0" bind:value={auto.followup_interval_h} />
+        </label>
+        <label class="field-row">
+          <span>Max follow-ups before close</span>
+          <input type="number" min="1" bind:value={auto.followup_max} />
+        </label>
+      </div>
+
+      <label class="switch-row" style="margin:8px 0 12px">
+        <span><strong>Auto-close after max follow-ups</strong>
+          <span class="muted">Close the ticket if the customer hasn't replied after the last nudge (assignee gets a notification).</span></span>
+        <input type="checkbox" bind:checked={auto.autoclose_enabled} />
+      </label>
+
+      <div style="margin:6px 0">
+        <label class="field-row">
+          <span>Email subject (optional — default is “Re: &lt;ticket subject&gt;”)</span>
+          <input type="text" bind:value={auto.followup_subject} placeholder="Re: {{subject}}" />
+        </label>
+      </div>
+      <label class="field-row">
+        <span>Follow-up body</span>
+        <textarea class="canned-body" rows="4" bind:value={auto.followup_body}
+          placeholder="Hi {{customer_name}}, just checking in…"></textarea>
+        <span class="hint">Placeholders: {'{{customer_name}}'} {'{{customer_email}}'} {'{{subject}}'} {'{{inbox}}'}</span>
+      </label>
+
+      <div class="row-btns" style="margin-top:10px">
+        <button class="md3-btn primary" onclick={saveAuto} disabled={busyAuto}>{busyAuto ? "Saving…" : "Save automation settings"}</button>
       </div>
     </section>
   {/if}
@@ -625,6 +704,12 @@
     font: var(--m3-type-body-sm);
     background: var(--m3-surface-container-lowest);
     resize: vertical;
+  }
+
+  .auto-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
   }
 
   code {

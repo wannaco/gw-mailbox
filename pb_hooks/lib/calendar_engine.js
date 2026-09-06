@@ -163,6 +163,9 @@ function handleBookMeet(e) {
 
     thread.set("calendar_event_id", created.id || "");
     thread.set("status", "waiting_customer");
+    try {
+      require(__hooks + "/lib/automations_engine.js").resetFollowups(thread);
+    } catch (_) { /* non-fatal */ }
     $app.save(thread);
 
     h.addInternalNote(threadId, actor, [

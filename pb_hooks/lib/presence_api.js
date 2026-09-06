@@ -152,7 +152,14 @@ function handleMoveThread(e) {
   }
 
   const thread = access.thread;
+  const prev = thread.getString("status");
   thread.set("status", status);
+  // Entering waiting_customer starts a FRESH follow-up/auto-close window.
+  if (status === "waiting_customer" && prev !== "waiting_customer") {
+    try {
+      require(__hooks + "/lib/automations_engine.js").resetFollowups(thread);
+    } catch (_) { /* non-fatal */ }
+  }
   if (body.assigned_agent !== undefined) {
     if (body.assigned_agent === "" || body.assigned_agent === null) thread.set("assigned_agent", "");
     else thread.set("assigned_agent", body.assigned_agent);
