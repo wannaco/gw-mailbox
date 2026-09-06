@@ -141,7 +141,10 @@
   .shell {
     display: flex;
     flex-direction: column;
+    height: 100vh;
     height: 100dvh;
+    overflow: hidden;
+    overscroll-behavior: none;
     background: var(--m3-surface);
   }
 
@@ -203,6 +206,7 @@
     flex: 1;
     display: flex;
     min-height: 0;
+    overflow: hidden;
   }
 
   main {

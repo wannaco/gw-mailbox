@@ -236,6 +236,7 @@
 </script>
 
 {#if thread}
+  <div class="tv-root">
   <header class="tv-head">
     <div class="tv-title-row">
       <button class="md3-icon-btn close" onclick={() => (appState.openThreadId = "")} title="Close">
@@ -390,10 +391,19 @@
       </button>
     {/if}
   </footer>
+  </div>
 {/if}
 
 <style>
+  .tv-root {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+  }
+
   .tv-head {
+    flex: 0 0 auto;
     padding: 12px 16px 8px;
     border-bottom: 1px solid var(--m3-outline-variant);
   }
@@ -563,6 +573,7 @@
   }
 
   .tv-composer {
+    flex: 0 0 auto;
     display: flex;
     gap: 8px;
     align-items: flex-end;
