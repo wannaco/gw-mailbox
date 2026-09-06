@@ -181,6 +181,13 @@ function addInternalNote(threadId, actor, bodyText, meta) {
   });
   $app.save(note);
   log("internal note added", threadId, "by", actor ? actor.name : "system");
+
+  // Notify @mentioned teammates + the thread's assignee (skip author).
+  try {
+    require(__hooks + "/lib/notifications_engine.js").notifyNoteMentions(thread, note, actor, bodyText || "");
+  } catch (err) {
+    warn("notification dispatch failed", (err && err.message) || err);
+  }
   return note;
 }
 

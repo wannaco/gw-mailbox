@@ -83,6 +83,7 @@ export async function adminSession() {
   appState.me = meRes.me; // superuser: isSuperuser true
   appState.inboxes = meRes.inboxes || [];
   loadDirectory();
+  loadNotifications();
 }
 
 export async function loadSession() {
@@ -97,6 +98,7 @@ export async function loadSession() {
   }
   await refreshThreads();
   loadDirectory();
+  loadNotifications();
 }
 
 export async function refreshThreads() {
@@ -232,6 +234,23 @@ export function deleteCannedRecord(id) {
   return pbRequest("DELETE", `/mailbox/settings/canned/${id}`);
 }
 
+// ---- notifications (mentions / notes) ---------------------------------------
+export async function loadNotifications() {
+  try {
+    const res = await pbRequest("GET", "/mailbox/notifications");
+    appState.notifications = res.notifications || [];
+    return appState.notifications;
+  } catch {
+    return appState.notifications || [];
+  }
+}
+export function markNotifRead(id) {
+  return pbRequest("POST", `/mailbox/notifications/${id}/read`, {});
+}
+export function markAllNotifsRead() {
+  return pbRequest("POST", "/mailbox/notifications/read-all", {});
+}
+
 // ---- realtime --------------------------------------------------------------
 
 let rtActive = false;
@@ -278,6 +297,9 @@ function upsertRecord(collection, data) {
     }
   } else if (collection === "agent_presence") {
     scheduleRosterRefresh();
+  } else if (collection === "notifications") {
+    // A notification that concerns me was created/updated -> refresh list.
+    loadNotifications();
   }
 }
 
@@ -316,6 +338,7 @@ async function rtLoop() {
         "messages",
         "thread_presence",
         "agent_presence",
+        "notifications",
         `thread_presence/${appState.openThreadId || "*"}`,
         `messages/${appState.openThreadId || "*"}`
       ];

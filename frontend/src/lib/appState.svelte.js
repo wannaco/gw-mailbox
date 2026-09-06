@@ -28,6 +28,8 @@ export const appState = $state({
   presence: {}, // `${threadId}:${userId}` -> { thread, user, status, agentName, updatedAt }
   roster: [], // online teammates: { actor, kind, name, email, status, thread, thread_subject, inbox }
   myActivity: { thread: "", status: "online" }, // this client's presence state
+  notifications: [], // { id, kind, thread, thread_subject, message_id, actor_name, body_snippet, read, created_at }
+  jumpToMessage: null, // message id to scroll/flash after opening a thread
   composerState: "idle", // idle | composing (this client)
   realtimeOn: false,
   toasts: [] // { id, kind: info|error|success, message }
@@ -83,6 +85,11 @@ export function loadReadCounts() {
   } catch (_) { /* ignore */ }
 }
 
+// Number of unread notifications for the current user.
+export function unreadNotifs() {
+  return (appState.notifications || []).filter((n) => !n.read).length;
+}
+
 export function presenceFor(threadId) {
   const out = [];
   for (const [k, p] of Object.entries(appState.presence)) {
@@ -119,6 +126,8 @@ export function resetSession() {
   appState.readCounts = {};
   appState.presence = {};
   appState.roster = [];
+  appState.notifications = [];
+  appState.jumpToMessage = null;
   appState.myActivity = { thread: "", status: "online" };
   appState.openThreadId = "";
   appState.activeInboxId = "";

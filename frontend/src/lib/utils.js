@@ -23,9 +23,17 @@ export function fmtDateTime(pbDate) {
   return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
+// Local wall-clock as a FULL RFC3339 string WITH the client's UTC offset
+// (e.g. 2026-09-06T15:00:00-06:00). Critical: without an offset the server
+// (running UTC) parses naive local times as UTC -> booked hours shift by the
+// timezone delta (the "selected hours are wrong" bug).
 export function isoLocalInput(dt) {
   const p = (n) => String(n).padStart(2, "0");
-  return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())}T${p(dt.getHours())}:${p(dt.getMinutes())}`;
+  const offMin = -dt.getTimezoneOffset(); // minutes EAST of UTC
+  const sign = offMin >= 0 ? "+" : "-";
+  const o = Math.abs(offMin);
+  const off = sign + p(Math.floor(o / 60)) + ":" + p(o % 60);
+  return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())}T${p(dt.getHours())}:${p(dt.getMinutes())}:${p(dt.getSeconds())}${off}`;
 }
 
 // Curated, muted avatar palette — no rainbow noise.

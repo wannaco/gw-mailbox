@@ -11,6 +11,7 @@
   import ThreadView from "./components/ThreadView.svelte";
   import Snackbar from "./components/Snackbar.svelte";
   import PresenceRoster from "./components/PresenceRoster.svelte";
+  import NotifBell from "./components/NotifBell.svelte";
 
   let theme = $state("light");
 
@@ -109,6 +110,7 @@
         {/if}
       </button>
       <PresenceRoster />
+      <NotifBell />
       <div class="me">
         <span class="avatar" style="background:{avatarColor(appState.me?.name || appState.me?.email)}">
           {agentInitials(appState.me?.name || appState.me?.email)}

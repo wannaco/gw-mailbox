@@ -51,6 +51,19 @@ routerAdd("POST", "/api/mailbox/threads/{id}/move", (e) => {
   require(__hooks + "/lib/presence_api.js").handleMoveThread(e);
 }, $apis.requireAuth());
 
+// --- Notifications (mentions / notes) ----------------------------------------
+routerAdd("GET", "/api/mailbox/notifications", (e) => {
+  require(__hooks + "/lib/notifications_engine.js").handleListNotifications(e);
+}, $apis.requireAuth());
+
+routerAdd("POST", "/api/mailbox/notifications/{id}/read", (e) => {
+  require(__hooks + "/lib/notifications_engine.js").handleMarkRead(e);
+}, $apis.requireAuth());
+
+routerAdd("POST", "/api/mailbox/notifications/read-all", (e) => {
+  require(__hooks + "/lib/notifications_engine.js").handleMarkAllRead(e);
+}, $apis.requireAuth());
+
 // ---------------------------------------------------------------------------
 // Record hooks — lifecycle normalization. These closures only use globals
 // ($os, DateTime, $app) and were verified to run from request contexts.

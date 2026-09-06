@@ -47,6 +47,19 @@
     const list = appState.messages[tid];
     if (!tid || !list || !list.length) return;
     markThreadRead(tid);
+    // jump to a specific message (from a notification) once the list is ready
+    const target = appState.jumpToMessage;
+    if (target) {
+      requestAnimationFrame(() => {
+        const el = document.querySelector(`[data-msg-id="${CSS.escape(target)}"]`);
+        if (el) {
+          el.scrollIntoView({ block: "center" });
+          el.classList.add("flash");
+          setTimeout(() => el.classList.remove("flash"), 1800);
+        }
+        appState.jumpToMessage = null;
+      });
+    }
   });
 
   // Publish MY app-wide presence while this thread is open (roster heartbeat).
@@ -992,7 +1005,7 @@
       <p class="muted center">{tab === "notes" ? "No internal notes yet." : "No messages yet."}</p>
     {/if}
     {#each msgsVisible as m (m.id)}
-      <article class:note={m.is_internal_note} class:external={!m.is_internal_note}>
+      <article class:note={m.is_internal_note} class:external={!m.is_internal_note} data-msg-id={m.id}>
         <div class="msg-head">
           <span class="avatar" style="background:{avatarColor(m.sender_email)}">
             {agentInitials(m.sender_email)}
@@ -1628,6 +1641,15 @@
   .mm-err {
     color: var(--m3-error);
     font: var(--m3-type-label-sm);
+  }
+
+  article.flash {
+    animation: notifflash 1.6s ease;
+  }
+
+  @keyframes notifflash {
+    0%, 60% { background: var(--m3-tertiary-container); }
+    100% { background: transparent; }
   }
 
   .muted {
