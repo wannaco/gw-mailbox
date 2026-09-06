@@ -172,14 +172,162 @@
     }
   }
 
+  // ---- note editor (rich, same toolbar as reply) + @mention ----------------
+  let noteEditorEl;
+  let noteFocused = $state(false);
+  let mention = $state(null); // { query }
+  let mentionIdx = $state(0);
+
+  function notePlain() {
+    return noteEditorEl ? (noteEditorEl.innerText || "").trim() : "";
+  }
+  function noteHtml() {
+    return noteEditorEl ? noteEditorEl.innerHTML : "";
+  }
+  function onNoteEditorInput() {
+    noteText = notePlain();
+    detectMention();
+  }
+  function execNote(cmd, val) {
+    if (!noteEditorEl) return;
+    noteEditorEl.focus();
+    try {
+      document.execCommand(cmd, false, val || null);
+    } catch (_) { /* ignored */ }
+    noteText = notePlain();
+    detectMention();
+  }
+  function addNoteLink() {
+    const url = window.prompt("Link URL (https://...)");
+    if (url) execNote("createLink", url);
+  }
+
+  function noteTextBeforeCaret() {
+    const el = noteEditorEl;
+    const sel = window.getSelection && window.getSelection();
+    if (!el || !sel || !sel.rangeCount) return "";
+    try {
+      const range = sel.getRangeAt(0).cloneRange();
+      range.selectNodeContents(el);
+      range.setEnd(sel.getRangeAt(0).startContainer, sel.getRangeAt(0).startOffset);
+      return range.toString();
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function detectMention() {
+    const before = noteTextBeforeCaret();
+    const m = before.match(/(?:^|\s)@([^\s@]*)$/);
+    if (m) {
+      // trigger as soon as '@' is typed (query may be empty)
+      if (mention && mention.query === m[1]) return; // no change
+      mention = { query: m[1] || "" };
+      mentionIdx = 0;
+    } else {
+      mention = null;
+    }
+  }
+
+  // Candidates derived reactively from the mention query + team directory.
+  const mentionItems = $derived(
+    mention
+      ? Object.values(appState.users)
+          .filter((u) => {
+            const q = (mention.query || "").toLowerCase();
+            if (!q) return true;
+            return (
+              (u.name || "").toLowerCase().includes(q) ||
+              (u.email || "").toLowerCase().includes(q)
+            );
+          })
+          .slice(0, 8)
+      : []
+  );
+
+  function mentionRangeFor(caretNode, caretOffset) {
+    // Selects the '@query' token ending at the caret (same text node walk).
+    const doc = document;
+    const range = doc.createRange();
+    let node = caretNode;
+    let off = caretOffset;
+    let guard = 0;
+    while (node && guard++ < 80) {
+      if (node.nodeType === 3) {
+        const txt = node.nodeValue || "";
+        let i = off;
+        while (i > 0) {
+          const ch = txt[i - 1];
+          if (ch === "@") {
+            range.setStart(node, i - 1);
+            range.setEnd(caretNode, caretOffset);
+            return range;
+          }
+          if (/\s/.test(ch)) return null;
+          i--;
+        }
+        node = node.previousSibling;
+        if (node) off = node.nodeType === 3 ? (node.nodeValue || "").length : 0;
+      } else if (node.nodeType === 1) {
+        node = node.lastChild;
+        if (node) off = node.nodeType === 3 ? (node.nodeValue || "").length : 0;
+      } else {
+        node = node.previousSibling;
+        if (node) off = node.nodeType === 3 ? (node.nodeValue || "").length : 0;
+      }
+    }
+    return null;
+  }
+
+  function pickMention(u) {
+    const sel = window.getSelection && window.getSelection();
+    if (sel && sel.rangeCount && noteEditorEl) {
+      const caret = sel.getRangeAt(0);
+      const range = mentionRangeFor(caret.startContainer, caret.startOffset);
+      if (range) {
+        caret.setStart(range.startContainer, range.startOffset);
+        caret.collapse(true);
+      }
+      // remove the typed token if we found it, then insert mention text
+      if (range) {
+        sel.removeAllRanges();
+        sel.addRange(range);
+        document.execCommand("insertText", false, "@" + (u.name || u.email) + " ");
+      } else {
+        document.execCommand("insertText", false, "@" + (u.name || u.email) + " ");
+      }
+    }
+    mention = null;
+    noteText = notePlain();
+    noteEditorEl && noteEditorEl.focus();
+  }
+
+  function onNoteEditorKeydown(ev) {
+    if (!mention || !mentionItems.length) return;
+    if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+      ev.preventDefault();
+      const len = mentionItems.length;
+      mentionIdx = (mentionIdx + (ev.key === "ArrowDown" ? 1 : -1) + len) % len;
+    } else if (ev.key === "Enter" || ev.key === "Tab") {
+      ev.preventDefault();
+      pickMention(mentionItems[mentionIdx]);
+    } else if (ev.key === "Escape") {
+      mention = null;
+    }
+  }
+
   async function submitNote() {
-    const text = noteText.trim();
-    if (!text || busyNote) return;
+    const text = notePlain();
+    const html = noteHtml();
+    if ((!text && !html.replace(/<[^>]*>/g, "").trim()) || busyNote) return;
     busyNote = true;
     try {
-      await api.addNote(threadId, text);
+      await api.addNote(threadId, { body: text, html });
       toast("success", "Internal note added");
+      if (noteEditorEl) noteEditorEl.innerHTML = "";
       noteText = "";
+      mention = null;
+      await api.fetchMessages(threadId); // show the note immediately
     } catch (e) {
       toast("error", e?.message || "Could not add note");
     } finally {
@@ -313,11 +461,9 @@
           <span class="sender">{m.is_internal_note ? "Internal note · " + (m.sender_email || "system") : m.sender_email}</span>
           <span class="when">{fmtDateTime(m.msg_date)}</span>
         </div>
-        {#if m.body_html && !m.is_internal_note}
+        {#if m.body_html && (!m.is_internal_note || !m.body_html.startsWith("<p><strong>Internal note"))}
           <!-- svelte-ignore a11y_no_raw_html -->
           <div class="html-body">{@html sanitizeHtml(m.body_html)}</div>
-        {:else if !m.is_internal_note}
-          <div class="text-body">{m.body_plain}</div>
         {:else}
           <div class="text-body">{m.body_plain}</div>
         {/if}
@@ -385,7 +531,58 @@
         Send
       </button>
     {:else}
-      <textarea bind:value={noteText} rows="2" placeholder="Add an internal note (@mention a teammate)…"></textarea>
+      <div class="note-editor">
+        {#if mentionItems.length}
+          <ul class="mention-menu" role="listbox">
+            {#each mentionItems as u, i (u.id)}
+              <li
+                role="option"
+                class:sel={i === mentionIdx}
+                onmousedown={(ev) => {
+                  ev.preventDefault();
+                  pickMention(u);
+                }}
+                onmouseenter={() => (mentionIdx = i)}
+              >
+                <span class="m-avatar" style="background:{avatarColor(u.email || u.name)}">{agentInitials(u.name || u.email)}</span>
+                <span class="m-name">{u.name || "—"}</span>
+                <span class="m-mail">{u.email}</span>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+        <div class="rich-toolbar" contenteditable="false">
+          <button type="button" title="Bold" onclick={() => execNote("bold")}><b>B</b></button>
+          <button type="button" title="Italic" onclick={() => execNote("italic")}><i>I</i></button>
+          <button type="button" title="Underline" onclick={() => execNote("underline")}><u>U</u></button>
+          <button type="button" title="Strikethrough" onclick={() => execNote("strikeThrough")}><s>S</s></button>
+          <span class="sep"></span>
+          <button type="button" title="Bulleted list" onclick={() => execNote("insertUnorderedList")}>•≡</button>
+          <button type="button" title="Numbered list" onclick={() => execNote("insertOrderedList")}>1≡</button>
+          <button type="button" title="Quote" onclick={() => execNote("formatBlock", "blockquote")}>❝</button>
+          <span class="sep"></span>
+          <button type="button" title="Insert link" onclick={addNoteLink}>🔗</button>
+          <button type="button" title="Clear formatting" onclick={() => execNote("removeFormat")}>✕</button>
+          <span class="spacer"></span>
+          <span class="hint">@ to mention a teammate</span>
+        </div>
+        <div
+          class="rich-body note-rich"
+          contenteditable
+          role="textbox"
+          aria-multiline="true"
+          data-placeholder="Add an internal note… (type @ to mention a teammate)"
+          bind:this={noteEditorEl}
+          oninput={onNoteEditorInput}
+          onkeydown={onNoteEditorKeydown}
+          onfocus={() => (noteFocused = true)}
+          onblur={() => {
+            noteFocused = false;
+            // allow click on the menu to land before closing
+            setTimeout(() => mention && (mention = null), 120);
+          }}
+        ></div>
+      </div>
       <button class="md3-btn tonal" onclick={submitNote} disabled={busyNote || !noteText.trim()}>
         Add note
       </button>
@@ -610,12 +807,12 @@
   }
 
   .rich-toolbar button {
-    min-width: 28px;
-    height: 28px;
-    padding: 0 6px;
+    min-width: 30px;
+    height: 30px;
+    padding: 0 7px;
     border-radius: 6px;
     color: var(--m3-on-surface-variant);
-    font-size: 0.85rem;
+    font-size: 0.95rem;
     line-height: 1;
   }
 
@@ -650,13 +847,91 @@
   }
 
   .rich-body {
-    min-height: 64px;
-    max-height: 240px;
+    min-height: 108px;
+    max-height: 260px;
     overflow-y: auto;
-    padding: 8px 10px;
+    padding: 10px 12px;
     outline: none;
+    font: var(--m3-type-body-lg);
+    font-size: 16px;
+    line-height: 1.55;
+    color: var(--m3-on-surface);
+  }
+
+  .note-rich {
+    min-height: 84px;
+    font-size: 15px;
+  }
+
+  .note-editor {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    border: 1px solid var(--m3-outline-variant);
+    border-radius: var(--m3-shape-sm);
+    background: var(--m3-surface-container-lowest);
+    overflow: visible;
+  }
+
+  .note-editor:focus-within {
+    border: 2px solid var(--m3-primary);
+  }
+
+  .mention-menu {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 100%;
+    margin: 0 0 4px;
+    list-style: none;
+    background: var(--m3-surface-container-high);
+    border: 1px solid var(--m3-outline-variant);
+    border-radius: var(--m3-shape-sm);
+    box-shadow: var(--m3-elev-3);
+    max-height: 220px;
+    overflow-y: auto;
+    z-index: 60;
+    padding: 4px;
+  }
+
+  .mention-menu li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+
+  .mention-menu li.sel {
+    background: var(--m3-primary-container);
+  }
+
+  .mention-menu .m-avatar {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+  }
+
+  .mention-menu .m-name {
     font: var(--m3-type-body-md);
-    line-height: 1.5;
+    color: var(--m3-on-surface);
+    flex: 0 0 auto;
+  }
+
+  .mention-menu .m-mail {
+    font: var(--m3-type-body-sm);
+    color: var(--m3-on-surface-variant);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .rich-body:empty::before {

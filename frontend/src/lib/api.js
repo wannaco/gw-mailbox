@@ -82,6 +82,7 @@ export async function adminSession() {
   loadReadCounts();
   appState.me = meRes.me; // superuser: isSuperuser true
   appState.inboxes = meRes.inboxes || [];
+  loadDirectory();
 }
 
 export async function loadSession() {
@@ -95,6 +96,7 @@ export async function loadSession() {
       appState.inboxes.find((i) => i.id === appState.activeInboxId)?.id || appState.inboxes[0].id;
   }
   await refreshThreads();
+  loadDirectory();
 }
 
 export async function refreshThreads() {
@@ -122,6 +124,18 @@ export async function fetchMessages(threadId) {
   appState.messages[threadId] = items;
 }
 
+// Team directory (id -> { id, name, email }) for @mentions + assignee names.
+export async function loadDirectory() {
+  try {
+    const res = await pbRequest("GET", "/mailbox/users");
+    const map = {};
+    for (const u of res.users || []) map[u.id] = { id: u.id, name: u.name, email: u.email };
+    appState.users = map;
+  } catch {
+    /* non-fatal */
+  }
+}
+
 // ---- presence / notes / moves / replies / meet -----------------------------
 
 export function heartbeat(threadId, status) {
@@ -133,7 +147,7 @@ export function releasePresence(threadId) {
 }
 
 export function addNote(threadId, body) {
-  return pbRequest("POST", `/mailbox/threads/${threadId}/notes`, { body });
+  return pbRequest("POST", `/mailbox/threads/${threadId}/notes`, body);
 }
 
 export function moveThread(threadId, status, extra = {}) {

@@ -25,31 +25,31 @@
 
 <style>
   .rail {
-    width: 96px;
-    flex: 0 0 96px;
+    width: 128px;
+    flex: 0 0 128px;
     background: var(--m3-surface);
     border-right: 1px solid var(--m3-outline-variant);
     display: flex;
     flex-direction: column;
+    overflow: hidden;
   }
 
   .rail-inner {
     flex: 1;
     display: flex;
     flex-direction: column;
-    align-items: center;
     gap: 6px;
-    padding: 12px 6px;
+    padding: 12px 10px;
     overflow-y: auto;
   }
 
   .rail-item {
-    width: 84px;
+    width: 100%;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 5px;
-    padding: 8px 4px;
+    gap: 6px;
+    padding: 10px 6px;
     border-radius: var(--m3-shape-md);
     color: var(--m3-on-surface-variant);
     transition: background 0.15s ease;
@@ -86,8 +86,9 @@
   .rail-label {
     font: var(--m3-type-label-sm);
     text-align: center;
-    line-height: 1.15;
-    max-width: 78px;
+    line-height: 1.2;
+    max-width: 108px;
+    width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -95,6 +96,10 @@
 
   .rail-item.active .rail-label {
     font-weight: 600;
+  }
+
+  .rail-item {
+    width: 84px;
   }
 
   .empty {

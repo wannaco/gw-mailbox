@@ -110,9 +110,13 @@ function handleAddInternalNote(e) {
 
   const body = readJsonBody(e);
   const text = (body.body || body.text || "").toString().trim();
-  if (!text) return h.fail(e, 400, "empty_note", "Note body is required");
+  const html = (body.html || "").toString().trim();
+  if (!text && !html) return h.fail(e, 400, "empty_note", "Note body is required");
 
-  const note = h.addInternalNote(threadId, actor, text, { source: "agent_note" });
+  const note = h.addInternalNote(threadId, actor, text, {
+    source: "agent_note",
+    html: html ? h.sanitizeHtmlBasic(html) : ""
+  });
   if (!note) return h.fail(e, 404, "thread_not_found", "Thread not found");
 
   e.json(200, {
@@ -123,6 +127,7 @@ function handleAddInternalNote(e) {
       sender_email: note.getString("sender_email"),
       body_plain: note.getString("body_plain"),
       is_internal_note: true,
+      msg_date: note.getString("msg_date"),
       created: note.getDateTime("created").string()
     }
   });
@@ -196,11 +201,29 @@ function handleMe(e) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// GET /api/mailbox/users — team directory for @mentions / assignee names
+// ---------------------------------------------------------------------------
+function handleDirectory(e) {
+  if (h.addCorsHeaders(e, "GET, OPTIONS")) return;
+  const actor = h.actorFromEvent(e);
+  if (!actor) return h.fail(e, 401, "unauthorized", "Auth required");
+
+  const rows = $app.findRecordsByFilter("users", "", "name", 0, 500);
+  const users = (rows || []).map((r) => ({
+    id: r.id,
+    name: r.getString("name"),
+    email: r.getString("email")
+  }));
+  e.json(200, { ok: true, users: users });
+}
+
 module.exports = {
   handlePresenceHeartbeat,
   handlePresenceRelease,
   handlePresenceSnapshot,
   handleAddInternalNote,
   handleMoveThread,
-  handleMe
+  handleMe,
+  handleDirectory
 };

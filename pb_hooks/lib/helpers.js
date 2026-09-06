@@ -157,12 +157,18 @@ function escapeHtml(s) {
 
 // Adds an internal note to a thread and bumps thread.updated so the SSE
 // stream wakes all open viewers. Does NOT touch last_message_at (that field
-// tracks real customer email traffic).
+// tracks real customer email traffic). Accepts rich HTML via meta.html (the
+// note body is sanitized server-side by the caller) — legacy plain-text notes
+// keep the old escaped single-paragraph markup.
 function addInternalNote(threadId, actor, bodyText, meta) {
+  meta = meta || {};
   const thread = safeFindById("threads", threadId);
   if (!thread) return null;
   const coll = $app.findCollectionByNameOrId("messages");
-  const html = "<p><strong>Internal note</strong></p><p>" + escapeHtml(bodyText) + "</p>";
+  const richHtml = String(meta.html || "").trim();
+  const html = richHtml
+    ? richHtml
+    : "<p><strong>Internal note</strong></p><p>" + escapeHtml(bodyText) + "</p>";
   const note = new Record(coll, {
     thread: threadId,
     sender_email: actor ? (actor.email || "system@mailbox.local") : "system@mailbox.local",
