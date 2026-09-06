@@ -395,6 +395,13 @@
       height: 26px;
       font-size: 10px;
     }
+    .me-menu {
+      /* anchor to the LEFT edge of the avatar so it can't clip off-screen */
+      right: auto;
+      left: 0;
+      min-width: 190px;
+      max-width: 88vw;
+    }
     .topbar .md3-icon-btn[title="Sign out"] {
       display: none; /* sign out via profile later; saves space */
     }
