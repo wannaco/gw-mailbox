@@ -168,6 +168,9 @@ export function availability(threadId, start, end, durationMin = 30) {
 export function bookMeet(threadId, payload) {
   return pbRequest("POST", `/mailbox/threads/${threadId}/meet`, payload);
 }
+export function cancelMeet(threadId) {
+  return pbRequest("POST", `/mailbox/threads/${threadId}/cancel-meet`);
+}
 
 
 // ---- admin settings -----------------------------------------------------

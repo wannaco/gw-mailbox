@@ -17,9 +17,6 @@
   let busyNote = $state(false);
   let focused = $state(false);
   let meetOpen = $state(false);
-  let slots = $state([]);
-  let loadingSlots = $state(false);
-  let slotMsg = $state("");
 
   const messages = $derived(
     (appState.messages[threadId] || [])
@@ -637,38 +634,139 @@
     }
   }
 
-  async function loadSlots() {
-    meetOpen = !meetOpen;
-    if (!meetOpen) return;
-    slots = [];
-    slotMsg = "";
-    loadingSlots = true;
+  // ---- meet scheduler (calendar modal) --------------------------------------
+  let meetDays = $state([]); // Date[] — next 7 days
+  let meetIdx = $state(0);
+  let busyList = $state([]); // [{start,end}]
+  let busyLoading = $state(false);
+  let busyMsg = $state("");
+  let selStart = $state(null); // Date | null
+  let meetDur = $state(30);
+  let meetSummary = $state("");
+  let meetNote = $state("");
+  let meeting = $state(false);
+  let meetErr = $state("");
+  const CELL_START = 8 * 60; // 08:00
+  const CELL_END = 19 * 60; // 19:00
+  const CELL_STEP = 30;
+
+  function dayStart(d) {
+    const x = new Date(d);
+    x.setHours(0, 0, 0, 0);
+    return x;
+  }
+
+  function dayCells(d) {
+    const out = [];
+    const base = dayStart(d).getTime();
+    for (let m = CELL_START; m < CELL_END; m += CELL_STEP) out.push(new Date(base + m * 60000));
+    return out;
+  }
+
+  function cellBusy(d) {
+    const s = d.getTime();
+    const e = s + CELL_STEP * 60000;
+    return busyList.some((b) => new Date(b.start).getTime() < e && new Date(b.end).getTime() > s);
+  }
+  function cellPast(d) {
+    return d.getTime() < Date.now() - 60000;
+  }
+  function inSelection(d) {
+    if (!selStart) return false;
+    const s = selStart.getTime();
+    const e = s + meetDur * 60000;
+    const t = d.getTime();
+    return t >= s && t < e;
+  }
+
+  const selectedDay = $derived(meetDays[meetIdx]);
+  const selectedCells = $derived(selectedDay ? dayCells(selectedDay) : []);
+
+  function fmtDayLabel(d, withYear) {
+    return d.toLocaleDateString([], withYear
+      ? { weekday: "short", month: "short", day: "numeric" }
+      : { weekday: "short", day: "numeric" });
+  }
+  function fmtCellTime(d) {
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+
+  async function openMeet() {
+    meetOpen = true;
+    meetIdx = 0;
+    busyList = [];
+    busyMsg = "";
+    busyLoading = true;
+    selStart = null;
+    meetErr = "";
+    meetSummary = thread.subject || "Support meeting";
+    meetNote = "";
+    const today = new Date();
+    meetDays = [];
+    for (let i = 0; i < 7; i++) meetDays.push(new Date(today.getFullYear(), today.getMonth(), today.getDate() + i));
     try {
-      const start = new Date();
-      start.setDate(start.getDate() + 1);
-      start.setHours(9, 0, 0, 0);
-      const end = new Date(start.getTime() + 9 * 60 * 60 * 1000);
-      const res = await api.availability(threadId, isoLocalInput(start), isoLocalInput(end), 30);
-      slots = (res.suggestedSlots || []).slice(0, 8);
-      if (!slots.length) slotMsg = "No free 30-min slots tomorrow in 09:00–18:00.";
+      const start = dayStart(today);
+      const end = new Date(start.getTime() + 7 * 24 * 3600 * 1000);
+      const res = await api.availability(threadId, isoLocalInput(start), isoLocalInput(end), 15);
+      if (res && res.ok === false) {
+        busyMsg = res.message || "Calendar unavailable.";
+      } else {
+        busyList = (res?.busy || []).map((b) => ({ start: b.start, end: b.end }));
+      }
     } catch (e) {
-      slotMsg = e?.message || "Calendar unavailable (Google credentials?).";
+      busyMsg = e?.message || "Calendar unavailable (Google credentials?).";
     } finally {
-      loadingSlots = false;
+      busyLoading = false;
     }
   }
 
-  async function book(slot) {
+  function closeMeet() {
+    meetOpen = false;
+  }
+
+  function clickCell(d) {
+    if (cellBusy(d) || cellPast(d)) return;
+    selStart = d;
+    meetErr = "";
+  }
+
+  async function createMeeting() {
+    if (!selStart) {
+      meetErr = "Pick a free time slot first.";
+      return;
+    }
+    meeting = true;
+    meetErr = "";
     try {
+      const end = new Date(selStart.getTime() + meetDur * 60000);
       const res = await api.bookMeet(threadId, {
-        start: slot.start,
-        end: slot.end,
-        summary: thread.subject || "Support meeting"
+        start: isoLocalInput(selStart),
+        end: isoLocalInput(end),
+        summary: meetSummary.trim() || thread.subject || "Support meeting",
+        description: meetNote.trim() || undefined
       });
-      toast("success", "Meet booked — " + (res.hangoutLink || "check the note"));
-      meetOpen = false;
+      if (res && res.ok === false) {
+        meetErr = res.message || "Booking failed.";
+      } else {
+        toast("success", "Meet booked — " + (res.hangoutLink || "check the note"));
+        meetOpen = false;
+        await api.fetchMessages(threadId);
+      }
     } catch (e) {
-      toast("error", "Booking failed: " + (e?.message || ""));
+      meetErr = e?.message || "Booking failed.";
+    } finally {
+      meeting = false;
+    }
+  }
+
+  async function cancelLinkedMeet() {
+    if (!confirm("Cancel the linked Google Meet?")) return;
+    try {
+      await api.cancelMeet(threadId);
+      thread.calendar_event_id = "";
+      toast("success", "Meeting cancelled");
+    } catch (e) {
+      toast("error", e?.message || "Cancel failed");
     }
   }
 </script>
@@ -738,7 +836,7 @@
         Internal notes
       </button>
       <div class="spacer"></div>
-      <button class="md3-btn tonal small" onclick={loadSlots} disabled={!!lock}>
+      <button class="md3-btn tonal small" onclick={openMeet} disabled={!!lock}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M15 10.5 21 7v10l-6-3.5V18a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v4.5z"/></svg>
         Book Meet
       </button>
@@ -768,22 +866,102 @@
   {/if}
 
   {#if meetOpen}
-    <div class="meet-panel">
-      <h4>Book a Google Meet</h4>
-      {#if loadingSlots}
-        <p class="muted">Checking availability…</p>
-      {:else if slotMsg}
-        <p class="muted">{slotMsg}</p>
-      {:else}
-        <p class="muted">Free 30-min slots tomorrow (inbox calendar):</p>
-        <div class="slots">
-          {#each slots as s (s.start)}
-            <button class="md3-chip" onclick={() => book(s)}>
-              {new Date(s.start).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} → {new Date(s.end).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-            </button>
-          {/each}
+    <div class="meet-overlay" onclick={(e) => { if (e.target === e.currentTarget) closeMeet(); }}>
+      <div class="meet-modal" role="dialog" aria-modal="true" aria-label="Book a Google Meet">
+        <header class="mm-head">
+          <h3>Book a Google Meet</h3>
+          <button class="md3-icon-btn" title="Close" onclick={closeMeet}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M18.3 5.7 12 12l6.3 6.3-1.4 1.4L10.6 13.4 4.3 19.7l-1.4-1.4L9.2 12 2.9 5.7l1.4-1.4 6.3 6.3 6.3-6.3z"/></svg>
+          </button>
+        </header>
+
+        {#if thread.calendar_event_id}
+          <div class="mm-linked">
+            <span>A meeting is already linked to this thread.</span>
+            <button class="md3-btn tonal small" onclick={cancelLinkedMeet}>Cancel meeting</button>
+          </div>
+        {/if}
+
+        <div class="mm-scroll">
+          {#if busyLoading}
+            <p class="muted center">Checking availability…</p>
+          {:else}
+            {#if busyMsg}
+              <p class="muted" style="color:var(--m3-error)">{busyMsg}</p>
+            {/if}
+
+            <div class="mm-days">
+              {#each meetDays as d, i (d.getTime())}
+                <button
+                  type="button"
+                  class="mm-day"
+                  class:on={i === meetIdx}
+                  onclick={() => { meetIdx = i; selStart = null; meetErr = ""; }}
+                >
+                  <span class="mm-dw">{d.toLocaleDateString([], { weekday: "short" })}</span>
+                  <span class="mm-dn">{d.getDate()}</span>
+                  <span class="mm-dm">{d.toLocaleDateString([], { month: "short" })}</span>
+                </button>
+              {/each}
+            </div>
+
+            <div class="mm-grid-wrap">
+              <div class="mm-grid">
+                {#each selectedCells as c (c.getTime())}
+                  {@const busy = cellBusy(c)}
+                  {@const past = cellPast(c)}
+                  {@const sel = inSelection(c)}
+                  {@const selStartCell = selStart && c.getTime() === selStart.getTime()}
+                  <button
+                    type="button"
+                    class="mm-cell"
+                    class:busy={busy}
+                    class:past={past}
+                    class:sel={sel}
+                    class:selstart={selStartCell}
+                    disabled={busy || past}
+                    onclick={() => clickCell(c)}
+                    title={busy ? "Busy" : past ? "In the past" : fmtCellTime(c)}
+                  >
+                    <span class="mm-t">{fmtCellTime(c)}</span>
+                    {#if sel}<span class="mm-dur">{meetDur}m</span>{/if}
+                  </button>
+                {/each}
+              </div>
+              <div class="mm-legend">
+                <span><i class="lg free"></i>Free</span>
+                <span><i class="lg busy"></i>Busy</span>
+                <span><i class="lg sel"></i>Selected</span>
+              </div>
+            </div>
+
+            <div class="mm-dur">
+              <span class="mm-lbl">Duration</span>
+              <div class="mm-seg" role="group">
+                {#each [15, 30, 45, 60] as d (d)}
+                  <button type="button" class:on={meetDur === d} onclick={() => { meetDur = d; meetErr = ""; }}>{d}m</button>
+                {/each}
+              </div>
+            </div>
+          {/if}
         </div>
-      {/if}
+
+        <footer class="mm-foot">
+          <div class="mm-fields">
+            <input type="text" class="mm-summary" bind:value={meetSummary} placeholder="Summary (subject)" />
+            <input type="text" class="mm-note" bind:value={meetNote} placeholder="Description / agenda (optional)" />
+          </div>
+          {#if meetErr}<p class="mm-err">{meetErr}</p>{/if}
+          <div class="mm-actions">
+            <span class="mm-with muted">With: {thread.customer_name || thread.customer_email || "—"}</span>
+            <span class="spacer"></span>
+            <button class="md3-btn tonal" onclick={closeMeet} disabled={meeting}>Cancel</button>
+            <button class="md3-btn primary" onclick={createMeeting} disabled={meeting || busyLoading}>
+              {meeting ? "Creating…" : "Create meeting"}
+            </button>
+          </div>
+        </footer>
+      </div>
     </div>
   {/if}
 
@@ -1177,16 +1355,257 @@
     font-weight: 600;
   }
 
-  .meet-panel {
-    margin: 10px 16px 0;
-    padding: 12px 14px;
-    border-radius: var(--m3-shape-md);
-    background: var(--m3-surface-container-high);
+  .meet-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    background: var(--m3-scrim);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 14px;
   }
 
-  .meet-panel h4 {
-    font: var(--m3-type-title-sm);
-    margin-bottom: 6px;
+  .meet-modal {
+    width: min(680px, 96vw);
+    max-height: 92vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--m3-surface-container-low);
+    border: 1px solid var(--m3-outline-variant);
+    border-radius: var(--m3-shape-lg);
+    box-shadow: var(--m3-elev-4);
+    overflow: hidden;
+  }
+
+  .mm-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid var(--m3-outline-variant);
+  }
+
+  .mm-head h3 {
+    font: var(--m3-type-title-md);
+  }
+
+  .mm-linked {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin: 10px 16px 0;
+    padding: 8px 12px;
+    border-radius: var(--m3-shape-sm);
+    background: var(--m3-secondary-container);
+    color: var(--m3-on-secondary-container);
+    font: var(--m3-type-body-sm);
+  }
+
+  .mm-scroll {
+    padding: 12px 16px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .mm-days {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .mm-day {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    min-width: 58px;
+    padding: 7px 8px;
+    border-radius: var(--m3-shape-md);
+    color: var(--m3-on-surface-variant);
+    border: 1px solid transparent;
+  }
+
+  .mm-day.on {
+    background: var(--m3-primary-container);
+    color: var(--m3-on-primary-container);
+    font-weight: 600;
+  }
+
+  .mm-dw {
+    font: var(--m3-type-label-sm);
+    text-transform: uppercase;
+  }
+  .mm-dn {
+    font: var(--m3-type-title-lg);
+    font-weight: 700;
+  }
+  .mm-dm {
+    font: var(--m3-type-label-sm);
+  }
+
+  .mm-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(86px, 1fr));
+    gap: 6px;
+    max-height: 260px;
+    overflow-y: auto;
+    padding: 2px;
+  }
+
+  .mm-cell {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+    border: 1px solid var(--m3-outline-variant);
+    border-radius: var(--m3-shape-sm);
+    padding: 5px 7px;
+    background: var(--m3-surface-container-lowest);
+    color: var(--m3-on-surface);
+    font: var(--m3-type-label-sm);
+    cursor: pointer;
+  }
+
+  .mm-cell:hover:not(:disabled) {
+    background: var(--m3-primary-container);
+  }
+
+  .mm-cell.busy,
+  .mm-cell.past {
+    background: repeating-linear-gradient(-45deg, var(--m3-surface-container-high), var(--m3-surface-container-high) 5px, var(--m3-surface-container) 5px, var(--m3-surface-container) 10px);
+    color: var(--m3-on-surface-variant-2);
+    text-decoration: line-through;
+    cursor: not-allowed;
+    opacity: 0.7;
+  }
+
+  .mm-cell.sel {
+    background: var(--m3-primary);
+    color: var(--m3-on-primary);
+    border-color: var(--m3-primary);
+  }
+
+  .mm-cell.selstart {
+    outline: 2px solid var(--m3-on-primary);
+    outline-offset: -2px;
+  }
+
+  .mm-dur {
+    font: var(--m3-type-label-sm);
+    font-weight: 700;
+  }
+
+  .mm-legend {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    font: var(--m3-type-label-sm);
+    color: var(--m3-on-surface-variant);
+  }
+
+  .mm-legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .mm-legend i {
+    width: 11px;
+    height: 11px;
+    border-radius: 3px;
+    display: inline-block;
+  }
+  .lg.free {
+    background: var(--m3-surface-container-lowest);
+    border: 1px solid var(--m3-outline-variant);
+  }
+  .lg.busy {
+    background: var(--m3-surface-container-high);
+  }
+  .lg.sel {
+    background: var(--m3-primary);
+  }
+
+  .mm-dur-row,
+  .mm-dur {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .mm-lbl {
+    font: var(--m3-type-label-md);
+    color: var(--m3-on-surface-variant);
+  }
+
+  .mm-seg {
+    display: inline-flex;
+    gap: 2px;
+    background: var(--m3-surface-container-high);
+    border-radius: 999px;
+    padding: 2px;
+  }
+
+  .mm-seg button {
+    font: var(--m3-type-label-sm);
+    font-weight: 600;
+    color: var(--m3-on-surface-variant);
+    border-radius: 999px;
+    padding: 3px 10px;
+  }
+
+  .mm-seg button.on {
+    background: var(--m3-primary);
+    color: var(--m3-on-primary);
+  }
+
+  .mm-foot {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 16px;
+    border-top: 1px solid var(--m3-outline-variant);
+    background: var(--m3-surface-container-lowest);
+  }
+
+  .mm-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .mm-summary,
+  .mm-note {
+    border: 1px solid var(--m3-outline-variant);
+    border-radius: var(--m3-shape-sm);
+    padding: 8px 10px;
+    font: var(--m3-type-body-sm);
+    background: var(--m3-surface-container-lowest);
+  }
+
+  .mm-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .mm-actions .spacer {
+    flex: 1;
+  }
+
+  .mm-with {
+    font: var(--m3-type-label-sm);
+  }
+
+  .mm-err {
+    color: var(--m3-error);
+    font: var(--m3-type-label-sm);
   }
 
   .muted {
@@ -1197,13 +1616,6 @@
   .center {
     text-align: center;
     padding: 22px 0;
-  }
-
-  .slots {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-top: 6px;
   }
 
   .tv-body {
