@@ -14,7 +14,7 @@ const CAL_READ_SCOPE = "https://www.googleapis.com/auth/calendar.readonly"; // f
 const GMAIL_BASE   = "https://gmail.googleapis.com/gmail/v1";
 const CAL_BASE     = "https://www.googleapis.com/calendar/v3";
 
-const THREAD_STATUSES = ["new", "in_progress", "waiting_customer", "escalated", "closed"];
+const THREAD_STATUSES = ["new", "in_progress", "waiting_customer", "escalated", "closed", "spam", "archived"];
 
 const log = (...args) => console.log("[gw-mailbox]", ...args);
 const warn = (...args) => console.warn("[gw-mailbox]", ...args);

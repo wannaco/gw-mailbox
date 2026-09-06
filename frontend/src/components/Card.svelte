@@ -2,7 +2,7 @@
   import { appState, agentInitials, slaOf } from "../lib/appState.svelte.js";
   import { timeAgo, avatarColor } from "../lib/utils.js";
 
-  let { thread, open } = $props();
+  let { thread, open, selectable, selected, onToggleSelect } = $props();
 
   let dragActive = $state(false);
 
@@ -20,7 +20,11 @@
   const sla = $derived(slaOf(thread));
 
   function openCard() {
-    if (!dragActive) open(thread.id);
+    if (selectable) {
+      onToggleSelect?.(thread.id);
+    } else if (!dragActive) {
+      open(thread.id);
+    }
   }
 </script>
 
@@ -28,12 +32,16 @@
   class="card"
   class:composing={someoneComposing}
   class:overdue={sla?.kind === "breached"}
+  class:sel={selected}
+  class:selmode={selectable}
   class:dragging={dragActive}
   role="button"
   tabindex="0"
   aria-label={thread.subject || "Thread"}
-  draggable="true"
+  aria-pressed={selectable ? !!selected : undefined}
+  draggable={!selectable}
   ondragstart={(e) => {
+    if (selectable) return;
     e.dataTransfer.setData("text/plain", thread.id);
     e.dataTransfer.effectAllowed = "move";
     dragActive = true;
@@ -47,6 +55,13 @@
     }
   }}
 >
+  {#if selectable}
+    <span class="card-ck" class:on={selected}>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+        {#if selected}<path d="M4 12.5 10 18 20 6"/>{:else}<rect x="3" y="3" width="18" height="18" rx="5"/>{/if}
+      </svg>
+    </span>
+  {/if}
   <div class="top">
     <h4 class="subject">{thread.subject || "(no subject)"}</h4>
     {#if (thread.message_count || 0) > 0}
@@ -84,6 +99,7 @@
 
 <style>
   .card {
+    position: relative;
     background: var(--m3-surface-container-low);
     border-radius: var(--m3-shape-md);
     box-shadow: var(--m3-elev-1);
@@ -113,6 +129,31 @@
 
   .card.overdue {
     border-left-color: #ba1a1a;
+  }
+
+  .card.selmode {
+    cursor: pointer;
+  }
+  .card.sel {
+    outline: 2px solid var(--m3-primary);
+    background: var(--m3-primary-container);
+  }
+  .card-ck {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    background: var(--m3-on-surface-variant);
+    z-index: 2;
+  }
+  .card-ck.on {
+    background: var(--m3-primary);
   }
 
   .top {

@@ -165,6 +165,10 @@ export function moveThread(threadId, status, extra = {}) {
   return pbRequest("POST", `/mailbox/threads/${threadId}/move`, { status, ...extra });
 }
 
+export function bulkThreads(ids, action) {
+  return pbRequest("POST", "/mailbox/threads/bulk", { ids, action });
+}
+
 export function sendReply(threadId, body) {
   // Send the payload AS the request body — the server expects
   // { body, html, attachments } at the top level, not nested under "body".

@@ -51,6 +51,10 @@ routerAdd("POST", "/api/mailbox/threads/{id}/move", (e) => {
   require(__hooks + "/lib/presence_api.js").handleMoveThread(e);
 }, $apis.requireAuth());
 
+routerAdd("POST", "/api/mailbox/threads/bulk", (e) => {
+  require(__hooks + "/lib/presence_api.js").handleBulkThreads(e);
+}, $apis.requireAuth());
+
 // --- Notifications (mentions / notes) ----------------------------------------
 routerAdd("GET", "/api/mailbox/notifications", (e) => {
   require(__hooks + "/lib/notifications_engine.js").handleListNotifications(e);

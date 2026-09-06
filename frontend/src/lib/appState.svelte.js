@@ -7,7 +7,9 @@ export const STATUSES = [
   { value: "in_progress", label: "In progress", dot: "#f9ab00" },
   { value: "waiting_customer", label: "Waiting on customer", dot: "#9334e6" },
   { value: "escalated", label: "Escalated", dot: "#ba1a1a" },
-  { value: "closed", label: "Closed", dot: "#5f6368" }
+  { value: "closed", label: "Closed", dot: "#5f6368" },
+  { value: "archived", label: "Archived", dot: "#5f6368" },
+  { value: "spam", label: "Spam", dot: "#c5221f" }
 ];
 
 export const appState = $state({

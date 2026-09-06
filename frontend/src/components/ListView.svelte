@@ -1,5 +1,5 @@
 <script>
-  import { appState, statusMeta, threadUnread, slaOf } from "../lib/appState.svelte.js";
+  import { appState, statusMeta, threadUnread, slaOf, toast, STATUSES } from "../lib/appState.svelte.js";
   import { timeAgo, avatarColor } from "../lib/utils.js";
   import { agentInitials } from "../lib/appState.svelte.js";
   import * as api from "../lib/api.js";
@@ -11,6 +11,9 @@
   let statusFilter = $state(""); // '' | status value
   let lblFilterOpen = $state(false);
   let labelCatalog = $state([]); // [{name,color}]
+
+  // Bulk selection (checkbox mode). Set semantics via array ops for reactivity.
+  let selIds = $state([]); // thread ids currently checked
 
   async function loadCatalog() {
     try {
@@ -25,13 +28,13 @@
     return hit ? hit.color : "#888";
   }
 
-  // Same filtering/sorting as the board, but rendered as a Gmail-like list.
-  const rows = $derived(
+  // All threads in this inbox that pass the non-status filters (search, mine,
+  // label) — used for counts AND as the pool for select-all.
+  const base = $derived(
     Object.values(appState.threads)
       .filter((t) => t.inbox === appState.activeInboxId)
       .filter((t) => {
         if (appState.onlyMine && t.assigned_agent !== appState.me?.id) return false;
-        if (statusFilter && (t.status || "new") !== statusFilter) return false;
         if (labelFilter && !(Array.isArray(t.tags) ? t.tags : []).includes(labelFilter)) return false;
         if (!appState.search) return true;
         const q = appState.search.toLowerCase();
@@ -42,15 +45,28 @@
           (t.snippet || "").toLowerCase().includes(q)
         );
       })
-      .sort((a, b) => String(b.last_message_at).localeCompare(String(a.last_message_at)))
   );
 
+  // Status counts come from `base` (not rows) so Spam/Archived chips are
+  // visible even when those buckets are hidden from the default list.
   const counts = $derived(
-    rows.reduce((acc, t) => {
+    base.reduce((acc, t) => {
       const s = t.status || "new";
       acc[s] = (acc[s] || 0) + 1;
       return acc;
     }, {})
+  );
+
+  // Rows = base minus hidden buckets unless explicitly filtered to them.
+  // Default view hides spam + archived (Gmail-like); chips reveal them.
+  const rows = $derived(
+    base
+      .filter((t) => {
+        if (statusFilter) return (t.status || "new") === statusFilter;
+        const s = t.status || "new";
+        return s !== "spam" && s !== "archived";
+      })
+      .sort((a, b) => String(b.last_message_at).localeCompare(String(a.last_message_at)))
   );
 
   // Unread-ish: new + escalated threads render bold, like Gmail.
@@ -65,17 +81,59 @@
 
   const assignedName = (t) =>
     t.assigned_agent ? appState.users[t.assigned_agent]?.name || t.assigned_agent : "";
+
+  // ---- selection helpers ----------------------------------------------------
+  const selSet = $derived(new Set(selIds));
+  const allSelected = $derived(rows.length > 0 && rows.every((t) => selSet.has(t.id)));
+  function toggleSel(id) {
+    selIds = selSet.has(id) ? selIds.filter((x) => x !== id) : [...selIds, id];
+  }
+  function toggleSelectAll() {
+    selIds = allSelected ? [] : rows.map((t) => t.id);
+  }
+  function clearSel() { selIds = []; }
+
+  // ---- bulk actions ---------------------------------------------------------
+  const ACTION_LABEL = { spam: "spam", archive: "archive", closed: "closed", delete: "deleted" };
+  async function runBulk(action) {
+    if (!selIds.length) return;
+    const n = selIds.length;
+    if (action === "delete" && !confirm(`Delete ${n} conversation${n === 1 ? "" : "s"} permanently? Messages and notes inside them will be removed too.`)) return;
+    try {
+      const res = await api.bulkThreads(selIds, action);
+      const ok = res?.processed || 0;
+      // Purge deleted threads from local caches (refresh won't remove them).
+      if (action === "delete") {
+        const gone = new Set(selIds);
+        for (const id of gone) {
+          delete appState.threads[id];
+          delete appState.messages[id];
+          delete appState.readCounts[id];
+        }
+        if (appState.openThreadId && gone.has(appState.openThreadId)) appState.openThreadId = "";
+      }
+      await api.refreshThreads();
+      selIds = [];
+      toast("success", ok ? `Done — ${ok} conversation${ok === 1 ? "" : "s"} ${ACTION_LABEL[action]}` : "No changes applied");
+    } catch (e) {
+      toast("error", e?.message || "Bulk action failed");
+    }
+  }
 </script>
 
 <div class="list-wrap">
   <div class="toolbar">
-    <span class="count">{rows.length} conversations</span>
+    <div class="search">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M9.5 3a6.5 6.5 0 1 0 4.05 11.55l4.95 4.95 1.5-1.5-4.95-4.95A6.5 6.5 0 0 0 9.5 3zm0 2a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9z"/></svg>
+      <input bind:value={appState.search} placeholder="Search threads… (select all matching below)" />
+    </div>
+    <span class="count">{rows.length} conversation{rows.length === 1 ? "" : "s"}</span>
     <button class="md3-chip" class:is-active={appState.onlyMine} onclick={() => (appState.onlyMine = !appState.onlyMine)}>My tickets</button>
-    {#each ["new", "in_progress", "waiting_customer", "escalated", "closed"] as st (st)}
-      {#if (counts[st] || 0) > 0}
-        <button class="mini-chip" class:is-active={statusFilter === st} onclick={() => (statusFilter = statusFilter === st ? "" : st)}
-          style="--dot:{statusMeta(st).dot}">
-          <span class="dot"></span>{statusMeta(st).label} {counts[st]}
+    {#each STATUSES as st (st.value)}
+      {#if (counts[st.value] || 0) > 0}
+        <button class="mini-chip" class:is-active={statusFilter === st.value} onclick={() => (statusFilter = statusFilter === st.value ? "" : st.value)}
+          style="--dot:{st.dot}">
+          <span class="dot"></span>{st.label} {counts[st.value]}
         </button>
       {/if}
     {/each}
@@ -96,6 +154,26 @@
     {/if}
   </div>
 
+  {#if selIds.length > 0}
+    <div class="bulkbar">
+      <label class="ck-all" title="Select all matching">
+        <input type="checkbox" checked={allSelected} onchange={toggleSelectAll} />
+      </label>
+      <span class="bb-count"><b>{selIds.length}</b> selected</span>
+      {#if !allSelected && rows.length > selIds.length}
+        <button class="bb-selectall" onclick={toggleSelectAll}>Select all {rows.length} matching</button>
+      {/if}
+      <span class="bb-spacer"></span>
+      <button class="md3-btn small" onclick={() => runBulk("closed")} disabled={selIds.length === 0}>Close</button>
+      <button class="md3-btn small" onclick={() => runBulk("archive")} disabled={selIds.length === 0}>Archive</button>
+      <button class="md3-btn small danger" onclick={() => runBulk("spam")} disabled={selIds.length === 0}>Mark spam</button>
+      {#if appState.me?.isSuperuser}
+        <button class="md3-btn small danger solid" onclick={() => runBulk("delete")} disabled={selIds.length === 0}>Delete</button>
+      {/if}
+      <button class="md3-btn small tonal" onclick={clearSel}>Clear</button>
+    </div>
+  {/if}
+
   <div class="list">
     {#if !rows.length}
       <div class="empty">
@@ -106,59 +184,64 @@
     {#each rows as t (t.id)}
       {@const comp = composingOf(t.id)}
       {@const sla = slaOf(t)}
-      <button
-        class="row"
-        class:hot={isHot(t)}
-        class:unread={isUnread(t)}
-        onclick={() => open(t.id)}
-        aria-label={t.subject || "Thread"}
-      >
-        <span class="avatar" style="background:{avatarColor(t.customer_email || t.customer_name)}">
-          {agentInitials(t.customer_name || t.customer_email)}
-        </span>
+      <div class="rowline" class:sel={selSet.has(t.id)}>
+        <label class="rowck" title="Select" onclick={(e) => e.stopPropagation()}>
+          <input type="checkbox" checked={selSet.has(t.id)} onchange={() => toggleSel(t.id)} />
+        </label>
+        <button
+          class="row"
+          class:hot={isHot(t)}
+          class:unread={isUnread(t)}
+          onclick={() => open(t.id)}
+          aria-label={t.subject || "Thread"}
+        >
+          <span class="avatar" style="background:{avatarColor(t.customer_email || t.customer_name)}">
+            {agentInitials(t.customer_name || t.customer_email)}
+          </span>
 
-        <span class="mid">
-          <span class="top">
-            {#if isUnread(t)}
-              <span class="unread-dot" title="New messages"></span>
-            {/if}
-            <span class="subject">{t.subject || "(no subject)"}</span>
-            {#if msgCount(t) > 0}
-              <span class="mcount" class:unread={isUnread(t)} title={`${msgCount(t)} message${msgCount(t) === 1 ? "" : "s"}`}>{msgCount(t)}</span>
-            {/if}
-            {#each (Array.isArray(t.tags) ? t.tags : []).slice(0, 3) as tag (tag)}
-              <span class="tag">{tag}</span>
-            {/each}
-            {#if comp}
-              <span class="pencil" title={`${comp.agentName || "Someone"} is drafting a reply`}>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.8 9.94l-3.75-3.75L3 17.25zM20.7 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+          <span class="mid">
+            <span class="top">
+              {#if isUnread(t)}
+                <span class="unread-dot" title="New messages"></span>
+              {/if}
+              <span class="subject">{t.subject || "(no subject)"}</span>
+              {#if msgCount(t) > 0}
+                <span class="mcount" class:unread={isUnread(t)} title={`${msgCount(t)} message${msgCount(t) === 1 ? "" : "s"}`}>{msgCount(t)}</span>
+              {/if}
+              {#each (Array.isArray(t.tags) ? t.tags : []).slice(0, 3) as tag (tag)}
+                <span class="tag">{tag}</span>
+              {/each}
+              {#if comp}
+                <span class="pencil" title={`${comp.agentName || "Someone"} is drafting a reply`}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.8 9.94l-3.75-3.75L3 17.25zM20.7 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+                </span>
+              {/if}
+            </span>
+            <span class="snip">
+              <span class="from">{t.customer_name || t.customer_email || "—"}</span>
+              <span class="snippet-text">{t.snippet || ""}</span>
+            </span>
+            {#if assignedName(t)}
+              <span class="assignee-pill" class:mine={t.assigned_agent === appState.me?.id} title={`Assigned to ${assignedName(t)}`}>
+                <span class="ap-ava" style="background:{avatarColor(t.assigned_agent)}">{agentInitials(assignedName(t))}</span>
+                <span class="ap-name">{assignedName(t)}</span>
               </span>
             {/if}
           </span>
-          <span class="snip">
-            <span class="from">{t.customer_name || t.customer_email || "—"}</span>
-            <span class="snippet-text">{t.snippet || ""}</span>
-          </span>
-          {#if assignedName(t)}
-            <span class="assignee-pill" class:mine={t.assigned_agent === appState.me?.id} title={`Assigned to ${assignedName(t)}`}>
-              <span class="ap-ava" style="background:{avatarColor(t.assigned_agent)}">{agentInitials(assignedName(t))}</span>
-              <span class="ap-name">{assignedName(t)}</span>
-            </span>
-          {/if}
-        </span>
 
-        <span class="right">
-          <span class="when">{timeAgo(t.last_message_at)}</span>
-          <span class="status-pill" style="background:{statusMeta(t.status).dot}22;color:{statusMeta(t.status).dot}">
-            {statusMeta(t.status).label}
-          </span>
-          {#if sla}
-            <span class="sla-chip" class:breached={sla.kind === "breached"} style="background:{sla.color}18;color:{sla.color}" title={sla.title}>
-              {sla.text}
+          <span class="right">
+            <span class="when">{timeAgo(t.last_message_at)}</span>
+            <span class="status-pill" style="background:{statusMeta(t.status).dot}22;color:{statusMeta(t.status).dot}">
+              {statusMeta(t.status).label}
             </span>
-          {/if}
-        </span>
-      </button>
+            {#if sla}
+              <span class="sla-chip" class:breached={sla.kind === "breached"} style="background:{sla.color}18;color:{sla.color}" title={sla.title}>
+                {sla.text}
+              </span>
+            {/if}
+          </span>
+        </button>
+      </div>
     {/each}
   </div>
 </div>
@@ -176,6 +259,27 @@
     gap: 10px;
     padding: 12px 20px 8px;
     flex-wrap: wrap;
+  }
+
+  .search {
+    flex: 1;
+    min-width: 200px;
+    max-width: 420px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 40px;
+    padding: 0 14px;
+    background: var(--m3-surface-container-high);
+    border-radius: var(--m3-shape-full);
+    color: var(--m3-on-surface-variant);
+  }
+  .search input {
+    flex: 1;
+    background: none;
+    border: 0;
+    outline: none;
+    min-width: 0;
   }
 
   .count {
@@ -239,29 +343,83 @@
   .lblf-menu button.sel { background: var(--m3-primary-container); }
   .lblf-menu .dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
 
+  /* Bulk action bar */
+  .bulkbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 18px;
+    background: var(--m3-primary-container);
+    color: var(--m3-on-primary-container);
+    border-radius: var(--m3-shape-sm);
+    margin: 0 16px 8px;
+    flex-wrap: wrap;
+  }
+  .ck-all { display: inline-flex; align-items: center; }
+  .bb-count { font: var(--m3-type-label-lg); }
+  .bb-count b { font-weight: 700; }
+  .bb-spacer { flex: 1; }
+  button.bb-selectall {
+    font: var(--m3-type-label-md);
+    text-decoration: underline;
+    color: inherit;
+    cursor: pointer;
+  }
+  .bulkbar .md3-btn { padding: 4px 12px; }
+  .bulkbar .md3-btn.danger.solid {
+    background: #ba1a1a;
+    color: #fff;
+  }
+  .bulkbar .md3-btn.danger:not(.solid) {
+    border: 1px solid #ba1a1a;
+    color: #ba1a1a;
+  }
+
   .list {
     flex: 1;
     overflow-y: auto;
     padding: 0 16px 16px;
   }
 
+  .rowline {
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid var(--m3-outline-variant);
+  }
+  .rowline:hover {
+    background: var(--m3-row-hover);
+  }
+  .rowline.sel {
+    background: var(--m3-primary-container);
+  }
+  .rowck {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    flex: 0 0 auto;
+    cursor: pointer;
+    align-self: stretch;
+  }
+  .rowck input {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--m3-primary);
+    cursor: pointer;
+  }
+
   .row {
-    width: 100%;
+    flex: 1;
+    min-width: 0;
     display: flex;
     align-items: center;
     gap: 14px;
     text-align: left;
-    padding: 10px 14px;
-    border-radius: var(--m3-shape-sm);
-    border-bottom: 1px solid var(--m3-outline-variant);
-    border-radius: 0;
+    padding: 10px 14px 10px 4px;
+    border: 0;
+    background: none;
     cursor: pointer;
   }
-
-  .row:hover {
-    background: var(--m3-row-hover);
-  }
-
   .row:focus-visible {
     outline: 2px solid var(--m3-primary);
     outline-offset: -2px;

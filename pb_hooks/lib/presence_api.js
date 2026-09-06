@@ -365,12 +365,73 @@ function handleRoster(e) {
   e.json(200, { ok: true, roster });
 }
 
+// ---------------------------------------------------------------------------
+// Bulk thread actions (multi-select cleanup) — status moves OR hard delete.
+//   POST /api/mailbox/threads/bulk   body: { ids: [], action }
+//   action = a THREAD_STATUSES value (close/spam/archive/...)  OR "delete"
+// Each id is access-checked independently; delete is superuser-only (it
+// cascades to the thread's messages + notifications + presence rows).
+// ---------------------------------------------------------------------------
+function handleBulkThreads(e) {
+  if (h.addCorsHeaders(e, "POST, OPTIONS")) return;
+  const actor = h.actorFromEvent(e);
+  if (!actor) return h.fail(e, 401, "unauthorized", "Auth required");
+
+  const body = readJsonBody(e);
+  const ids = Array.isArray(body.ids) ? body.ids.map((x) => String(x)) : [];
+  const action = (body.action || "").toString().trim();
+  if (!ids.length) return h.fail(e, 400, "empty_selection", "No thread ids given");
+  if (action !== "delete" && h.THREAD_STATUSES.indexOf(action) === -1) {
+    return h.fail(e, 400, "invalid_action", "action must be a status (" + h.THREAD_STATUSES.join(", ") + ") or 'delete'");
+  }
+
+  const results = [];
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[i];
+    const thread = h.safeFindById("threads", id);
+    if (!thread) { results.push({ id, ok: false, error: "not_found" }); continue; }
+    const allowed = actor.isSuperuser || h.canViewThreadForUser(thread, actor.recordId || actor.id);
+    if (!allowed) { results.push({ id, ok: false, error: "forbidden" }); continue; }
+
+    try {
+      if (action === "delete") {
+        if (!actor.isSuperuser) { results.push({ id, ok: false, error: "admin_required" }); continue; }
+        // Cascade: messages (incl internal notes), notifications, presence rows.
+        const msgs = $app.findRecordsByFilter("messages", "thread = {:t}", "", 0, 0, { t: id }) || [];
+        for (const m of msgs || []) { try { $app.delete(m); } catch (_) {} }
+        const notifs = $app.findRecordsByFilter("notifications", "thread = {:t}", "", 0, 0, { t: id }) || [];
+        for (const n of notifs || []) { try { $app.delete(n); } catch (_) {} }
+        const pres = $app.findRecordsByFilter("thread_presence", "thread = {:t}", "", 0, 0, { t: id }) || [];
+        for (const p of pres || []) { try { $app.delete(p); } catch (_) {} }
+        $app.delete(thread);
+        results.push({ id, ok: true, deleted: true });
+      } else {
+        const prev = thread.getString("status");
+        thread.set("status", action);
+        // Entering waiting_customer starts a FRESH follow-up/auto-close window.
+        if (action === "waiting_customer" && prev !== "waiting_customer") {
+          try { require(__hooks + "/lib/automations_engine.js").resetFollowups(thread); } catch (_) {}
+        }
+        $app.save(thread);
+        if (action === "closed" && actor.recordId) h.releasePresence(id, actor.recordId);
+        results.push({ id, ok: true, status: action });
+      }
+    } catch (err) {
+      results.push({ id, ok: false, error: (err && err.message) || String(err) });
+    }
+  }
+
+  const okCount = results.filter((r) => r.ok).length;
+  e.json(200, { ok: true, processed: okCount, failed: results.length - okCount, results });
+}
+
 module.exports = {
   handlePresenceHeartbeat,
   handlePresenceRelease,
   handlePresenceSnapshot,
   handleAddInternalNote,
   handleMoveThread,
+  handleBulkThreads,
   handleMe,
   handleDirectory,
   handlePresenceBeat,
