@@ -10,6 +10,7 @@
 const GMAIL_SCOPE      = "https://www.googleapis.com/auth/gmail.modify";
 const GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send";
 const CAL_SCOPE    = "https://www.googleapis.com/auth/calendar.events";
+const CAL_READ_SCOPE = "https://www.googleapis.com/auth/calendar.readonly"; // freeBusy needs the read scope
 const GMAIL_BASE   = "https://gmail.googleapis.com/gmail/v1";
 const CAL_BASE     = "https://www.googleapis.com/calendar/v3";
 
@@ -572,7 +573,7 @@ function sanitizeHtmlBasic(html) {
 
 module.exports = {
   // meta
-  GMAIL_SCOPE, GMAIL_SEND_SCOPE, CAL_SCOPE, GMAIL_BASE, CAL_BASE, THREAD_STATUSES,
+  GMAIL_SCOPE, GMAIL_SEND_SCOPE, CAL_SCOPE, CAL_READ_SCOPE, GMAIL_BASE, CAL_BASE, THREAD_STATUSES,
   log, warn,
   // http / auth
   addCorsHeaders, fail, actorFromEvent,

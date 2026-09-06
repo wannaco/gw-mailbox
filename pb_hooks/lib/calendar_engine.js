@@ -71,7 +71,7 @@ function handleAvailability(e) {
         timeZone: tz(),
         items: [{ id: calendarId }]
       },
-      scopes: [h.CAL_SCOPE],
+      scopes: [h.CAL_SCOPE, h.CAL_READ_SCOPE],
       subject: calendarId
     });
 
