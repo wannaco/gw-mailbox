@@ -425,12 +425,57 @@
   }
 
   // ---- actions --------------------------------------------------------------
+  // ---- signature support ----------------------------------------------------
+  // The signed-in agent's signature (plain multi-line text) — set in My profile
+  // (or by an admin). Builds a Gmail-style "-- \n\n<lines>" block.
+  function mySignature() {
+    const me = appState.me;
+    if (!me || !me.signature) return "";
+    return String(me.signature).trim();
+  }
+  function sigText() {
+    const s = mySignature();
+    return s ? "\n\n-- \n" + s : "";
+  }
+  function sigHtml() {
+    const s = mySignature();
+    if (!s) return "";
+    const esc = (t) => String(t || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const ps = ["<p>-- </p>"].concat(s.split(/\r?\n/).map((l) => "<p>" + esc(l) + "</p>"));
+    return ps.join("");
+  }
+  // Append the signature block to the editor (manual insert from the toolbar).
+  function insertSignature() {
+    const el = editorEl;
+    if (!el) return;
+    if (el.innerText && el.innerText.indexOf("--") !== -1 && mySignature() && el.innerText.indexOf(mySignature().slice(0, 20)) !== -1) {
+      toast("info", "Signature already in this reply");
+      return;
+    }
+    el.insertAdjacentHTML("beforeend", sigHtml());
+    el.focus();
+    replyText = editorText();
+    toast("success", "Signature added");
+  }
+  // Auto-append at send when enabled (and not already inserted manually).
+  function applySignature(text, html) {
+    const me = appState.me;
+    if (!(me && me.signature_auto)) return { text, html };
+    const s = mySignature();
+    if (!s) return { text, html };
+    if (text && text.indexOf("--") !== -1 && text.indexOf(s.slice(0, 20)) !== -1) return { text, html }; // already present
+    return { text: (text + sigText()).trim(), html: html + sigHtml() };
+  }
+
   async function sendReply() {
-    const text = editorText().trim();
-    const html = editorHtml();
+    let text = editorText().trim();
+    let html = editorHtml();
     const hasAtt = attachments.length > 0;
     if ((!text && !html.replace(/<[^>]*>/g, "").trim() && !hasAtt) || busySend || lock) return;
     busySend = true;
+    const signed = applySignature(text, html);
+    text = signed.text;
+    html = signed.html;
     try {
       await api.sendReply(threadId, {
         body: text,
@@ -1222,6 +1267,9 @@
             <button type="button" title="Clear formatting" disabled={!!lock} onclick={() => exec("removeFormat")}>✕</button>
             <button type="button" class="attach-btn" title="Attach files" disabled={!!lock} onclick={() => attachInput && attachInput.click()}>📎</button>
             <input type="file" multiple hidden bind:this={attachInput} onchange={onFilesPicked} />
+            {#if mySignature()}
+              <button type="button" title="Insert signature" disabled={!!lock} onclick={insertSignature}>✍️</button>
+            {/if}
             <span class="spacer"></span>
             <span class="hint">{lock ? `Locked — ${lock.agentName} is composing` : "Reply to " + (thread.customer_email || "customer")}</span>
           </div>

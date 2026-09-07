@@ -15,6 +15,10 @@ routerAdd("GET", "/api/mailbox/me", (e) => {
   require(__hooks + "/lib/presence_api.js").handleMe(e);
 }, $apis.requireAuth());
 
+routerAdd("POST", "/api/mailbox/me/signature", (e) => {
+  require(__hooks + "/lib/presence_api.js").handleSaveMySignature(e);
+}, $apis.requireAuth());
+
 routerAdd("GET", "/api/mailbox/users", (e) => {
   require(__hooks + "/lib/presence_api.js").handleDirectory(e);
 }, $apis.requireAuth());

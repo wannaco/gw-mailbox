@@ -202,16 +202,42 @@ function handleMe(e) {
 
   const inboxIds = h.inboxIdsForUser(actor.id).all;
   const inboxes = inboxIds.length ? $app.findRecordsByIds("inboxes", inboxIds) : [];
+  // Signature fields from the agent's users record.
+  const rec = actor.recordId ? h.safeFindById("users", actor.recordId) : null;
   e.json(200, {
     ok: true,
     me: {
       id: actor.id,
       name: actor.name,
       email: actor.email,
-      googleEmail: actor.googleEmail || ""
+      googleEmail: actor.googleEmail || "",
+      signature: rec ? (rec.getString("signature") || "") : "",
+      signature_auto: rec ? rec.getBool("signature_auto") : false
     },
     inboxes: (inboxes || []).filter((r) => r && r.getBool("is_active")).map(inboxSummary),
     sla: h.readSlaConfig()
+  });
+}
+
+// POST /api/mailbox/me/signature — an agent saves their own signature + the
+// auto-insert flag (agents only; superusers don't reply as themselves).
+function handleSaveMySignature(e) {
+  if (h.addCorsHeaders(e, "POST, OPTIONS")) return;
+  const actor = h.actorFromEvent(e);
+  if (!actor) return h.fail(e, 401, "unauthorized", "Auth required");
+  if (actor.isSuperuser) return h.fail(e, 400, "not_agent", "Signatures apply to agents");
+  let body = {};
+  try { body = JSON.parse(toString(e.request.body) || "{}"); } catch (_) { body = {}; }
+  const uid = actor.recordId || actor.id;
+  const rec = h.safeFindById("users", uid);
+  if (!rec) return h.fail(e, 404, "not_found", "User record not found");
+  if (body.signature !== undefined) rec.set("signature", String(body.signature || "").slice(0, 8000));
+  if (body.signature_auto !== undefined) rec.set("signature_auto", !!body.signature_auto);
+  $app.save(rec);
+  e.json(200, {
+    ok: true,
+    signature: rec.getString("signature") || "",
+    signature_auto: rec.getBool("signature_auto")
   });
 }
 
@@ -240,7 +266,9 @@ function handleDirectory(e) {
     id: r.id,
     name: r.getString("name"),
     email: r.getString("email"),
-    kind: "agent"
+    kind: "agent",
+    signature: r.getString("signature") || "",
+    signature_auto: r.getBool("signature_auto")
   }));
   // Opted-in admins (superusers) are included so agents can @mention them.
   // Entries come pre-stored (id/name/email) — no _superusers query needed here.
@@ -444,6 +472,7 @@ module.exports = {
   handleAddInternalNote,
   handleMoveThread,
   handleBulkThreads,
+  handleSaveMySignature,
   handleMe,
   handleDirectory,
   handlePresenceBeat,

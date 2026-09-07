@@ -58,6 +58,30 @@
   let csatEnabled = $state(false);
   let busyCsat = $state(false);
 
+  // Agent signatures (admin edits on the agent's behalf)
+  let sigDrafts = $state({}); // userId -> { signature, signature_auto }
+  let busySig = $state(""); // userId being saved
+  function sigDraft(u) {
+    if (!sigDrafts[u.id]) sigDrafts[u.id] = { signature: u.signature || "", signature_auto: !!u.signature_auto };
+    return sigDrafts[u.id];
+  }
+  async function saveAgentSig(u) {
+    busySig = u.id;
+    try {
+      const d = sigDraft(u);
+      const r = await api.adminSaveAgentSignature(u.id, { signature: d.signature, signature_auto: d.signature_auto });
+      u.signature = r.signature || "";
+      u.signature_auto = !!r.signature_auto;
+      if (appState.users[u.id]) { appState.users[u.id].signature = u.signature; appState.users[u.id].signature_auto = u.signature_auto; }
+      delete sigDrafts[u.id];
+      toast("success", "Signature saved for " + (u.name || u.email));
+    } catch (err) {
+      toast("error", err?.message || "Save failed");
+    } finally {
+      busySig = "";
+    }
+  }
+
   // Tabbed settings navigation
   let tab = $state("connection"); // connection | mailboxes | content | automation | people
 
@@ -630,6 +654,34 @@
 
     {#if tab === "people"}
 
+    <!-- Agents & signatures -->
+    <section class="card">
+      <h3>Agents &amp; signatures</h3>
+      <p class="muted">Set an agent's email signature on their behalf (they can also edit their own from the avatar menu → My profile). The signature auto-appends to that agent's replies when they enable it.</p>
+      <div style="display:grid;gap:14px;margin-top:8px">
+        {#each agentOptions as u (u.id)}
+          {@const d = sigDraft(u)}
+          <div class="ag-sig">
+            <div class="ag-sig-head">
+              <strong>{u.name || u.email}</strong>
+              <span class="muted">{u.email}</span>
+              <label class="ag-check" style="margin-left:auto">
+                <input type="checkbox" bind:checked={d.signature_auto} /> auto-insert
+              </label>
+            </div>
+            <textarea rows="3" bind:value={d.signature} placeholder="-- \n\nName\nRole · Company…"></textarea>
+            <div class="row-btns">
+              <button class="md3-btn primary small" onclick={() => saveAgentSig(u)} disabled={busySig === u.id}>
+                {busySig === u.id ? "Saving…" : "Save"}
+              </button>
+            </div>
+          </div>
+        {:else}
+          <p class="muted">No agents yet.</p>
+        {/each}
+      </div>
+    </section>
+
     <!-- Mentions & notifications -->
     <section class="card">
       <h3>Mentions &amp; notifications</h3>
@@ -840,6 +892,25 @@
     gap: 4px;
     font: var(--m3-type-label-sm);
     color: var(--m3-on-surface-variant);
+  }
+
+  .ag-sig {
+    border: 1px solid var(--m3-outline-variant);
+    border-radius: var(--m3-shape-sm);
+    padding: 10px 12px;
+    display: grid;
+    gap: 6px;
+  }
+  .ag-sig-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .ag-sig textarea {
+    width: 100%;
+    border: 1px solid var(--m3-outline-variant);
+    border-radius: var(--m3-shape-sm);
+    padding: 7px 9px;
+    font: var(--m3-type-body-sm);
+    background: var(--m3-surface-container-lowest);
+    resize: vertical;
+    box-sizing: border-box;
   }
 
   .mb-actions {

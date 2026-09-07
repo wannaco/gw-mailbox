@@ -81,6 +81,10 @@ routerAdd("POST", "/api/mailbox/settings/csat", (e) => {
   require(__hooks + "/lib/settings_engine.js").handleSaveCsat(e);
 }, $apis.requireSuperuserAuth());
 
+routerAdd("POST", "/api/mailbox/settings/users/{id}/signature", (e) => {
+  require(__hooks + "/lib/settings_engine.js").handleSaveAgentSignature(e);
+}, $apis.requireSuperuserAuth());
+
 routerAdd("POST", "/api/mailbox/settings/automations/run", (e) => {
   require(__hooks + "/lib/automations_engine.js").handleRunNow(e);
 }, $apis.requireSuperuserAuth());

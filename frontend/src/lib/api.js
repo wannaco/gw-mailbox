@@ -169,7 +169,7 @@ export async function loadDirectory() {
   try {
     const res = await pbRequest("GET", "/mailbox/users");
     const map = {};
-    for (const u of res.users || []) map[u.id] = { id: u.id, name: u.name, email: u.email, kind: u.kind || 'agent' };
+    for (const u of res.users || []) map[u.id] = { id: u.id, name: u.name, email: u.email, kind: u.kind || 'agent', signature: u.signature || '', signature_auto: !!u.signature_auto };
     appState.users = map;
   } catch {
     /* non-fatal */
@@ -261,6 +261,14 @@ export function saveCsat(enabled) {
 // ---- reports ---------------------------------------------------------------
 export function getReports() {
   return pbRequest("GET", "/mailbox/reports");
+}
+
+// ---- agent signatures ------------------------------------------------------
+export function saveMySignature({ signature, signature_auto }) {
+  return pbRequest("POST", "/mailbox/me/signature", { signature, signature_auto });
+}
+export function adminSaveAgentSignature(id, { signature, signature_auto }) {
+  return pbRequest("POST", `/mailbox/settings/users/${id}/signature`, { signature, signature_auto });
 }
 
 // ---- mailboxes (admin settings) --------------------------------------------

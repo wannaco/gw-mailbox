@@ -410,6 +410,28 @@ function handleSaveCsat(e) {
   e.json(200, { ok: true, csatEnabled: enabled });
 }
 
+// Admin sets an agent's signature on their behalf.
+function handleSaveAgentSignature(e) {
+  if (h.addCorsHeaders(e, "POST, OPTIONS")) return;
+  const admin = requireAdmin(e);
+  if (!admin) return;
+  const id = e.request.pathValue("id");
+  const rec = h.safeFindById("users", id);
+  if (!rec) return h.fail(e, 404, "not_found", "Agent not found");
+  let body = {};
+  try { body = JSON.parse(toString(e.request.body) || "{}"); } catch (_) { body = {}; }
+  if (body.signature !== undefined) rec.set("signature", String(body.signature || "").slice(0, 8000));
+  if (body.signature_auto !== undefined) rec.set("signature_auto", !!body.signature_auto);
+  $app.save(rec);
+  e.json(200, {
+    ok: true,
+    id: rec.id,
+    name: rec.getString("name"),
+    signature: rec.getString("signature") || "",
+    signature_auto: rec.getBool("signature_auto")
+  });
+}
+
 module.exports = {
   getSettings,
   getStoredServiceAccount,
@@ -420,6 +442,7 @@ module.exports = {
   handleGetSettings,
   handleSaveSla,
   handleSaveCsat,
+  handleSaveAgentSignature,
   handleSaveServiceAccount,
   handleRemoveServiceAccount,
   handleTestConnection,
