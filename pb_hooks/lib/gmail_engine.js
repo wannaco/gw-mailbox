@@ -70,11 +70,23 @@ function filenameFromHeader(headers) {
   return "";
 }
 
-// Collect REAL attachment parts (skip inline images/cid pieces embedded in the
-// HTML body). Gmail marks true attachments with body.attachmentId + a
-// Content-Disposition: attachment header (or a filename). Returns metadata
-// only; binary data is fetched separately so we never download inline images.
-function collectAttachmentParts(payload, acc) {
+function contentId(headers) {
+  for (const hdr of headers || []) {
+    if ((hdr.name || "").toLowerCase() === "content-id") {
+      return String(hdr.value || "").replace(/[<>]/g, "").trim().toLowerCase();
+    }
+  }
+  return "";
+}
+
+// Collect REAL attachment parts. Two-layer filter so we never store inline
+// images / signature logos as "files":
+//   1. explicit Content-Disposition: inline  -> skip
+//   2. part has a Content-ID that the HTML body references via cid: -> skip
+// Remaining candidates must look like a genuine attachment: an explicit
+// "attachment" disposition, OR a filename whose mime isn't a bare image
+// (most inline PNG/JPEG logos lack an attachment disposition).
+function collectAttachmentParts(payload, acc, htmlBody) {
   acc = acc || [];
   if (!payload) return acc;
   const body = payload.body || {};
@@ -82,8 +94,14 @@ function collectAttachmentParts(payload, acc) {
     const headers = payload.headers || [];
     const cd = String(headerValue(headers, "Content-Disposition") || "").toLowerCase();
     const isInline = cd.indexOf("inline") !== -1;
+    const cid = contentId(headers);
+    const referencedInHtml = !!cid && !!htmlBody &&
+      new RegExp("cid:" + cid.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i").test(htmlBody);
     const name = String(payload.filename || "").trim() || filenameFromHeader(headers);
-    if (!isInline && (name || cd.indexOf("attachment") !== -1)) {
+    const mime = (payload.mimeType || "").toLowerCase();
+    const looksLikeFile = cd.indexOf("attachment") !== -1 ||
+      (name && mime.indexOf("image/") !== 0 && cd.indexOf("inline") === -1);
+    if (!isInline && !referencedInHtml && looksLikeFile) {
       acc.push({
         attachmentId: String(body.attachmentId),
         filename: name || "attachment",
@@ -92,7 +110,7 @@ function collectAttachmentParts(payload, acc) {
       });
     }
   }
-  for (const part of payload.parts || []) collectAttachmentParts(part, acc);
+  for (const part of payload.parts || []) collectAttachmentParts(part, acc, htmlBody);
   return acc;
 }
 
@@ -139,7 +157,7 @@ function normalizeMessage(msg, inboxEmail) {
   const bodies = extractBodies(msg.payload, null);
   const internalDate = parseInt(msg.internalDate || "0", 10);
   const iso = internalDate ? new Date(internalDate).toISOString() : "";
-  const attachmentParts = collectAttachmentParts(msg.payload, []);
+  const attachmentParts = collectAttachmentParts(msg.payload, [], bodies.html);
 
   let customer = null;
   if (from.email && from.email.toLowerCase() !== String(inboxEmail).toLowerCase()) {
