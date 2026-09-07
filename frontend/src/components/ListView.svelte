@@ -890,6 +890,11 @@
     .sla-chip { padding: 0 7px; }
     .status-pill { padding: 0 6px; }
 
+    /* Bump the stacked status + SLA chips a touch so they're readable, while
+       leaving the relative 'when' timestamp small. */
+    .status-pill, .sla-chip { font-size: 0.8rem; padding: 2px 9px; }
+    .when { font-size: 0.72rem; }
+
     /* ⋯ anchored top-right, always visible on touch; stays out of text flow */
     .qa-anchor {
       position: absolute;
