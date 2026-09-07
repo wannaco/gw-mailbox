@@ -867,6 +867,38 @@ function sendOutboundEmail(thread, uid, subject, bodyText) {
   return sent.id || "";
 }
 
+// Send a STANDALONE email (no thread context — e.g. CSAT survey). Unlike
+// replies/nudges it must NOT thread into an existing conversation and must NOT
+// get an auto "Re:" prefix. No local message copy (it isn't part of the
+// ticket conversation).
+function sendFreshEmail(uid, toEmail, toName, subject, bodyText) {
+  const to = sanitizeHeaderValue(toEmail);
+  const name = sanitizeHeaderValue(toName || "");
+  const subj = sanitizeHeaderValue(subject || "");
+  const plain = String(bodyText || "").trim();
+  const html = "<html><body>" + plain.split(/\n+/).map((p) => "<p>" + escHtml(p) + "</p>").join("") + "</body></html>";
+  const bAlt = "gwmb_a_" + $security.randomString(12);
+  let raw =
+    "To: " + (name ? name + " <" + to + ">" : to) + "\r\n" +
+    "From: " + sanitizeHeaderValue(uid) + "\r\n" +
+    "Subject: " + subj + "\r\n" +
+    "MIME-Version: 1.0\r\n";
+  raw += "Content-Type: multipart/alternative; boundary=\"" + bAlt + "\"\r\n\r\n" +
+    "--" + bAlt + "\r\n" +
+    "Content-Type: text/plain; charset=UTF-8\r\n\r\n" + plain + "\r\n\r\n" +
+    "--" + bAlt + "\r\n" +
+    "Content-Type: text/html; charset=UTF-8\r\n\r\n" + html + "\r\n\r\n" +
+    "--" + bAlt + "--\r\n";
+  const sent = h.googleRequest({
+    url: h.GMAIL_BASE + "/users/" + encodeURIComponent(uid) + "/messages/send",
+    method: "POST",
+    body: { raw: h.b64urlEncodeBinary(utf8Bytes(raw)) },
+    scopes: [h.GMAIL_SCOPE, h.GMAIL_SEND_SCOPE],
+    subject: uid
+  });
+  return sent.id || "";
+}
+
 // The Message-ID header of the most recent synced message in a thread, used to
 // set In-Reply-To/References so replies & nudges thread into the customer's
 // conversation instead of arriving as a new email.
@@ -919,6 +951,7 @@ module.exports = {
   handleSync,
   handleReply,
   sendOutboundEmail,
+  sendFreshEmail,
   // exposed for tests / future cron replay
   syncInbox,
   findInboxByEmail

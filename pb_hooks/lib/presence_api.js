@@ -170,6 +170,10 @@ function handleMoveThread(e) {
 
   // Closed card -> drop the agent's composer lock so nobody is left "drafting".
   if (status === "closed" && actor.id) h.releasePresence(threadId, actor.id);
+  // Entering closed -> fire the CSAT survey to the customer (auto-send on close).
+  if (status === "closed" && prev !== "closed") {
+    try { require(__hooks + "/lib/csat_engine.js").dispatchCsatOnClose(threadId); } catch (_) { /* non-fatal */ }
+  }
 
   e.json(200, {
     ok: true,
@@ -414,6 +418,10 @@ function handleBulkThreads(e) {
         }
         $app.save(thread);
         if (action === "closed" && actor.recordId) h.releasePresence(id, actor.recordId);
+        // Entering closed -> fire CSAT survey to the customer.
+        if (action === "closed" && prev !== "closed") {
+          try { require(__hooks + "/lib/csat_engine.js").dispatchCsatOnClose(id); } catch (_) { /* non-fatal */ }
+        }
         results.push({ id, ok: true, status: action });
       }
     } catch (err) {

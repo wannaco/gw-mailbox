@@ -12,10 +12,19 @@
   import Snackbar from "./components/Snackbar.svelte";
   import PresenceRoster from "./components/PresenceRoster.svelte";
   import NotifBell from "./components/NotifBell.svelte";
+  import CsatPage from "./components/CsatPage.svelte";
 
   let theme = $state("light");
   let booting = $state(true); // true until we know if a session exists
   let userMenuOpen = $state(false);
+
+  // Public CSAT survey route: /csat/<token> renders a no-login page.
+  let csatToken = $state("");
+  function parseCsatPath() {
+    const m = location.pathname.match(/\/csat\/([A-Za-z0-9_-]+)\/?$/);
+    csatToken = m ? m[1] : "";
+  }
+  parseCsatPath();
 
   function applyTheme() {
     const saved = localStorage.getItem("gwmb.theme");
@@ -31,6 +40,8 @@
   // Request desktop notif permission after we know the user is signed in.
   onMount(async () => {
     applyTheme();
+    parseCsatPath();
+    if (csatToken) { booting = false; return; } // public survey page — no session
     const t = api.savedToken();
     if (!t) { booting = false; return; }
     appState.token = t;
@@ -85,6 +96,8 @@
 
 {#if booting}
   <div class="boot"><span class="brand-dot"></span><span>Loading…</span></div>
+{:else if csatToken}
+  <CsatPage token={csatToken} />
 {:else if !appState.me}
   <Login signIn={handleLogin} signInAdmin={handleAdminLogin} />
 {:else}

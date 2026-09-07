@@ -49,6 +49,27 @@
       .slice(0, 3)
   );
 
+  // ---- CSAT (surveys sent when this ticket closed; results shown here) ----
+  let csatSurveys = $state([]); // { rating, comment, sent_at, responded_at, url }
+  async function loadCsat() {
+    const tid = threadId;
+    if (!tid) return;
+    try {
+      const r = await api.pbRequest("GET", `/mailbox/threads/${tid}/csat`);
+      if (r && r.ok) csatSurveys = r.surveys || [];
+    } catch { /* non-fatal */ }
+  }
+  $effect(() => { loadCsat(); });
+
+  function copyCsatLink(s) {
+    try {
+      navigator.clipboard.writeText(s.url);
+      toast("success", "CSAT link copied");
+    } catch {
+      toast("error", "Could not copy");
+    }
+  }
+
   // ---- message ordering -------------------------------------------------------
   function msgEpoch(m) {
     const s = String(m.msg_date || "").trim();
@@ -981,6 +1002,28 @@
     </div>
   {/if}
 
+  {#if csatSurveys.length}
+    <div class="csat-strip">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.6 7.1.7-5.4 4.8 1.6 7-6.2-3.7-6.2 3.7 1.6-7L2 9.3l7.1-.7z"/></svg>
+      <div class="csat-items">
+        {#each csatSurveys as s (s.id)}
+          <div class="csat-item">
+            {#if s.rating}
+              <span class="csat-stars" aria-label={`${s.rating} of 5`}>
+                {#each [1,2,3,4,5] as n (n)}<span class:lit={n <= s.rating}>★</span>{/each}
+              </span>
+              {#if s.comment}<span class="csat-comment-txt">“{s.comment}”</span>{/if}
+              <span class="muted">{timeAgo(s.responded_at)}</span>
+            {:else}
+              <span class="muted">Survey sent — awaiting response.</span>
+              <button class="link-btn" onclick={() => copyCsatLink(s)} title={s.url}>copy link</button>
+            {/if}
+          </div>
+        {/each}
+      </div>
+    </div>
+  {/if}
+
   {#if meetOpen}
     <div class="meet-overlay" onclick={(e) => { if (e.target === e.currentTarget) closeMeet(); }}>
       <div class="meet-modal" role="dialog" aria-modal="true" aria-label="Book a Google Meet">
@@ -1562,6 +1605,29 @@
     background: var(--m3-tertiary-container);
     color: var(--m3-on-tertiary-container);
     font: var(--m3-type-body-md);
+  }
+
+  .csat-strip {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin: 10px 16px 0;
+    padding: 9px 14px;
+    border-radius: var(--m3-shape-sm);
+    background: var(--m3-secondary-container);
+    color: var(--m3-on-secondary-container);
+    font: var(--m3-type-body-md);
+  }
+  .csat-strip > svg { flex: 0 0 auto; margin-top: 2px; color: #f9ab00; }
+  .csat-items { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+  .csat-item { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .csat-stars { color: var(--m3-outline); letter-spacing: 2px; }
+  .csat-stars span.lit { color: #f9ab00; }
+  .csat-comment-txt { font-style: italic; font-size: 0.9rem; }
+  .csat-item .link-btn {
+    color: var(--m3-primary);
+    text-decoration: underline;
+    font-size: 0.8rem;
   }
 
   .tv-presence {

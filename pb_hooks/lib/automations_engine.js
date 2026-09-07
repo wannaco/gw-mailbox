@@ -131,6 +131,10 @@ function handleThread(threadRec, cfg) {
       { name: "Automation", email: "system@mailbox.local" },
       "Auto-closed: no customer reply after " + count + " follow-up" + (count === 1 ? "" : "s") + "."
     );
+    // Auto-close -> fire the CSAT survey to the customer.
+    try {
+      require(__hooks + "/lib/csat_engine.js").dispatchCsatOnClose(threadRec.id);
+    } catch (_) { /* non-fatal */ }
     // notify the assignee so they know it was closed automatically
     const assignee = threadRec.getString("assigned_agent");
     if (assignee) {
