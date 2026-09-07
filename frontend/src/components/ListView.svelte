@@ -845,6 +845,64 @@
     50% { opacity: 0.55; }
   }
 
+  /* ---- mobile: compact stacked rows (no overlap) ---- */
+  @media (max-width: 620px) {
+    .list { padding: 0 8px 12px; }
+    .toolbar { padding: 8px 10px 6px; gap: 6px; }
+    .search { min-width: 100%; max-width: none; order: -1; }
+
+    .rowline {
+      position: relative;
+      align-items: center;
+    }
+    .rowck { width: 26px; }
+    .rowck input { width: 15px; height: 15px; }
+
+    .row {
+      flex-wrap: wrap;
+      gap: 2px 8px;
+      padding: 8px 34px 8px 2px; /* right room for the ⋯ overlay */
+    }
+
+    .avatar { width: 30px; height: 30px; font-size: 10px; }
+
+    .mid { min-width: 0; }
+    .top { gap: 5px; flex-wrap: wrap; }
+    .subject { font-size: 0.9rem; min-width: 0; }
+    .snip { gap: 4px; }
+    .from { max-width: 42%; }
+    .snippet-text { font-size: 0.8rem; }
+
+    /* Status / time / SLA become their own wrapped chip row, never side-by-side
+       with the sender line -> no overlap even for long statuses. */
+    .right {
+      order: 5;
+      flex: 1 1 100%;
+      flex-direction: row;
+      align-items: center;
+      justify-content: flex-start;
+      flex-wrap: wrap;
+      gap: 4px 8px;
+      margin-left: 40px; /* align under the text (26 checkbox + 30 avatar + gaps) */
+      margin-top: 1px;
+    }
+    .status-pill, .sla-chip, .when { font-size: 0.72rem; }
+    .sla-chip { padding: 0 7px; }
+    .status-pill { padding: 0 6px; }
+
+    /* ⋯ anchored top-right, always visible on touch; stays out of text flow */
+    .qa-anchor {
+      position: absolute;
+      top: 4px;
+      right: 2px;
+      padding: 0;
+    }
+    .qa-dots { width: 26px; height: 26px; opacity: 1; }
+
+    /* assignee pill: keep on the text block, compact + ellipsized */
+    .assignee-pill { max-width: 100%; }
+  }
+
   .empty {
     text-align: center;
     color: var(--m3-on-surface-variant-2);
