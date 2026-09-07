@@ -131,6 +131,11 @@
     const tid = threadId;
     if (!tid) return;
 
+    // Fresh compose session per thread: drop any previous draft/signature.
+    sigState = 0;
+    if (editorEl) { editorEl.innerHTML = ""; }
+    replyText = "";
+
     // initial load + seed presence names
     api.fetchMessages(tid).catch(() => {});
     api
@@ -177,6 +182,7 @@
   function onEditorInput() {
     replyText = editorText();
     detectSlash();
+    syncLiveSignature(); // show the signature live while typing (Gmail-style)
   }
 
   // ---- canned responses / slash commands -------------------------------------
@@ -437,45 +443,81 @@
     const s = mySignature();
     return s ? "\n\n-- \n" + s : "";
   }
-  function sigHtml() {
+  // Signature as plain <p> lines (what actually goes in the email).
+  function sigInnerHtml() {
     const s = mySignature();
     if (!s) return "";
     const esc = (t) => String(t || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const ps = ["<p>-- </p>"].concat(s.split(/\r?\n/).map((l) => "<p>" + esc(l) + "</p>"));
     return ps.join("");
   }
-  // Append the signature block to the editor (manual insert from the toolbar).
+  // Signature wrapped in a marker div — the LIVE editor shows this so the user
+  // sees (and can edit/delete) their signature while composing, Gmail-style.
+  function sigBlockHtml() {
+    return '<div class="mb-sig">' + sigInnerHtml() + "</div>";
+  }
+  function sigInEditor() {
+    return !!(editorEl && editorEl.querySelector(".mb-sig"));
+  }
+  // Editor text EXCLUDING the signature block (what the user actually wrote).
+  function editorBodyText() {
+    const el = editorEl;
+    if (!el) return "";
+    const t = el.innerText || "";
+    const sigEl = el.querySelector(".mb-sig");
+    if (!sigEl) return t.trim();
+    return t.replace(sigEl.innerText || "", "").trim();
+  }
+  // sigState: 0 = none/cleared, 1 = sig present, 2 = user removed it this reply.
+  let sigState = 0;
+  function resetSigState() {
+    sigState = 0;
+  }
+  // Gmail-style: once the user has typed something and auto-insert is on, show
+  // the signature at the bottom of the editor live. If they delete it, respect
+  // that (state 2) so it does NOT come back mid-reply; clearing everything resets.
+  function syncLiveSignature() {
+    const el = editorEl;
+    if (!el) return;
+    const me = appState.me;
+    if (!(me && me.signature_auto && me.signature)) return;
+    const body = editorBodyText();
+    if (!body) { sigState = 0; return; }
+    if (sigInEditor()) { sigState = 1; return; }
+    if (sigState === 1) { sigState = 2; return; } // user deleted the sig but kept text
+    if (sigState === 2) return;
+    el.insertAdjacentHTML("beforeend", sigBlockHtml());
+    sigState = 1;
+    replyText = editorText();
+  }
+  // Manual insert (✍️) — appends the live sig block if it isn't already there.
   function insertSignature() {
     const el = editorEl;
     if (!el) return;
-    if (el.innerText && el.innerText.indexOf("--") !== -1 && mySignature() && el.innerText.indexOf(mySignature().slice(0, 20)) !== -1) {
-      toast("info", "Signature already in this reply");
-      return;
-    }
-    el.insertAdjacentHTML("beforeend", sigHtml());
+    if (sigInEditor()) { toast("info", "Signature already in this reply"); return; }
+    el.insertAdjacentHTML("beforeend", sigBlockHtml());
+    sigState = 1;
     el.focus();
     replyText = editorText();
     toast("success", "Signature added");
   }
-  // Auto-append at send when enabled (and not already inserted manually).
-  function applySignature(text, html) {
-    const me = appState.me;
-    if (!(me && me.signature_auto)) return { text, html };
-    const s = mySignature();
-    if (!s) return { text, html };
-    if (text && text.indexOf("--") !== -1 && text.indexOf(s.slice(0, 20)) !== -1) return { text, html }; // already present
-    return { text: (text + sigText()).trim(), html: html + sigHtml() };
-  }
 
   async function sendReply() {
+    const hasAtt = attachments.length > 0;
     let text = editorText().trim();
     let html = editorHtml();
-    const hasAtt = attachments.length > 0;
     if ((!text && !html.replace(/<[^>]*>/g, "").trim() && !hasAtt) || busySend || lock) return;
     busySend = true;
-    const signed = applySignature(text, html);
-    text = signed.text;
-    html = signed.html;
+    // Live signature: with auto-insert on and content present, make sure the
+    // signature is visible in the box before sending (covers attachment-only
+    // sends too). If the user removed it (sigState 2), don't force it back.
+    if (appState.me?.signature_auto && mySignature() && sigState !== 2 && !sigInEditor() && (text || hasAtt)) {
+      if (editorEl) { editorEl.insertAdjacentHTML("beforeend", sigBlockHtml()); sigState = 1; }
+      text = editorText().trim();
+      html = editorHtml();
+    }
+    // Unwrap the live marker so the actual email has plain paragraphs (no div).
+    html = html.replace(/<div class="mb-sig">([\s\S]*?)<\/div>/gi, "$1");
     try {
       await api.sendReply(threadId, {
         body: text,
@@ -491,6 +533,7 @@
       if (editorEl) editorEl.innerHTML = "";
       attachments = [];
       replyText = "";
+      sigState = 0;
       ccList = [];
       replyMode = "reply";
       await api.fetchMessages(threadId); // show the sent message immediately
