@@ -83,14 +83,20 @@
     try {
       const res = await bulkThreads(selIds, action);
       const ok = res?.processed || 0;
+      // Optimistic local update so THIS session reflects the change instantly.
+      const acted = new Set(selIds);
       if (action === "delete") {
-        const gone = new Set(selIds);
-        for (const id of gone) {
+        for (const id of acted) {
           delete appState.threads[id];
           delete appState.messages[id];
           delete appState.readCounts[id];
         }
-        if (appState.openThreadId && gone.has(appState.openThreadId)) appState.openThreadId = "";
+        if (appState.openThreadId && acted.has(appState.openThreadId)) appState.openThreadId = "";
+      } else {
+        for (const id of acted) {
+          const cur = appState.threads[id];
+          if (cur) cur.status = action;
+        }
       }
       await refreshThreads();
       selIds = [];

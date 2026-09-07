@@ -521,11 +521,40 @@ function scheduleRosterRefresh() {
   }, 400);
 }
 
+// ---- quiet periodic thread-list sync ---------------------------------------
+// PB native realtime only broadcasts record changes made through the STANDARD
+// collection API. Our custom routes (/move, /threads/bulk) save via pb_hooks,
+// so status/archive/spam/close changes never reach OTHER open sessions — each
+// one shows a stale list until a manual page reload. Fix: piggyback a quiet
+// refreshThreads() on the existing presence tick (~every 10s while visible), so
+// every session converges on its own within a few seconds. Cheap (one filtered
+// GET of the active inbox) and guarantees correctness across users/views.
+let lastThreadSync = 0;
+let threadSyncInFlight = false;
+const THREAD_SYNC_MS = 10000;
+
+async function syncThreadsQuiet() {
+  if (threadSyncInFlight) return;
+  if (!appState.activeInboxId || document.hidden) return;
+  threadSyncInFlight = true;
+  try {
+    await refreshThreads();
+  } catch {
+    /* silent — next tick retries */
+  } finally {
+    threadSyncInFlight = false;
+  }
+}
+
 function visChange() {
   // A hidden tab is NOT logged out — switching windows should keep you online.
   if (!document.hidden) {
     beatPresence();
     fetchRoster();
+    // Refresh threads right away on focus — catches edits other users made
+    // while this tab was backgrounded (no waiting for the next tick).
+    lastThreadSync = 0;
+    syncThreadsQuiet();
   }
 }
 
@@ -538,9 +567,12 @@ export function startPresenceLoop() {
   beatPresence();
   fetchRoster();
   lastBeat = Date.now();
+  lastThreadSync = Date.now();
   // Self-rescheduling timeout — unlike setInterval this still fires (albeit
   // throttled) in background tabs, so presence doesn't die when the tab is
-  // hidden. We also refresh the roster each cycle to keep the pill live.
+  // hidden. We also refresh the roster each cycle to keep the pill live, and
+  // quietly re-sync the thread list every ~10s so status/archive changes made
+  // by OTHER users show up without a manual page reload.
   const tick = () => {
     const now = Date.now();
     // always keep our presence row fresh (browsers throttle timers in hidden
@@ -550,6 +582,10 @@ export function startPresenceLoop() {
       lastBeat = now;
       beatPresence();
       fetchRoster();
+    }
+    if (now - lastThreadSync >= THREAD_SYNC_MS) {
+      lastThreadSync = now;
+      syncThreadsQuiet();
     }
     rosterTimer = setTimeout(tick, 2000);
   };
