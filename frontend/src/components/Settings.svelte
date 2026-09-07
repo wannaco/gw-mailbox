@@ -54,6 +54,13 @@
   let admins = $state([]);          // [{id,name,email}] all superusers
   let mentionAdminIds = $state([]); // ids opted in to @mentions
 
+  // CSAT (customer satisfaction surveys on close) — off by default
+  let csatEnabled = $state(false);
+  let busyCsat = $state(false);
+
+  // Tabbed settings navigation
+  let tab = $state("connection"); // connection | mailboxes | content | automation | people
+
   const agentOptions = $derived(Object.values(appState.users).filter((u) => (u.kind || 'agent') !== 'admin'));
 
   async function refresh() {
@@ -66,6 +73,7 @@
       mentionAdminIds = s.mentionAdminIds || [];
       if (typeof s.slaEnabled === "boolean") slaEnabled = s.slaEnabled;
       if (typeof s.slaHours === "number") slaHours = s.slaHours;
+      if (typeof s.csatEnabled === "boolean") csatEnabled = s.csatEnabled;
     } catch (e) {
       isAdmin = false;
       if (e?.status !== 401 && e?.status !== 403) toast("error", e?.message || "Failed to load settings");
@@ -328,6 +336,19 @@
     }
   }
 
+  async function saveCsat() {
+    busyCsat = true;
+    try {
+      const r = await api.saveCsat(csatEnabled);
+      csatEnabled = !!r.csatEnabled;
+      toast("success", csatEnabled ? "CSAT surveys enabled" : "CSAT surveys disabled");
+    } catch (e) {
+      toast("error", e?.message || "Save failed");
+    } finally {
+      busyCsat = false;
+    }
+  }
+
   async function startWatch(inboxId) {
     busyWatch = inboxId;
     try {
@@ -351,6 +372,15 @@
       <p class="muted">Sign out and sign back in with the PocketBase admin account (or use the admin sign-in on the login screen) to manage the Google connection.</p>
     </div>
   {:else}
+    <div class="tabs" role="tablist" aria-label="Settings sections">
+      <button type="button" role="tab" aria-selected={tab === "connection"} class:on={tab === "connection"} onclick={() => (tab = "connection")}>Connection</button>
+      <button type="button" role="tab" aria-selected={tab === "mailboxes"} class:on={tab === "mailboxes"} onclick={() => (tab = "mailboxes")}>Mailboxes</button>
+      <button type="button" role="tab" aria-selected={tab === "content"} class:on={tab === "content"} onclick={() => (tab = "content")}>Content</button>
+      <button type="button" role="tab" aria-selected={tab === "automation"} class:on={tab === "automation"} onclick={() => (tab = "automation")}>Automation</button>
+      <button type="button" role="tab" aria-selected={tab === "people"} class:on={tab === "people"} onclick={() => (tab = "people")}>People</button>
+    </div>
+
+    {#if tab === "connection"}
     <!-- Google connection -->
     <section class="card">
       <h3>Google Workspace connection</h3>
@@ -400,8 +430,9 @@
         <input type="checkbox" checked={pollSync} onchange={togglePoll} disabled={busyPoll} />
       </label>
     </section>
+    {/if}
 
-    <!-- Mailboxes -->
+    {#if tab === "mailboxes"}
     <section class="card">
       <h3>Mailboxes</h3>
       <p class="muted">Add the Google Workspace mailboxes you want this team to use. After adding, grant the service account’s domain-wide delegation for each (see Google Admin → API controls). New mail syncs when Poll or Watch is on.</p>
@@ -467,6 +498,9 @@
       </div>
       <p class="hint">Tip: “Watch” needs a Pub/Sub topic configured in env (GOOGLE_PUBSUB_TOPIC). If you don't use Pub/Sub, enable Poll instead — new mail appears ~1 min later.</p>
     </section>
+    {/if}
+
+    {#if tab === "content"}
 
     <!-- Labels / categories -->
     <section class="card">
@@ -515,6 +549,9 @@
         <button class="md3-btn primary small" onclick={addCanned} disabled={!newCannedTitle.trim() || !newCannedBody.trim()}>Add response</button>
       </div>
     </section>
+    {/if}
+
+    {#if tab === "automation"}
 
     <!-- Ticket automations -->
     <section class="card">
@@ -589,6 +626,9 @@
         <button class="md3-btn primary" onclick={saveSla} disabled={busySla}>{busySla ? "Saving…" : "Save SLA settings"}</button>
       </div>
     </section>
+    {/if}
+
+    {#if tab === "people"}
 
     <!-- Mentions & notifications -->
     <section class="card">
@@ -611,6 +651,23 @@
       </div>
       <p class="hint">Desktop notifications are requested after sign-in, or tap the button to (re)prompt.</p>
     </section>
+
+    <!-- Customer satisfaction (CSAT) -->
+    <section class="card">
+      <h3>Customer satisfaction (CSAT)</h3>
+      <p class="muted">When a ticket is <b>closed</b>, email the customer a 1–5 star survey link they can answer without signing in. Results appear in the thread. <b>Disabled by default</b> — no survey is ever sent until you turn this on.</p>
+
+      <label class="switch-row" style="margin:10px 0">
+        <span><strong>Send CSAT surveys on close</strong>
+          <span class="muted">Emails “How did we do?” with a unique link each time a ticket is closed (skipped if a survey is already pending for that ticket).</span></span>
+        <input type="checkbox" bind:checked={csatEnabled} />
+      </label>
+
+      <div class="row-btns" style="margin-top:12px">
+        <button class="md3-btn primary" onclick={saveCsat} disabled={busyCsat}>{busyCsat ? "Saving…" : "Save CSAT settings"}</button>
+      </div>
+    </section>
+    {/if}
   {/if}
 </div>
 
@@ -628,6 +685,35 @@
   h2 {
     font: var(--m3-type-headline);
     margin-bottom: 16px;
+  }
+
+  .tabs {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+    padding: 4px;
+    background: var(--m3-surface-container-high);
+    border-radius: var(--m3-shape-full);
+    width: fit-content;
+    max-width: 100%;
+  }
+  .tabs button {
+    border: 0;
+    background: none;
+    padding: 7px 14px;
+    border-radius: 999px;
+    font: var(--m3-type-label-lg);
+    color: var(--m3-on-surface-variant);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .tabs button.on {
+    background: var(--m3-primary);
+    color: var(--m3-on-primary);
+  }
+  .tabs button:hover:not(.on) {
+    background: var(--m3-surface-container-highest);
   }
 
   .card {

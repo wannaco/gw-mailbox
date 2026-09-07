@@ -31,6 +31,30 @@ function randToken() {
   return "c" + $security.randomString(28) + String(Date.now()).slice(-6);
 }
 
+// CSAT must be opted in per install (Settings → CSAT). Off by default so no
+// customer is ever emailed a survey unless a client enables it.
+function csatEnabled() {
+  try {
+    const env = $os.getenv("MAILBOX_CSAT_ENABLED") || "";
+    if (env === "1") return true;
+    const rec = $app.findFirstRecordByFilter("app_settings", "key = 'instance'");
+    if (!rec) return false;
+    return rec.getBool("csat_enabled");
+  } catch (_) { return false; }
+}
+
+function setCsatEnabled(enabled) {
+  try {
+    const coll = $app.findCollectionByNameOrId("app_settings");
+    let rec = null;
+    try { rec = $app.findFirstRecordByFilter("app_settings", "key = 'instance'"); } catch (_) { /* */ }
+    if (!rec) rec = new Record(coll, { key: "instance" });
+    rec.set("csat_enabled", !!enabled);
+    $app.save(rec);
+    return !!enabled;
+  } catch (_) { return !!enabled; }
+}
+
 function findByToken(token) {
   try {
     return $app.findFirstRecordByFilter("csat_feedback", "token = {:t}", { t: String(token || "") });
@@ -75,6 +99,8 @@ function sendSurveyEmail(thread, uid, linkUrl) {
 // never break the close action.
 function dispatchCsatOnClose(threadId) {
   try {
+    // Feature gate: only dispatch when the client has enabled CSAT.
+    if (!csatEnabled()) return null;
     const thread = h.safeFindById("threads", threadId);
     if (!thread) return null;
     const email = thread.getString("customer_email");
@@ -183,6 +209,8 @@ function handleThreadCsat(e) {
 module.exports = {
   dispatchCsatOnClose,
   publicBase,
+  csatEnabled,
+  setCsatEnabled,
   handleCsatGet,
   handleCsatSubmit,
   handleThreadCsat,

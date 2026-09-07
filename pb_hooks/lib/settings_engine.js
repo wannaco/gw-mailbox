@@ -146,6 +146,8 @@ function handleGetSettings(e) {
   const rec = ensureSettings();
   const saEmail = rec.getString("key_client_email");
   const sla = h.readSlaConfig();
+  let csatOn = false;
+  try { csatOn = require(__hooks + "/lib/csat_engine.js").csatEnabled(); } catch (_) { /* older image */ }
   e.json(200, {
     ok: true,
     serviceAccountConfigured: !!saEmail,
@@ -155,6 +157,7 @@ function handleGetSettings(e) {
     admins: listSuperusers(),
     slaEnabled: sla.sla_enabled,
     slaHours: sla.sla_hours,
+    csatEnabled: csatOn,
     envOverrides: {
       pollSyncEnv: $os.getenv("MAILBOX_POLL_SYNC") === "1"
     }
@@ -395,6 +398,18 @@ function handleSaveSla(e) {
   e.json(200, { ok: true, slaEnabled: saved.sla_enabled, slaHours: saved.sla_hours });
 }
 
+// CSAT enable switch (admin). Off by default; when on, closing a ticket emails
+// the customer a satisfaction survey link.
+function handleSaveCsat(e) {
+  if (h.addCorsHeaders(e, "POST, OPTIONS")) return;
+  const admin = requireAdmin(e);
+  if (!admin) return;
+  let body = {};
+  try { body = JSON.parse(toString(e.request.body) || "{}"); } catch (_) { body = {}; }
+  const enabled = require(__hooks + "/lib/csat_engine.js").setCsatEnabled(!!body.csat_enabled);
+  e.json(200, { ok: true, csatEnabled: enabled });
+}
+
 module.exports = {
   getSettings,
   getStoredServiceAccount,
@@ -404,6 +419,7 @@ module.exports = {
   testConnection,
   handleGetSettings,
   handleSaveSla,
+  handleSaveCsat,
   handleSaveServiceAccount,
   handleRemoveServiceAccount,
   handleTestConnection,

@@ -224,6 +224,11 @@ export function saveSla(cfg) {
   return pbRequest("POST", "/mailbox/settings/sla", cfg);
 }
 
+// ---- CSAT enable (admin settings; dispatch on close when on) -----------------
+export function saveCsat(enabled) {
+  return pbRequest("POST", "/mailbox/settings/csat", { csat_enabled: enabled });
+}
+
 // ---- mailboxes (admin settings) --------------------------------------------
 export function listMailboxes() {
   return pbRequest("GET", "/mailbox/settings/inboxes");
