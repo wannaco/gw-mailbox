@@ -82,6 +82,106 @@
   const assignedName = (t) =>
     t.assigned_agent ? appState.users[t.assigned_agent]?.name || t.assigned_agent : "";
 
+  // ---- quick actions (⋯ menu per row, no need to open the thread) ----------
+  const agents = $derived(
+    Object.values(appState.users)
+      .filter((u) => (u.kind || 'agent') !== 'admin')
+      .sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email))
+  );
+  let qaMenu = $state(""); // threadId with the open ⋯ menu
+  let qaPos = $state({ left: 0, top: 0 });
+  let cannedList = $state([]); // {id,title,body}
+  let cannedBusy = $state(false);
+
+  async function loadCanned() {
+    try {
+      const r = await api.listCanned();
+      cannedList = (r.items || []).map((c) => ({ id: c.id, title: c.title, body: c.body }));
+    } catch { /* non-fatal */ }
+  }
+  $effect(() => { loadCanned(); });
+
+  // Position the popover fixed at the ⋯ button so it never gets clipped by the
+  // list scroll container, then clamp inside the viewport.
+  function openQa(id, el) {
+    if (qaMenu === id) { qaMenu = ""; return; }
+    if (el) {
+      const r = el.getBoundingClientRect();
+      const W = 260, H = 380;
+      qaPos = {
+        left: Math.max(8, Math.min(r.right - 8, window.innerWidth - W - 8)),
+        top: Math.max(8, Math.min(r.top, window.innerHeight - H - 8))
+      };
+    }
+    qaMenu = id;
+    if (!cannedList.length) loadCanned();
+  }
+  // Close the ⋯ menu when clicking anywhere else.
+  $effect(() => {
+    if (!qaMenu) return;
+    const h = (e) => {
+      if (!(e.target && e.target.closest && e.target.closest(".qa-anchor"))) qaMenu = "";
+    };
+    document.addEventListener("click", h);
+    return () => document.removeEventListener("click", h);
+  });
+
+  // Fill {{placeholders}} for a canned body from the thread (same as the editor).
+  function fillPh(body, t) {
+    const inbox = (appState.inboxes || []).find((i) => i.id === t?.inbox);
+    const map = {
+      "{{customer_name}}": (t?.customer_name || "") || t?.customer_email || "",
+      "{{customer_email}}": t?.customer_email || "",
+      "{{subject}}": t?.subject || "(no subject)",
+      "{{thread_subject}}": t?.subject || "(no subject)",
+      "{{inbox}}": inbox?.email_address || ""
+    };
+    let out = String(body || "");
+    for (const k in map) out = out.split(k).join(map[k]);
+    return out;
+  }
+
+  async function qaAssign(t, agentId) {
+    const prev = t.assigned_agent;
+    t.assigned_agent = agentId || ""; // optimistic
+    qaMenu = "";
+    try {
+      await api.moveThread(t.id, t.status || "new", { assigned_agent: agentId || "" });
+      toast("success", agentId ? "Assigned" : "Unassigned");
+    } catch (e) {
+      t.assigned_agent = prev;
+      toast("error", e?.message || "Assign failed");
+    }
+  }
+
+  async function qaToggleLabel(t, name) {
+    const cur = Array.isArray(t.tags) ? t.tags : [];
+    const next = cur.includes(name) ? cur.filter((x) => x !== name) : [...cur, name];
+    t.tags = next; // optimistic
+    try {
+      await api.moveThread(t.id, t.status || "new", { tags: next });
+    } catch (e) {
+      toast("error", e?.message || "Label update failed");
+    }
+  }
+
+  async function qaCanned(t, c) {
+    if (cannedBusy) return;
+    cannedBusy = true;
+    const body = fillPh(c.body, t);
+    try {
+      // Send as a reply into the thread — no need to open it first.
+      await api.sendReply(t.id, { body: body, html: "", attachments: [] });
+      t.message_count = (t.message_count || 0) + 1;
+      toast("success", "Reply sent: " + (c.title || ""));
+    } catch (e) {
+      toast("error", e?.message || "Send failed");
+    } finally {
+      cannedBusy = false;
+      qaMenu = "";
+    }
+  }
+
   // ---- selection helpers ----------------------------------------------------
   const selSet = $derived(new Set(selIds));
   const allSelected = $derived(rows.length > 0 && rows.every((t) => selSet.has(t.id)));
@@ -248,6 +348,81 @@
             {/if}
           </span>
         </button>
+        <span class="qa-anchor" class:open={qaMenu === t.id}>
+          <button
+            class="qa-dots"
+            title="Quick actions"
+            aria-label="Quick actions"
+            aria-expanded={qaMenu === t.id}
+            onclick={(e) => { e.stopPropagation(); openQa(t.id, e.currentTarget); }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
+          </button>
+          {#if qaMenu === t.id}
+            <div class="qa-pop" style="left:{qaPos.left}px;top:{qaPos.top}px">
+              <div class="qa-title">Assignee</div>
+              <div class="qa-optlist">
+                {#each agents as a (a.id)}
+                  <button
+                    type="button"
+                    class="qa-opt"
+                    class:on={t.assigned_agent === a.id}
+                    onclick={(e) => { e.stopPropagation(); qaAssign(t, a.id); }}
+                  >
+                    <span class="qa-ava" style="background:{avatarColor(a.id)}">{agentInitials(a.name || a.email)}</span>
+                    <span class="qa-name">{a.name || a.email}</span>
+                    {#if t.assigned_agent === a.id}<span class="qa-check">✓</span>{/if}
+                  </button>
+                {/each}
+                <button
+                  type="button"
+                  class="qa-opt"
+                  class:on={!t.assigned_agent}
+                  onclick={(e) => { e.stopPropagation(); qaAssign(t, ""); }}
+                >
+                  <span class="qa-name">Unassigned</span>
+                  {#if !t.assigned_agent}<span class="qa-check">✓</span>{/if}
+                </button>
+              </div>
+
+              <div class="qa-title">Labels</div>
+              <div class="qa-optlist qa-wrap">
+                {#if !labelCatalog.length}
+                  <span class="muted qa-none">No labels yet</span>
+                {/if}
+                {#each labelCatalog as lb (lb.name)}
+                  <button
+                    type="button"
+                    class="qa-lbl"
+                    class:on={(Array.isArray(t.tags) ? t.tags : []).includes(lb.name)}
+                    onclick={(e) => { e.stopPropagation(); qaToggleLabel(t, lb.name); }}
+                  >
+                    <span class="dot" style="background:{lb.color || '#888'}"></span>
+                    {lb.name}
+                  </button>
+                {/each}
+              </div>
+
+              <div class="qa-title">Reply with…</div>
+              <div class="qa-optlist">
+                {#if !cannedList.length}
+                  <span class="muted qa-none">No canned responses</span>
+                {/if}
+                {#each cannedList as c (c.id)}
+                  <button
+                    type="button"
+                    class="qa-opt"
+                    title="Send this canned reply now"
+                    onclick={(e) => { e.stopPropagation(); qaCanned(t, c); }}
+                  >
+                    <span class="qa-send">✉</span>
+                    <span class="qa-name">/{c.title || "untitled"}</span>
+                  </button>
+                {/each}
+              </div>
+            </div>
+          {/if}
+        </span>
       </div>
     {/each}
   </div>
@@ -431,6 +606,111 @@
     outline: 2px solid var(--m3-primary);
     outline-offset: -2px;
   }
+
+  /* ---- per-row quick actions (⋯) ---- */
+  .qa-anchor {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    padding: 0 8px 0 2px;
+    flex: 0 0 auto;
+    align-self: stretch;
+  }
+  .qa-dots {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--m3-on-surface-variant);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.1s ease;
+  }
+  .qa-dots:hover { background: var(--m3-surface-container-highest); }
+  .rowline:hover .qa-dots,
+  .qa-anchor.open .qa-dots { opacity: 1; }
+  .qa-anchor.open .qa-dots { background: var(--m3-surface-container-highest); color: var(--m3-primary); }
+
+  .qa-pop {
+    position: fixed;
+    z-index: 90;
+    width: 264px;
+    max-height: min(400px, 70vh);
+    overflow-y: auto;
+    background: var(--m3-surface-container-high);
+    border: 1px solid var(--m3-outline-variant);
+    border-radius: var(--m3-shape-sm);
+    box-shadow: var(--m3-elev-4);
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .qa-title {
+    font: var(--m3-type-label-sm);
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--m3-on-surface-variant);
+    margin: 6px 2px 2px;
+  }
+  .qa-optlist {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .qa-opt {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    text-align: left;
+    padding: 6px 8px;
+    border-radius: 7px;
+    font: var(--m3-type-body-sm);
+    color: var(--m3-on-surface);
+    cursor: pointer;
+    min-height: 30px;
+  }
+  .qa-opt:hover { background: var(--m3-row-hover); }
+  .qa-opt.on { background: var(--m3-primary-container); }
+  .qa-ava {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    font-weight: 700;
+    flex: 0 0 auto;
+  }
+  .qa-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .qa-check { color: var(--m3-primary); font-weight: 700; flex: 0 0 auto; }
+  .qa-send { flex: 0 0 auto; color: var(--m3-primary); }
+  .qa-wrap { flex-direction: row; flex-wrap: wrap; gap: 4px; }
+  .qa-lbl {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font: var(--m3-type-label-md);
+    color: var(--m3-on-surface-variant);
+    border: 1px solid var(--m3-outline-variant);
+    border-radius: 999px;
+    padding: 2px 9px;
+    cursor: pointer;
+  }
+  .qa-lbl .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .qa-lbl.on { background: var(--m3-secondary-container); color: var(--m3-on-secondary-container); border-color: transparent; }
+  .qa-none { font-size: 0.8rem; padding: 2px 8px; }
 
   .avatar {
     display: inline-flex;
