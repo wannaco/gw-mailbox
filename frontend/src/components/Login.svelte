@@ -1,11 +1,18 @@
 <script>
-  let { signIn, signInAdmin } = $props();
+  import { onMount } from "svelte";
+  import * as api from "../lib/api.js";
+
+  let { signIn, signInAdmin, signInOAuth } = $props();
 
   let adminMode = $state(false);
   let email = $state("");
   let password = $state("");
   let busy = $state(false);
   let error = $state("");
+  let showPw = $state(false);
+
+  // Google OAuth2 (only shown when PB users collection has it enabled+configured)
+  let oauth = $state({ checking: true, available: false, busy: false });
 
   async function submit() {
     if (busy) return;
@@ -23,38 +30,161 @@
       busy = false;
     }
   }
+
+  async function detectOAuth() {
+    try {
+      const m = await api.checkOAuthProviders();
+      oauth.available = !!(m.enabled && m.google && m.google.authUrl);
+      oauth.google = m.google || null;
+    } catch {
+      oauth.available = false;
+    } finally {
+      oauth.checking = false;
+    }
+  }
+  onMount(detectOAuth);
+
+  // PB 0.39 popup code flow: open provider.authUrl (already has PKCE challenge +
+  // redirect to PB's /api/oauth2-redirect), wait for the popup to post back the
+  // code, then exchange it. Same-origin so we can also read the popup URL.
+  async function googleSignIn() {
+    if (!oauth.available || oauth.busy) return;
+    error = "";
+    oauth.busy = true;
+    let popup = null;
+    const done = new Promise((resolve, reject) => {
+      const origin = window.location.origin;
+      const timeout = setTimeout(() => {
+        cleanup();
+        reject(new Error("Sign-in timed out. Please try again."));
+      }, 180000);
+
+      function cleanup() {
+        clearTimeout(timeout);
+        window.removeEventListener("message", onMsg);
+        if (popup && !popup.closed) popup.close();
+      }
+      function succeed(data) {
+        cleanup();
+        resolve(data);
+      }
+      function onMsg(ev) {
+        if (ev.origin !== origin) return;
+        const d = ev.data || {};
+        if (d && d.code) return succeed(d);
+        if (d && d.state && d.error) {
+          cleanup();
+          reject(new Error(d.error_description || d.error || "Google sign-in was cancelled"));
+        }
+      }
+      window.addEventListener("message", onMsg);
+
+      // Kick off the popup now that the listener is attached.
+      popup = window.open(oauth.google.authUrl, "gwmb_oauth", "width=540,height=640");
+      if (!popup) {
+        cleanup();
+        reject(new Error("Pop-up blocked — allow pop-ups for this site and try again."));
+        return;
+      }
+      // Fallback: poll the popup URL for a code (same origin after PB redirect).
+      const iv = setInterval(() => {
+        try {
+          const loc = popup && !popup.closed ? popup.location.href : "";
+          if (loc && loc.indexOf("code=") !== -1) {
+            clearInterval(iv);
+            const code = new URL(loc).searchParams.get("code") || "";
+            if (code) succeed({ code });
+          }
+          if (popup && popup.closed) clearInterval(iv);
+        } catch {
+          // cross-origin while on accounts.google.com — safe to ignore
+        }
+      }, 400);
+      const done2 = () => clearInterval(iv);
+      window.addEventListener("unload", done2);
+    });
+
+    try {
+      const { code } = await done;
+      const res = await api.oauthExchange("google", code, oauth.google.codeVerifier, window.location.origin);
+      if (res && res.token) {
+        await signInOAuth(res.token);
+      } else {
+        throw new Error("Google sign-in returned no session");
+      }
+    } catch (e) {
+      error = e?.message || "Google sign-in failed";
+      oauth.busy = false;
+    }
+  }
 </script>
 
 <div class="login-wrap">
-  <form class="login-card" onsubmit={(ev) => {
-    ev.preventDefault();
-    submit();
-  }}>
-    <div class="logo"><span class="dot"></span></div>
-    <h1>Mailbox</h1>
-    <p class="tag">Shared Google Workspace inbox &amp; kanban</p>
+  <div class="login-shell">
+    <section class="brand-panel" aria-hidden="true">
+      <div class="blob b1"></div>
+      <div class="blob b2"></div>
+      <div class="brand-inner">
+        <div class="logo"><span class="dot"></span><span class="mark">M</span></div>
+        <h2>Mailbox</h2>
+        <p>One shared inbox for your whole team — tickets, replies, SLAs and CSAT in one place.</p>
+        <ul class="features">
+          <li><span>✓</span> Shared Gmail queue &amp; kanban</li>
+          <li><span>✓</span> Realtime presence &amp; mentions</li>
+          <li><span>✓</span> Follow-ups, SLA &amp; surveys</li>
+        </ul>
+      </div>
+    </section>
 
-    <div class="md3-seg role-seg">
-      <button type="button" class:is-active={!adminMode} onclick={() => (adminMode = false)}>Agent</button>
-      <button type="button" class:is-active={adminMode} onclick={() => (adminMode = true)}>Admin</button>
-    </div>
-    <p class="subtag">{adminMode ? "PocketBase admin (Dashboard access + Settings)" : "Agent login"}</p>
+    <form class="login-card" onsubmit={(ev) => { ev.preventDefault(); submit(); }}>
+      <div class="logo mobile-logo"><span class="dot"></span></div>
+      <h1>Welcome back</h1>
+      <p class="tag">Sign in to continue to your mailbox</p>
 
-    <label class="field">
-      <span>Email</span>
-      <input type="email" bind:value={email} placeholder={adminMode ? "admin@thinkcloud.dev" : "agent@yourdomain.com"} autocomplete="email" />
-    </label>
-    <label class="field">
-      <span>Password</span>
-      <input type="password" bind:value={password} placeholder="••••••••" autocomplete="current-password" />
-    </label>
+      <div class="md3-seg role-seg">
+        <button type="button" class:is-active={!adminMode} onclick={() => (adminMode = false)}>Agent</button>
+        <button type="button" class:is-active={adminMode} onclick={() => (adminMode = true)}>Admin</button>
+      </div>
+      <p class="subtag">{adminMode ? "PocketBase admin — dashboard &amp; settings" : "Agent workspace"}</p>
 
-    {#if error}<div class="err">{error}</div>{/if}
+      {#if !adminMode && oauth.available}
+        <button type="button" class="google-btn" onclick={googleSignIn} disabled={oauth.busy}>
+          <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
+            <path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3l5.7-5.7C34.1 6.1 29.3 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.3-.1-2.6-.4-3.9z"/>
+            <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.9 1.2 8 3l5.7-5.7C34.1 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/>
+            <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/>
+            <path fill="#1976D2" d="M43.6 20.1H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C36.9 39.2 44 34 44 24c0-1.3-.1-2.6-.4-3.9z"/>
+          </svg>
+          {oauth.busy ? "Connecting to Google…" : "Continue with Google"}
+        </button>
+        <div class="or-divider"><span>or</span></div>
+      {/if}
 
-    <button class="md3-btn primary signin" type="submit" disabled={busy}>
-      {busy ? "Signing in…" : adminMode ? "Sign in as admin" : "Sign in"}
-    </button>
-  </form>
+      {#if !adminMode && oauth.checking}
+        <div class="subtag muted">Checking sign-in options…</div>
+      {/if}
+
+      <label class="field">
+        <span>{adminMode ? "Admin email" : "Email"}</span>
+        <input type="email" bind:value={email} placeholder={adminMode ? "admin@thinkcloud.dev" : "you@yourdomain.com"} autocomplete="email" />
+      </label>
+      <label class="field">
+        <span>Password</span>
+        <div class="pw-wrap">
+          <input type={showPw ? "text" : "password"} bind:value={password} placeholder="••••••••" autocomplete="current-password" />
+          <button type="button" class="pw-toggle" onclick={() => (showPw = !showPw)} tabindex="-1" aria-label={showPw ? "Hide password" : "Show password"}>
+            {showPw ? "🙈" : "👁"}
+          </button>
+        </div>
+      </label>
+
+      {#if error}<div class="err">{error}</div>{/if}
+
+      <button class="md3-btn primary signin" type="submit" disabled={busy}>
+        {busy ? "Signing in…" : adminMode ? "Sign in as admin" : "Sign in"}
+      </button>
+    </form>
+  </div>
 </div>
 
 <style>
@@ -62,59 +192,100 @@
     height: 100dvh;
     display: grid;
     place-items: center;
-    background: var(--m3-surface);
     padding: 16px;
+    background: var(--m3-surface);
   }
 
+  .login-shell {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(340px, 0.9fr);
+    width: min(920px, 100%);
+    max-height: min(620px, calc(100dvh - 32px));
+    border-radius: 24px;
+    overflow: hidden;
+    box-shadow: var(--m3-elev-4);
+    border: 1px solid var(--m3-outline-variant);
+  }
+
+  /* Left brand panel */
+  .brand-panel {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    background: linear-gradient(150deg, #0b57d0 0%, #1a73e8 45%, #3949ab 100%);
+    color: #fff;
+    overflow: hidden;
+  }
+  .blob { position: absolute; border-radius: 50%; filter: blur(2px); opacity: 0.22; }
+  .b1 { width: 300px; height: 300px; background: #aecbfa; top: -90px; right: -90px; }
+  .b2 { width: 260px; height: 260px; background: #d2e3fc; bottom: -80px; left: -70px; }
+  .brand-inner { position: relative; z-index: 1; max-width: 380px; }
+  .brand-inner .logo { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+  .mark { font-weight: 800; font-size: 1.15rem; }
+  .brand-inner h2 { font-size: 1.9rem; margin: 0 0 8px; }
+  .brand-inner p { opacity: 0.92; font-size: 0.98rem; line-height: 1.45; }
+  .features { list-style: none; margin: 24px 0 0; padding: 0; display: grid; gap: 10px; }
+  .features li { display: flex; align-items: center; gap: 9px; font-size: 0.9rem; opacity: 0.95; }
+  .features span {
+    width: 20px; height: 20px; border-radius: 50%; background: rgba(255,255,255,0.22);
+    display: inline-flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: 800;
+  }
+
+  /* Right card */
   .login-card {
-    width: min(380px, 100%);
-    background: var(--m3-surface-container-low);
-    border-radius: var(--m3-shape-lg);
-    box-shadow: var(--m3-elev-2);
-    padding: 28px;
     display: flex;
     flex-direction: column;
+    padding: 34px 34px 30px;
+    background: var(--m3-surface-container-low);
+    overflow-y: auto;
   }
+  .mobile-logo { display: none; }
+  h1 { font: var(--m3-type-headline); margin: 0 0 4px; }
+  .tag { color: var(--m3-on-surface-variant); margin: 0 0 18px; font: var(--m3-type-body-md); }
+  .role-seg { align-self: flex-start; margin-bottom: 4px; }
+  .subtag { font: var(--m3-type-label-sm); color: var(--m3-on-surface-variant-2); margin-bottom: 16px; }
+  .subtag.muted { color: var(--m3-on-surface-variant-2); }
 
-  .logo .dot {
-    width: 42px;
-    height: 42px;
-    border-radius: 50%;
-    background: var(--m3-primary);
-    display: block;
-  }
-
-  h1 {
-    font: var(--m3-type-headline);
-    margin-top: 12px;
-  }
-
-  .tag {
-    color: var(--m3-on-surface-variant);
-    margin: 2px 0 14px;
-    font: var(--m3-type-body-sm);
-  }
-
-  .role-seg {
-    align-self: flex-start;
+  .google-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    padding: 11px 14px;
     margin-bottom: 4px;
+    border-radius: 999px;
+    border: 1px solid var(--m3-outline);
+    background: var(--m3-surface);
+    color: var(--m3-on-surface);
+    font: var(--m3-type-body-md);
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease;
   }
+  .google-btn:hover:not(:disabled) { background: var(--m3-surface-container-highest); }
+  .google-btn:disabled { opacity: 0.6; cursor: default; }
 
-  .subtag {
+  .or-divider {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--m3-on-surface-variant);
     font: var(--m3-type-label-sm);
-    color: var(--m3-on-surface-variant-2);
-    margin-bottom: 14px;
+    margin: 10px 0 14px;
   }
+  .or-divider::before, .or-divider::after { content: ""; flex: 1; height: 1px; background: var(--m3-outline-variant); }
 
   .field {
     display: flex;
     flex-direction: column;
     gap: 5px;
-    margin-bottom: 12px;
+    margin-bottom: 13px;
     color: var(--m3-on-surface-variant);
     font: var(--m3-type-label-md);
   }
-
   .field input {
     height: 46px;
     padding: 0 13px;
@@ -122,11 +293,16 @@
     border: 1px solid var(--m3-outline);
     background: var(--m3-surface);
     outline: none;
+    transition: border-color 0.12s ease, box-shadow 0.12s ease;
   }
-
-  .field input:focus {
-    border: 2px solid var(--m3-primary);
+  .field input:focus { border: 2px solid var(--m3-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--m3-primary) 18%, transparent); }
+  .pw-wrap { position: relative; }
+  .pw-wrap input { width: 100%; padding-right: 46px; }
+  .pw-toggle {
+    position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+    background: none; border: 0; cursor: pointer; font-size: 1rem; padding: 6px; border-radius: 50%;
   }
+  .pw-toggle:hover { background: var(--m3-surface-container-highest); }
 
   .err {
     background: var(--m3-error-container);
@@ -136,8 +312,12 @@
     font: var(--m3-type-body-sm);
     margin-bottom: 10px;
   }
+  .signin { margin-top: 4px; height: 46px; }
 
-  .signin {
-    margin-top: 4px;
+  @media (max-width: 760px) {
+    .login-shell { grid-template-columns: 1fr; max-height: none; }
+    .brand-panel { display: none; }
+    .mobile-logo { display: block; margin-bottom: 10px; }
   }
+  .mobile-logo .dot { width: 36px; height: 36px; border-radius: 50%; background: var(--m3-primary); display: block; }
 </style>

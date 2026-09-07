@@ -58,6 +58,35 @@ export async function pbRequest(method, path, body, opts = {}) {
 
 export class AuthError extends Error {}
 
+// OAuth2 (Google) — PB 0.39 code flow. auth-methods returns the google provider
+// with a ready authUrl (incl. PKCE challenge) + codeVerifier when the users
+// collection has OAuth2 enabled + a google provider configured. Exchange the
+// returned code at /auth-with-oauth2 for a { token, record }.
+export async function checkOAuthProviders() {
+  const origin = window.location.origin;
+  const res = await pbRequest(
+    "GET",
+    `/collections/users/auth-methods?redirectUrl=${encodeURIComponent(origin)}`,
+    undefined,
+    { token: "" }
+  );
+  const provs = (res && res.oauth2 && res.oauth2.providers) || [];
+  return {
+    enabled: !!(res && res.oauth2 && res.oauth2.enabled),
+    providers: provs,
+    google: provs.find((p) => String(p.name || "").toLowerCase() === "google") || null
+  };
+}
+
+export function oauthExchange(provider, code, codeVerifier, redirectURL) {
+  return pbRequest("POST", `/collections/users/auth-with-oauth2`, {
+    provider,
+    code,
+    codeVerifier,
+    redirectURL
+  });
+}
+
 export function authWithPassword(email, password) {
   return pbRequest(
     "POST",

@@ -77,6 +77,15 @@
     api.startPresenceLoop();
   }
 
+  // Google OAuth2 success — same bootstrap as an agent password login.
+  async function handleOAuth(token) {
+    appState.token = token;
+    localStorage.setItem("gwmb.token", token);
+    await api.loadSession();
+    api.startRealtime();
+    api.startPresenceLoop();
+  }
+
   function logout() {
     api.stopRealtime();
     api.stopPresenceLoop();
@@ -100,7 +109,7 @@
 {:else if csatToken}
   <CsatPage token={csatToken} />
 {:else if !appState.me}
-  <Login signIn={handleLogin} signInAdmin={handleAdminLogin} />
+  <Login signIn={handleLogin} signInAdmin={handleAdminLogin} signInOAuth={handleOAuth} />
 {:else}
   <div class="shell">
     <header class="topbar">
