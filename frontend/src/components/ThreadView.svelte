@@ -251,10 +251,29 @@
     return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
 
+  // Resolve {{placeholders}} from the open thread at insert time. Known tokens
+  // are filled with live values; UNKNOWN ones are left literal so teams can
+  // type notes like {{order_id}} without them being swallowed.
+  function fillCannedPlaceholders(text) {
+    const t = thread;
+    const inbox = (appState.inboxes || []).find((i) => i.id === t?.inbox);
+    const map = {
+      "{{customer_name}}": (t?.customer_name || "") || t?.customer_email || "",
+      "{{customer_email}}": t?.customer_email || "",
+      "{{subject}}": t?.subject || "(no subject)",
+      "{{thread_subject}}": t?.subject || "(no subject)",
+      "{{inbox}}": inbox?.email_address || ""
+    };
+    let out = String(text || "");
+    for (const k in map) out = out.split(k).join(map[k]);
+    return out;
+  }
+
   // Replace the /token with the canned body as rich paragraphs.
   function pickCanned(c) {
     const el = editorEl;
     const sel = window.getSelection && window.getSelection();
+    const body = fillCannedPlaceholders(c.body);
     if (el && sel && sel.rangeCount) {
       const caret = sel.getRangeAt(0);
       const range = caretTokenRange(caret.startContainer, caret.startOffset, "/");
@@ -262,17 +281,17 @@
         sel.removeAllRanges();
         sel.addRange(range);
       }
-      const paras = String(c.body || "")
+      const paras = String(body || "")
         .split(/\n+/)
         .map((p) => "<p>" + esc(p).trim() + "</p>")
         .join("");
       try {
         document.execCommand("insertHTML", false, paras);
       } catch (_) {
-        document.execCommand("insertText", false, c.body || "");
+        document.execCommand("insertText", false, body || "");
       }
     } else if (el) {
-      el.innerHTML += "<p>" + esc(c.body || "").replace(/\n+/g, "</p><p>") + "</p>";
+      el.innerHTML += "<p>" + esc(body || "").replace(/\n+/g, "</p><p>") + "</p>";
     }
     slash = null;
     replyText = editorText();
