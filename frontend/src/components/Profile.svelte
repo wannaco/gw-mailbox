@@ -1,7 +1,7 @@
 <script>
   // My Profile — the signed-in user edits their own email signature + whether
-  // it auto-appends to replies (Gmail-style). Admins can also edit signatures
-  // from Settings → People.
+  // it auto-appends to replies (Gmail-style). Agents can also be edited by an
+  // admin from Settings → People.
   import { appState, toast } from "../lib/appState.svelte.js";
   import * as api from "../lib/api.js";
 

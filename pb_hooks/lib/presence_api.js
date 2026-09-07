@@ -196,7 +196,22 @@ function handleMe(e) {
 
   if (actor.isSuperuser) {
     const all = $app.findRecordsByFilter("inboxes", "is_active = true", "name", 0, 0);
-    e.json(200, { ok: true, me: actor, inboxes: (all || []).map(inboxSummary), sla: h.readSlaConfig() });
+    // Admin signature lives on the _superusers record (actor.recordId = su id).
+    let sig = "";
+    let sigAuto = false;
+    try {
+      const su = actor.recordId ? h.safeFindById("_superusers", actor.recordId) : null;
+      if (su) {
+        sig = su.getString("signature") || "";
+        sigAuto = su.getBool("signature_auto");
+      }
+    } catch (_) { /* field may not exist on older rows */ }
+    e.json(200, {
+      ok: true,
+      me: { id: actor.id, name: actor.name, email: actor.email, isSuperuser: true, signature: sig, signature_auto: sigAuto },
+      inboxes: (all || []).map(inboxSummary),
+      sla: h.readSlaConfig()
+    });
     return;
   }
 
@@ -220,17 +235,19 @@ function handleMe(e) {
   });
 }
 
-// POST /api/mailbox/me/signature — an agent saves their own signature + the
-// auto-insert flag (agents only; superusers don't reply as themselves).
+// POST /api/mailbox/me/signature — the signed-in user (agent OR admin) saves
+// their own signature + auto-insert flag. Agents live in `users`; admins in
+// `_superusers` (they can reply to escalations too).
 function handleSaveMySignature(e) {
   if (h.addCorsHeaders(e, "POST, OPTIONS")) return;
   const actor = h.actorFromEvent(e);
   if (!actor) return h.fail(e, 401, "unauthorized", "Auth required");
-  if (actor.isSuperuser) return h.fail(e, 400, "not_agent", "Signatures apply to agents");
   let body = {};
   try { body = JSON.parse(toString(e.request.body) || "{}"); } catch (_) { body = {}; }
-  const uid = actor.id; // agent users record id
-  const rec = h.safeFindById("users", uid);
+  // Superusers: _superusers by recordId; agents: users by actor.id.
+  const coll = actor.isSuperuser ? "_superusers" : "users";
+  const uid = actor.isSuperuser ? (actor.recordId || actor.id) : actor.id;
+  const rec = h.safeFindById(coll, uid);
   if (!rec) return h.fail(e, 404, "not_found", "User record not found");
   if (body.signature !== undefined) rec.set("signature", String(body.signature || "").slice(0, 8000));
   if (body.signature_auto !== undefined) rec.set("signature_auto", !!body.signature_auto);
