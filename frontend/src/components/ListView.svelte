@@ -90,16 +90,6 @@
   );
   let qaMenu = $state(""); // threadId with the open ⋯ menu
   let qaPos = $state({ left: 0, top: 0 });
-  let cannedList = $state([]); // {id,title,body}
-  let cannedBusy = $state(false);
-
-  async function loadCanned() {
-    try {
-      const r = await api.listCanned();
-      cannedList = (r.items || []).map((c) => ({ id: c.id, title: c.title, body: c.body }));
-    } catch { /* non-fatal */ }
-  }
-  $effect(() => { loadCanned(); });
 
   // Position the popover fixed at the ⋯ button so it never gets clipped by the
   // list scroll container, then clamp inside the viewport.
@@ -107,14 +97,13 @@
     if (qaMenu === id) { qaMenu = ""; return; }
     if (el) {
       const r = el.getBoundingClientRect();
-      const W = 260, H = 380;
+      const W = 260, H = 320;
       qaPos = {
         left: Math.max(8, Math.min(r.right - 8, window.innerWidth - W - 8)),
         top: Math.max(8, Math.min(r.top, window.innerHeight - H - 8))
       };
     }
     qaMenu = id;
-    if (!cannedList.length) loadCanned();
   }
   // Close the ⋯ menu when clicking anywhere else.
   $effect(() => {
@@ -125,21 +114,6 @@
     document.addEventListener("click", h);
     return () => document.removeEventListener("click", h);
   });
-
-  // Fill {{placeholders}} for a canned body from the thread (same as the editor).
-  function fillPh(body, t) {
-    const inbox = (appState.inboxes || []).find((i) => i.id === t?.inbox);
-    const map = {
-      "{{customer_name}}": (t?.customer_name || "") || t?.customer_email || "",
-      "{{customer_email}}": t?.customer_email || "",
-      "{{subject}}": t?.subject || "(no subject)",
-      "{{thread_subject}}": t?.subject || "(no subject)",
-      "{{inbox}}": inbox?.email_address || ""
-    };
-    let out = String(body || "");
-    for (const k in map) out = out.split(k).join(map[k]);
-    return out;
-  }
 
   async function qaAssign(t, agentId) {
     const prev = t.assigned_agent;
@@ -162,23 +136,6 @@
       await api.moveThread(t.id, t.status || "new", { tags: next });
     } catch (e) {
       toast("error", e?.message || "Label update failed");
-    }
-  }
-
-  async function qaCanned(t, c) {
-    if (cannedBusy) return;
-    cannedBusy = true;
-    const body = fillPh(c.body, t);
-    try {
-      // Send as a reply into the thread — no need to open it first.
-      await api.sendReply(t.id, { body: body, html: "", attachments: [] });
-      t.message_count = (t.message_count || 0) + 1;
-      toast("success", "Reply sent: " + (c.title || ""));
-    } catch (e) {
-      toast("error", e?.message || "Send failed");
-    } finally {
-      cannedBusy = false;
-      qaMenu = "";
     }
   }
 
@@ -399,24 +356,6 @@
                   >
                     <span class="dot" style="background:{lb.color || '#888'}"></span>
                     {lb.name}
-                  </button>
-                {/each}
-              </div>
-
-              <div class="qa-title">Reply with…</div>
-              <div class="qa-optlist">
-                {#if !cannedList.length}
-                  <span class="muted qa-none">No canned responses</span>
-                {/if}
-                {#each cannedList as c (c.id)}
-                  <button
-                    type="button"
-                    class="qa-opt"
-                    title="Send this canned reply now"
-                    onclick={(e) => { e.stopPropagation(); qaCanned(t, c); }}
-                  >
-                    <span class="qa-send">✉</span>
-                    <span class="qa-name">/{c.title || "untitled"}</span>
                   </button>
                 {/each}
               </div>
@@ -695,7 +634,6 @@
     white-space: nowrap;
   }
   .qa-check { color: var(--m3-primary); font-weight: 700; flex: 0 0 auto; }
-  .qa-send { flex: 0 0 auto; color: var(--m3-primary); }
   .qa-wrap { flex-direction: row; flex-wrap: wrap; gap: 4px; }
   .qa-lbl {
     display: inline-flex;
