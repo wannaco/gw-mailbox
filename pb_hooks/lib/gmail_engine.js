@@ -53,6 +53,81 @@ function extractBodies(payload, acc) {
   return acc;
 }
 
+// Pull `filename="x"` out of a header like Content-Disposition or Content-Type.
+function filenameFromHeader(headers) {
+  for (const hdr of headers || []) {
+    const n = (hdr.name || "").toLowerCase();
+    if (n !== "content-disposition" && n !== "content-type") continue;
+    const m = String(hdr.value || "").match(/filename\*?=(?:UTF-8''|")?([^";]+)/i);
+    if (m && m[1]) {
+      try {
+        return decodeURIComponent(m[1].trim().replace(/"/g, ""));
+      } catch (_) {
+        return m[1].trim().replace(/"/g, "");
+      }
+    }
+  }
+  return "";
+}
+
+// Collect REAL attachment parts (skip inline images/cid pieces embedded in the
+// HTML body). Gmail marks true attachments with body.attachmentId + a
+// Content-Disposition: attachment header (or a filename). Returns metadata
+// only; binary data is fetched separately so we never download inline images.
+function collectAttachmentParts(payload, acc) {
+  acc = acc || [];
+  if (!payload) return acc;
+  const body = payload.body || {};
+  if (body.attachmentId && !(payload.parts && payload.parts.length)) {
+    const headers = payload.headers || [];
+    const cd = String(headerValue(headers, "Content-Disposition") || "").toLowerCase();
+    const isInline = cd.indexOf("inline") !== -1;
+    const name = String(payload.filename || "").trim() || filenameFromHeader(headers);
+    if (!isInline && (name || cd.indexOf("attachment") !== -1)) {
+      acc.push({
+        attachmentId: String(body.attachmentId),
+        filename: name || "attachment",
+        mime: payload.mimeType || "application/octet-stream",
+        size: parseInt(body.size || "0", 10) || 0
+      });
+    }
+  }
+  for (const part of payload.parts || []) collectAttachmentParts(part, acc);
+  return acc;
+}
+
+// Fetch + decode the binary bytes for each attachment candidate (Gmail stores
+// payload outside the message; GET /messages/{id}/attachments/{attachmentId}).
+// Hard caps mirror the messages.attachments field (maxSelect 20, 25MB/file).
+function fetchAttachmentBytes(uid, messageId, candidates) {
+  const out = [];
+  let total = 0;
+  for (let i = 0; i < (candidates || []).length; i++) {
+    if (out.length >= 20) break;
+    const c = candidates[i];
+    try {
+      const res = h.googleRequest({
+        url: h.GMAIL_BASE + "/users/" + encodeURIComponent(uid) +
+          "/messages/" + encodeURIComponent(messageId) +
+          "/attachments/" + encodeURIComponent(c.attachmentId),
+        scopes: [h.GMAIL_SCOPE],
+        subject: uid
+      });
+      const bytes = res && res.data ? h.b64ToBytes(res.data) : null;
+      if (!bytes || !bytes.length) { h.warn("empty attachment data", c.filename); continue; }
+      total += bytes.length;
+      if (bytes.length > 25 * 1024 * 1024 || total > 25 * 1024 * 1024) {
+        h.warn("attachment over 25MB cap, skipped", c.filename);
+        break;
+      }
+      out.push({ filename: c.filename, mime: c.mime, size: bytes.length, bytes: bytes });
+    } catch (err) {
+      h.warn("attachment fetch failed", c.filename, (err && err.message) || err);
+    }
+  }
+  return out;
+}
+
 function normalizeMessage(msg, inboxEmail) {
   const headers = msg.payload && msg.payload.headers ? msg.payload.headers : [];
   const subject = headerValue(headers, "Subject");
@@ -64,6 +139,7 @@ function normalizeMessage(msg, inboxEmail) {
   const bodies = extractBodies(msg.payload, null);
   const internalDate = parseInt(msg.internalDate || "0", 10);
   const iso = internalDate ? new Date(internalDate).toISOString() : "";
+  const attachmentParts = collectAttachmentParts(msg.payload, []);
 
   let customer = null;
   if (from.email && from.email.toLowerCase() !== String(inboxEmail).toLowerCase()) {
@@ -91,7 +167,8 @@ function normalizeMessage(msg, inboxEmail) {
     body_plain: bodies.text || "",
     body_html: bodies.html || "",
     received_iso: iso,
-    epochMs: internalDate
+    epochMs: internalDate,
+    attachmentParts: attachmentParts
   };
 }
 
@@ -144,6 +221,17 @@ function slaAnchorFromPb(pbDate) {
 function upsertThreadAndMessage(inboxRec, norm) {
   const counters = { threadsCreated: 0, threadsUpdated: 0, messagesAdded: 0, skipped: 0 };
   const uid = inboxUserEmail(inboxRec);
+  // Download attachment bytes for this message once; used for both new rows
+  // and healing legacy rows (never saved with files). Safe no-op when none.
+  function fetchAtts() {
+    if (!(norm.attachmentParts && norm.attachmentParts.length)) return [];
+    try {
+      return fetchAttachmentBytes(uid, norm.gmail_message_id, norm.attachmentParts);
+    } catch (err) {
+      h.warn("attachment download failed", norm.gmail_message_id, (err && err.message) || err);
+      return [];
+    }
+  }
 
   let thread = h.safeFindFirstByFilter("threads", "gmail_thread_id = {:g}", { g: norm.gmail_thread_id });
   const dateStr = norm.received_iso ? isoToPb(norm.received_iso) : "";
@@ -223,6 +311,29 @@ function upsertThreadAndMessage(inboxRec, norm) {
         $app.save(existingMsg);
       } catch (err) { /* non-fatal */ }
     }
+    // Heal legacy rows: messages ingested BEFORE attachment storage existed
+    // have no files. On re-sync, attach them now (idempotent — only when the
+    // row currently has zero attachments).
+    if (norm.attachmentParts && norm.attachmentParts.length) {
+      try {
+        const have = existingMsg.get("attachments");
+        if (!have || !have.length) {
+          const atts = fetchAtts();
+          if (atts.length) {
+            const files = [];
+            const meta = [];
+            for (const a of atts) {
+              files.push($filesystem.fileFromBytes(a.bytes, a.filename));
+              meta.push({ name: a.filename, mime: a.mime, size: a.size });
+            }
+            existingMsg.set("attachments", files);
+            existingMsg.set("attachments_meta", meta);
+            $app.save(existingMsg);
+            h.log("backfilled attachments for existing message", existingMsg.id, atts.length);
+          }
+        }
+      } catch (err) { h.warn("attachment heal failed", (err && err.message) || err); }
+    }
     counters.skipped++;
     return counters;
   }
@@ -238,6 +349,19 @@ function upsertThreadAndMessage(inboxRec, norm) {
     msg_date: dateStr || "",
     is_internal_note: false
   });
+  // Attach downloaded files to brand-new inbound messages (same storage shape
+  // as the sent path: attachments file field + aligned attachments_meta JSON).
+  const atts = fetchAtts();
+  if (atts.length) {
+    const files = [];
+    const meta = [];
+    for (const a of atts) {
+      files.push($filesystem.fileFromBytes(a.bytes, a.filename));
+      meta.push({ name: a.filename, mime: a.mime, size: a.size });
+    }
+    msg.set("attachments", files);
+    msg.set("attachments_meta", meta);
+  }
   $app.save(msg);
   counters.messagesAdded++;
   bumpThreadMessageCount(thread, 1);
