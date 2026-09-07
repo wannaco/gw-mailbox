@@ -202,8 +202,9 @@ function handleMe(e) {
 
   const inboxIds = h.inboxIdsForUser(actor.id).all;
   const inboxes = inboxIds.length ? $app.findRecordsByIds("inboxes", inboxIds) : [];
-  // Signature fields from the agent's users record.
-  const rec = actor.recordId ? h.safeFindById("users", actor.recordId) : null;
+  // Signature fields from the agent's users record (actor.id === users id for
+  // agents; actor.recordId only exists for superusers).
+  const rec = actor.isSuperuser ? null : h.safeFindById("users", actor.id);
   e.json(200, {
     ok: true,
     me: {
@@ -228,7 +229,7 @@ function handleSaveMySignature(e) {
   if (actor.isSuperuser) return h.fail(e, 400, "not_agent", "Signatures apply to agents");
   let body = {};
   try { body = JSON.parse(toString(e.request.body) || "{}"); } catch (_) { body = {}; }
-  const uid = actor.recordId || actor.id;
+  const uid = actor.id; // agent users record id
   const rec = h.safeFindById("users", uid);
   if (!rec) return h.fail(e, 404, "not_found", "User record not found");
   if (body.signature !== undefined) rec.set("signature", String(body.signature || "").slice(0, 8000));
