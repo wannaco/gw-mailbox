@@ -58,22 +58,18 @@
   let csatEnabled = $state(false);
   let busyCsat = $state(false);
 
-  // Agent signatures (admin edits on the agent's behalf)
-  let sigDrafts = $state({}); // userId -> { signature, signature_auto }
+  // Agent signatures (admin edits on the agent's behalf). Edits bind directly
+  // to the agent object (appState.users is a deep $state proxy, so nested
+  // mutation is allowed) and are persisted with Save — no drafts object that
+  // would be mutated during render (Svelte 5 forbids state_unsafe_mutation).
   let busySig = $state(""); // userId being saved
-  function sigDraft(u) {
-    if (!sigDrafts[u.id]) sigDrafts[u.id] = { signature: u.signature || "", signature_auto: !!u.signature_auto };
-    return sigDrafts[u.id];
-  }
   async function saveAgentSig(u) {
     busySig = u.id;
     try {
-      const d = sigDraft(u);
-      const r = await api.adminSaveAgentSignature(u.id, { signature: d.signature, signature_auto: d.signature_auto });
+      const r = await api.adminSaveAgentSignature(u.id, { signature: u.signature || "", signature_auto: !!u.signature_auto });
       u.signature = r.signature || "";
       u.signature_auto = !!r.signature_auto;
       if (appState.users[u.id]) { appState.users[u.id].signature = u.signature; appState.users[u.id].signature_auto = u.signature_auto; }
-      delete sigDrafts[u.id];
       toast("success", "Signature saved for " + (u.name || u.email));
     } catch (err) {
       toast("error", err?.message || "Save failed");
@@ -660,16 +656,15 @@
       <p class="muted">Set an agent's email signature on their behalf (they can also edit their own from the avatar menu → My profile). The signature auto-appends to that agent's replies when they enable it.</p>
       <div style="display:grid;gap:14px;margin-top:8px">
         {#each agentOptions as u (u.id)}
-          {@const d = sigDraft(u)}
           <div class="ag-sig">
             <div class="ag-sig-head">
               <strong>{u.name || u.email}</strong>
               <span class="muted">{u.email}</span>
               <label class="ag-check" style="margin-left:auto">
-                <input type="checkbox" bind:checked={d.signature_auto} /> auto-insert
+                <input type="checkbox" bind:checked={u.signature_auto} /> auto-insert
               </label>
             </div>
-            <textarea rows="3" bind:value={d.signature} placeholder="-- \n\nName\nRole · Company…"></textarea>
+            <textarea rows="3" bind:value={u.signature} placeholder="-- \n\nName\nRole · Company…"></textarea>
             <div class="row-btns">
               <button class="md3-btn primary small" onclick={() => saveAgentSig(u)} disabled={busySig === u.id}>
                 {busySig === u.id ? "Saving…" : "Save"}
