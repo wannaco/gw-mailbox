@@ -569,8 +569,17 @@
   }
   .qa-dots:hover { background: var(--m3-surface-container-highest); }
   .rowline:hover .qa-dots,
-  .qa-anchor.open .qa-dots { opacity: 1; }
+  .qa-anchor.open .qa-dots,
+  .qa-dots:focus-visible { opacity: 1; }
   .qa-anchor.open .qa-dots { background: var(--m3-surface-container-highest); color: var(--m3-primary); }
+
+  /* Touch / coarse-pointer: there is no hover to reveal the ⋯, so keep the
+     quick-action dots always visible (Gmail-style). */
+  @media (hover: none), (pointer: coarse) {
+    .qa-dots { opacity: 1; }
+    .qa-dots:hover { background: transparent; }
+    .rowline:hover .qa-dots { opacity: 1; }
+  }
 
   .qa-pop {
     position: fixed;
