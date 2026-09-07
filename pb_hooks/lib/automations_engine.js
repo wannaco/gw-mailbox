@@ -127,6 +127,7 @@ function handleThread(threadRec, cfg) {
     threadRec.set("status", "closed");
     threadRec.set("followup_next_at", "");
     $app.save(threadRec);
+    h.markThreadClosed(threadRec); // reports: stamp closed_at
     h.addInternalNote(threadRec.id,
       { name: "Automation", email: "system@mailbox.local" },
       "Auto-closed: no customer reply after " + count + " follow-up" + (count === 1 ? "" : "s") + "."

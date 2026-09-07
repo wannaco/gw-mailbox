@@ -825,6 +825,14 @@ function handleReply(e) {
     }
     $app.save(msg);
     bumpThreadMessageCount(thread, 1);
+    // Report tracking: first time an AGENT replies -> stamp first_response_at.
+    try {
+      const fr = thread.getDateTime("first_response_at");
+      if (!fr || fr.isZero()) {
+        thread.set("first_response_at", new DateTime().string());
+        $app.save(thread);
+      }
+    } catch (_) { /* non-fatal */ }
 
     e.json(200, { ok: true, gmail_message_id: sent.id || "", threadId: thread.id, messageId: msg.id });
   } catch (err) {

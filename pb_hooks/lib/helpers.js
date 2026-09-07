@@ -132,6 +132,17 @@ function requireThreadAccess(e, threadId, actor) {
 // ---------------------------------------------------------------------------
 function nowDateTime() { return new DateTime(); }
 
+// Reporting stamp: when a thread transitioned INTO closed, record closed_at.
+// Re-open + re-close refreshes it (resolution time = last close).
+function markThreadClosed(threadRec) {
+  try {
+    if (!threadRec) return;
+    if (threadRec.getString("status") !== "closed") return;
+    threadRec.set("closed_at", new DateTime().string());
+    $app.save(threadRec);
+  } catch (_) { /* non-fatal */ }
+}
+
 // PB date-layout string (e.g. "2026-09-05 15:13:19.123Z") — always parseable
 // by PB filters and date fields.
 function dateToPbString(d) {
@@ -631,7 +642,7 @@ module.exports = {
   safeFindById, safeFindFirstByFilter, inboxIdsForUser, canViewThreadForUser, requireThreadAccess,
   // dates
   nowDateTime, dateToPbString, isoToPbString, isSlaBreached,
-  readSlaConfig, saveSlaConfig, effectiveSlaHours,
+  readSlaConfig, saveSlaConfig, effectiveSlaHours, markThreadClosed,
   // notes / presence
   addInternalNote, heartbeatPresence, releasePresence, presenceSnapshot, composingLock,
   // google

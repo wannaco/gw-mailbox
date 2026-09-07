@@ -229,6 +229,11 @@ export function saveCsat(enabled) {
   return pbRequest("POST", "/mailbox/settings/csat", { csat_enabled: enabled });
 }
 
+// ---- reports ---------------------------------------------------------------
+export function getReports() {
+  return pbRequest("GET", "/mailbox/reports");
+}
+
 // ---- mailboxes (admin settings) --------------------------------------------
 export function listMailboxes() {
   return pbRequest("GET", "/mailbox/settings/inboxes");

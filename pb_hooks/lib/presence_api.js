@@ -174,6 +174,8 @@ function handleMoveThread(e) {
   if (status === "closed" && prev !== "closed") {
     try { require(__hooks + "/lib/csat_engine.js").dispatchCsatOnClose(threadId); } catch (_) { /* non-fatal */ }
   }
+  // Entering closed -> stamp closed_at for reports.
+  if (status === "closed" && prev !== "closed") h.markThreadClosed(thread);
 
   e.json(200, {
     ok: true,
@@ -422,6 +424,8 @@ function handleBulkThreads(e) {
         if (action === "closed" && prev !== "closed") {
           try { require(__hooks + "/lib/csat_engine.js").dispatchCsatOnClose(id); } catch (_) { /* non-fatal */ }
         }
+        // Entering closed -> stamp closed_at for reports.
+        if (action === "closed" && prev !== "closed") h.markThreadClosed(thread);
         results.push({ id, ok: true, status: action });
       }
     } catch (err) {
