@@ -158,9 +158,14 @@ export async function fetchMessages(threadId) {
     "GET",
     `/collections/messages/records?perPage=200&filter=${filter}`
   );
-  const items = (res.items || []).slice().sort((a, b) =>
-    String(a.msg_date || "").localeCompare(String(b.msg_date || ""))
-  );
+  const items = (res.items || []).slice().sort((a, b) => {
+    // Missing/invalid msg_date sorts LAST (never first) — a blank date used to
+    // jump messages to the top of the thread until Gmail backfilled the date.
+    const da = a.msg_date ? 1 : 0;
+    const db = b.msg_date ? 1 : 0;
+    if (da !== db) return da - db;
+    return String(a.msg_date || "").localeCompare(String(b.msg_date || ""));
+  });
   appState.messages[threadId] = items;
 }
 

@@ -810,7 +810,7 @@ function handleReply(e) {
       body_html: safeHtml || "",
       body_plain: text || h.htmlToPlain(safeHtml),
       gmail_msgid_header: sentMessageIdHeader(sent),
-      msg_date: h.dateToPbString(new Date()),
+      msg_date: new DateTime().string(),
       is_internal_note: false
     });
     if (atts.length) {
@@ -867,7 +867,7 @@ function sendOutboundEmail(thread, uid, subject, bodyText) {
     body_html: "",
     body_plain: bodyText || "",
     gmail_msgid_header: sentMessageIdHeader(sent),
-    msg_date: h.dateToPbString(new Date()),
+    msg_date: new DateTime().string(),
     is_internal_note: false
   });
   $app.save(msg);

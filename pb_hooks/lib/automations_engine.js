@@ -163,7 +163,7 @@ function handleThread(threadRec, cfg) {
     const ge = require(__hooks + "/lib/gmail_engine.js");
     ge.sendOutboundEmail(threadRec, uid, subject, body);
     threadRec.set("followup_sent", count + 1);
-    threadRec.set("followup_last_at", h.dateToPbString(new Date()));
+    threadRec.set("followup_last_at", new DateTime().string());
     threadRec.set("followup_next_at", new DateTime().add(cfg.followup_interval_h * 3600 * 1e9).string());
     $app.save(threadRec);
     h.addInternalNote(threadRec.id,

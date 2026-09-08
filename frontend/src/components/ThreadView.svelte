@@ -73,9 +73,9 @@
   // ---- message ordering -------------------------------------------------------
   function msgEpoch(m) {
     const s = String(m.msg_date || "").trim();
-    if (!s) return 0;
+    if (!s) return Number.MAX_SAFE_INTEGER; // unknown date -> sort LAST, never first
     const t = new Date(s.includes("T") ? s : s.replace(" ", "T")).getTime();
-    return Number.isFinite(t) ? t : 0;
+    return Number.isFinite(t) ? t : Number.MAX_SAFE_INTEGER;
   }
 
   // While this thread is open, keep it marked read (new messages arriving live
