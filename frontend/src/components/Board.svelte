@@ -10,6 +10,21 @@
   let selectMode = $state(false);
   let selIds = $state([]);
 
+  // ---- column visibility (per-user, persisted) ------------------------------
+  const COLS_KEY = () => "gwmb.boardCols." + (appState.me?.id || "anon");
+  let colMenuOpen = $state(false);
+  let hiddenCols = $state([]);
+  try {
+    hiddenCols = JSON.parse(localStorage.getItem(COLS_KEY()) || "[]");
+    if (!Array.isArray(hiddenCols)) hiddenCols = [];
+  } catch { hiddenCols = []; }
+  function isColHidden(v) { return hiddenCols.includes(v); }
+  function toggleCol(v) {
+    hiddenCols = isColHidden(v) ? hiddenCols.filter((x) => x !== v) : [...hiddenCols, v];
+    try { localStorage.setItem(COLS_KEY(), JSON.stringify(hiddenCols)); } catch {}
+  }
+  const boardCols = $derived(STATUSES.filter((c) => !hiddenCols.includes(c.value)));
+
   const visible = $derived(
     Object.values(appState.threads)
       .filter((t) => t.inbox === appState.activeInboxId)
@@ -116,9 +131,22 @@
     <button class="md3-chip" class:is-active={appState.onlyMine} onclick={() => (appState.onlyMine = !appState.onlyMine)}>
       My tickets
     </button>
-    <button class="md3-chip" class:is-active={selectMode} onclick={() => (selectMode ? exitSelect() : enterSelect())}>
-      {selectMode ? "Cancel select" : "Select…"}
+    <button class="md3-chip" class:is-active={colMenuOpen} onclick={() => (colMenuOpen = !colMenuOpen)} title="Show / hide board columns">
+      Columns{hiddenCols.length ? " · " + hiddenCols.length + " hidden" : ""}
     </button>
+    {#if colMenuOpen}
+      <div class="col-backdrop" onclick={() => (colMenuOpen = false)}></div>
+      <div class="col-menu" role="menu" aria-label="Toggle board columns">
+        {#each STATUSES as c (c.value)}
+          <label class="col-opt">
+            <input type="checkbox" checked={!isColHidden(c.value)} onchange={() => toggleCol(c.value)} />
+            <span class="dot" style="background:{c.dot}"></span>
+            <span class="col-opt-name">{c.label}</span>
+            <span class="col-opt-count">{byStatus(c.value).length}</span>
+          </label>
+        {/each}
+      </div>
+    {/if}
     <button class="md3-chip" onclick={refresh} title="Re-fetch from server">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5V2L7 7l5 5V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg>
       Sync
@@ -143,7 +171,7 @@
   {/if}
 
   <div class="board">
-    {#each STATUSES as col (col.value)}
+    {#each boardCols as col (col.value)}
       <section
         class="column"
         class:drag-over={hoverCol === col.value}
@@ -191,6 +219,8 @@
   }
 
   .toolbar {
+    position: relative;
+    z-index: 20;
     display: flex;
     align-items: center;
     gap: 10px;
@@ -312,6 +342,45 @@
     flex: 1;
   }
 
+  .col-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    background: transparent;
+  }
+  .col-menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 41;
+    min-width: 220px;
+    background: var(--m3-surface-container, #fff);
+    border: 1px solid var(--m3-outline-variant, #e0e0e0);
+    border-radius: 12px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .col-opt {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 8px;
+    border-radius: 8px;
+    cursor: pointer;
+    font: var(--m3-type-label-md);
+    color: var(--m3-on-surface);
+  }
+  .col-opt:hover { background: var(--m3-surface-container-high); }
+  .col-opt input { accent-color: var(--m3-primary); }
+  .col-opt .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  .col-opt-name { flex: 1; }
+  .col-opt-count {
+    font: var(--m3-type-label-sm);
+    color: var(--m3-on-surface-variant);
+  }
   .col-empty {
     text-align: center;
     color: var(--m3-outline);
