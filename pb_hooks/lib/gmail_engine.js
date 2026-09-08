@@ -148,8 +148,11 @@ function fetchAttachmentBytes(uid, messageId, candidates) {
 
 function normalizeMessage(msg, inboxEmail) {
   const headers = msg.payload && msg.payload.headers ? msg.payload.headers : [];
-  const subject = headerValue(headers, "Subject");
+  // Headers from Gmail may be RFC 2047 encoded-words when non-ASCII (accents /
+  // emoji). Decode them, then repair any already-mojibake'd text.
+  const subject = h.repairMojibake(h.decodeEncodedWord(headerValue(headers, "Subject")));
   const from = parseAddress(headerValue(headers, "From"));
+  from.name = h.repairMojibake(h.decodeEncodedWord(from.name));
   const toList = collectAddresses(headerValue(headers, "To"));
   const ccList = collectAddresses(headerValue(headers, "Cc"));
   const to = toList.concat(ccList); // merged view (customer detection + legacy field)
@@ -271,6 +274,11 @@ function upsertThreadAndMessage(inboxRec, norm) {
     counters.threadsCreated++;
   } else {
     thread.set("subject", norm.subject || thread.getString("subject"));
+    // Heal any mojibake subject that got stored before decoding was added.
+    if (thread.getString("subject") && /[\u0080-\u024F]/.test(thread.getString("subject"))) {
+      const healed = h.repairMojibake(thread.getString("subject"));
+      if (healed !== thread.getString("subject")) thread.set("subject", healed);
+    }
     thread.set("snippet", norm.snippet || thread.getString("snippet"));
     if (norm.customer) {
       thread.set("customer_email", norm.customer.email);
