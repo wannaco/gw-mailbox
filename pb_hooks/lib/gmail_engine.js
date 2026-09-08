@@ -505,29 +505,43 @@ function backfillInbox(inboxRec, opts) {
   return counters;
 }
 
+function storeHistoryCursor(inboxRec) {
+  try {
+    const uid = inboxUserEmail(inboxRec);
+    const prof = h.googleRequest({
+      url: h.GMAIL_BASE + "/users/" + encodeURIComponent(uid) + "/profile?fields=historyId",
+      scopes: [h.GMAIL_SCOPE],
+      subject: uid
+    });
+    if (prof && prof.historyId && !inboxRec.getString("history_id")) {
+      inboxRec.set("history_id", String(prof.historyId));
+      $app.save(inboxRec);
+    }
+  } catch (err) {
+    h.warn("could not store history cursor for", inboxUserEmail(inboxRec), err.message || err);
+  }
+}
+
 function syncInbox(inboxRec, opts) {
   opts = opts || {};
   const hasCursor = !!inboxRec.getString("history_id");
+  // A brand-new mailbox set to import_history=false ("receive new mail only")
+  // must NOT pull in its existing Gmail history on first poll/watch. Jump the
+  // history cursor to "now" so polling only ever picks up mail that arrives
+  // after setup. (The per-mailbox "Backfill history" button can still import
+  // the old mail later if the client changes their mind.)
+  if (!hasCursor && !opts.backfill && !inboxRec.getBool("import_history")) {
+    storeHistoryCursor(inboxRec);
+    if (!inboxRec.getString("history_id")) {
+      h.log("mailbox started fresh (import_history off):", inboxUserEmail(inboxRec));
+    }
+    return { threadsCreated: 0, threadsUpdated: 0, messagesAdded: 0, skipped: 0, fresh: true };
+  }
   if (!hasCursor || opts.backfill) {
     const res = backfillInbox(inboxRec, opts);
     // Persist a history cursor after backfill so subsequent polls use the
     // efficient incremental (history) path instead of re-listing everything.
-    if (!inboxRec.getString("history_id")) {
-      try {
-        const uid = inboxUserEmail(inboxRec);
-        const prof = h.googleRequest({
-          url: h.GMAIL_BASE + "/users/" + encodeURIComponent(uid) + "/profile?fields=historyId",
-          scopes: [h.GMAIL_SCOPE],
-          subject: uid
-        });
-        if (prof && prof.historyId) {
-          inboxRec.set("history_id", String(prof.historyId));
-          $app.save(inboxRec);
-        }
-      } catch (err) {
-        h.warn("could not store history cursor for", inboxUserEmail(inboxRec), err.message || err);
-      }
-    }
+    storeHistoryCursor(inboxRec);
     return res;
   }
   return syncFromHistory(inboxRec, opts.startHistoryId || "", opts);

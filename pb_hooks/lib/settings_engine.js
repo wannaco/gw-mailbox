@@ -295,6 +295,7 @@ function inboxToView(r) {
     email_address: r.getString("email_address"),
     history_id: r.getString("history_id"),
     is_active: r.getBool("is_active"),
+    import_history: r.getBool("import_history"),
     allowed_users: users,
     team_names: teamNames,
     backfill: inboxBackfillView(r)
@@ -319,15 +320,35 @@ function handleCreateInbox(e) {
   // Duplicate check (inbox email is unique-indexed).
   const existing = h.safeFindFirstByFilter("inboxes", "email_address = {:e}", { e: email });
   if (existing) return h.fail(e, 409, "duplicate", "A mailbox with that address already exists");
+  const importHistory = body.import_history !== false; // default: import existing mail
   const rec = new Record($app.findCollectionByNameOrId("inboxes"), {
     name: name,
     email_address: email,
     allowed_users: userIds,
     allowed_teams: [],
     is_active: body.is_active !== false,
+    import_history: importHistory,
     history_id: ""
   });
   $app.save(rec);
+  // import_history=true => auto-start the history import right away. If DWD
+  // isn't granted yet the state lands on "error" and the Settings row offers
+  // "Backfill history" to retry once access is in place — no data loss.
+  if (importHistory) {
+    try {
+      rec.set("backfill_state", JSON.stringify({
+        status: "queued", convs: 0, threads: 0, messages: 0, batches: 0,
+        next_page: "", started_at: new DateTime().string(), done_at: "", error: ""
+      }));
+      $app.save(rec);
+      require(__hooks + "/lib/gmail_engine.js").stepBackfill(rec, 1, 100);
+      h.log("auto-backfill started for new mailbox", email);
+    } catch (err) {
+      h.warn("auto-backfill could not start for", email, (err && err.message) || err);
+    }
+  } else {
+    h.log("mailbox added fresh (import_history off) — new mail only:", email);
+  }
   e.json(200, { ok: true, inbox: inboxToView(rec) });
 }
 
@@ -340,6 +361,7 @@ function handleUpdateInbox(e) {
   const body = readBody(e);
   if (body.name !== undefined) rec.set("name", String(body.name || "").trim());
   if (body.is_active !== undefined) rec.set("is_active", !!body.is_active);
+  if (body.import_history !== undefined) rec.set("import_history", !!body.import_history);
   if (body.allowed_user_ids !== undefined) rec.set("allowed_users", Array.isArray(body.allowed_user_ids) ? body.allowed_user_ids : []);
   $app.save(rec);
   e.json(200, { ok: true, inbox: inboxToView(rec) });

@@ -18,6 +18,7 @@
   // mailbox add
   let newName = $state("");
   let newEmail = $state("");
+  let newImportHistory = $state(true); // add-mailbox form: pull in existing Gmail history?
   let busyAdd = $state(false);
   let busyWatch = $state(""); // inbox id being watched
   let mailboxes = $state([]); // admin list from settings API
@@ -197,12 +198,18 @@
         name: newName.trim(),
         email_address: newEmail.trim().toLowerCase(),
         allowed_user_ids: newUserIds,
-        is_active: true
+        is_active: true,
+        import_history: newImportHistory
       });
-      toast("success", "Mailbox created — grant the sync scopes in Google DWD for " + r.inbox.email_address);
+      toast("success",
+        (newImportHistory
+          ? "Mailbox created — importing its existing history (finish when DWD is granted)…"
+          : "Mailbox created — new mail only (existing history skipped)") +
+        " · grant the sync scopes in Google DWD for " + r.inbox.email_address);
       newName = "";
       newEmail = "";
       newUserIds = [];
+      newImportHistory = true;
       await refresh();
       await api.loadSession();
     } catch (e) {
@@ -249,6 +256,19 @@
       await api.updateMailbox(mb.id, { allowed_user_ids: ids });
       toast("success", "Access updated");
     } catch (e) {
+      toast("error", e?.message || "Update failed");
+    }
+  }
+
+  // Flip whether this mailbox pulls existing Gmail history when it first syncs.
+  async function saveMbImportHistory(mb, val) {
+    const prev = mb.import_history;
+    mb.import_history = val;
+    try {
+      await api.updateMailbox(mb.id, { import_history: val });
+      toast("success", val ? "This mailbox will import existing history" : "This mailbox will only sync new mail");
+    } catch (e) {
+      mb.import_history = prev;
       toast("error", e?.message || "Update failed");
     }
   }
@@ -514,7 +534,7 @@
     <section class="card">
       <h3>Mailboxes</h3>
       <p class="muted">Add the Google Workspace mailboxes you want this team to use. After adding, grant the service account’s domain-wide delegation for each (see Google Admin → API controls). New mail syncs when Poll or Watch is on.</p>
-      <p class="muted"><strong>First time?</strong> Once DWD is granted, click <strong>Backfill history</strong> on the mailbox to import the mail already sitting in its Gmail inbox (your initial queue). It runs in the background (~400 conversations/min) — you can watch the chip fill in, and Stop import at any time.</p>
+      <p class="muted">When you add a mailbox below, choose <strong>Import this mailbox's existing history</strong> (default) to pull in the mail already sitting in its Gmail inbox after setup — it runs in the background (~400 conversations/min) and you can watch the chip fill in. Turn it <strong>off</strong> to start fresh and only receive <strong>new</strong> incoming email. You can flip either choice later on the row, and use <strong>Backfill history</strong> to import at any time.</p>
 
       <ul class="inbox-list">
         {#each mailboxes as mb (mb.id)}
@@ -524,6 +544,9 @@
                 <span class="inbox-name">{mb.name}</span>
                 <span class="muted">{mb.email_address}</span>
                 <span class="pill" class:off={!mb.is_active}>{mb.is_active ? "active" : "paused"}</span>
+                {#if mb.import_history === false}
+                  <span class="pill" title="This mailbox only syncs NEW mail — its existing Gmail history was not imported">new mail only</span>
+                {/if}
                 {#if mb.backfill && mb.backfill.status !== "idle"}
                   <span class="pill bf" class:bf-ok={mb.backfill.status === "done"} class:bf-err={mb.backfill.status === "error"}>
                     {mb.backfill.status === "queued" ? "import queued…" :
@@ -555,6 +578,13 @@
               </div>
             </div>
             <div class="mb-actions">
+              <label class="ag-check" title="Import this mailbox's existing Gmail history when it first syncs (off = new mail only)">
+                <input
+                  type="checkbox"
+                  checked={mb.import_history !== false}
+                  onchange={(ev) => saveMbImportHistory(mb, ev.target.checked)}
+                />Import history
+              </label>
               {#if mb.backfill && (mb.backfill.status === "queued" || mb.backfill.status === "running")}
                 <button class="md3-btn tonal small" onclick={() => stopBackfill(mb)} disabled={busyBf === mb.id}>
                   {busyBf === mb.id ? "Stopping…" : "Stop import"}
@@ -590,6 +620,10 @@
           </label>
         {/each}
       </div>
+      <label class="ag-check" style="margin-top:8px;display:inline-flex;gap:6px">
+        <input type="checkbox" bind:checked={newImportHistory} />
+        <span><strong>Import this mailbox's existing history</strong> <span class="muted small">— on, it pulls the mail already in the Gmail inbox after setup; off, it starts fresh and only receives NEW incoming email.</span></span>
+      </label>
       <div class="row-btns" style="margin-top:8px">
         <button class="md3-btn primary" onclick={addInbox} disabled={busyAdd || !newName.trim() || !newEmail.trim()}>
           {busyAdd ? "Adding…" : "Add mailbox"}
