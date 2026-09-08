@@ -427,32 +427,37 @@ function fetchFullMessage(uid, messageId) {
     scopes: [h.GMAIL_SCOPE],
     subject: uid
   });
+  return mergeRawHeaders(uid, messageId, full) || full;
+}
+
+// Fetch format=raw for one message and overwrite the (goja-corrupted) Subject /
+// From headers in `msg.payload.headers` with the clean raw-parsed values.
+function mergeRawHeaders(uid, messageId, msg) {
   try {
+    if (!msg || !msg.payload) return msg;
     const rawRes = h.googleRequest({
       url: h.GMAIL_BASE + "/users/" + encodeURIComponent(uid) + "/messages/" + encodeURIComponent(messageId) + "?format=raw",
       scopes: [h.GMAIL_SCOPE],
       subject: uid
     });
     const raw = rawRes && rawRes.raw ? h.b64ToBytes(rawRes.raw) : null;
-    if (raw && raw.length) {
-      const txt = bytesToUtf8(raw);
-      const headers = parseRawHeaders(txt);
-      const merged = full.payload.headers || [];
-      for (const name of ["Subject", "From"]) {
-        const val = headers[name];
-        if (val) {
-          // replace any existing header with the clean raw-decoded value
-          const idx = merged.findIndex((x) => x.name && x.name.toLowerCase() === name.toLowerCase());
-          if (idx >= 0) merged[idx] = { name: name, value: val };
-          else merged.push({ name: name, value: val });
-        }
+    if (!raw || !raw.length) return msg;
+    const txt = bytesToUtf8(raw);
+    const headers = parseRawHeaders(txt);
+    const merged = msg.payload.headers || [];
+    for (const name of ["Subject", "From"]) {
+      const val = headers[name];
+      if (val) {
+        const idx = merged.findIndex((x) => x.name && x.name.toLowerCase() === name.toLowerCase());
+        if (idx >= 0) merged[idx] = { name: name, value: val };
+        else merged.push({ name: name, value: val });
       }
-      full.payload.headers = merged;
     }
+    msg.payload.headers = merged;
   } catch (err) {
     h.warn("raw header fetch failed", messageId, (err && err.message) || err);
   }
-  return full;
+  return msg;
 }
 
 // Raw bytes -> UTF-8 string (goja-safe; no TextDecoder in module scope).
@@ -556,7 +561,10 @@ function backfillInbox(inboxRec, opts) {
         subject: uid
       });
       for (const m of threadRes.messages || []) {
-        const norm = normalizeMessage(m, uid);
+        // Same raw-header merge as fetchFullMessage so backfill also gets clean
+        // Subject/From (goja corrupts non-ASCII in the format=full JSON).
+        const fixed = mergeRawHeaders(uid, m.id, m);
+        const norm = normalizeMessage(fixed || m, uid);
         const c = upsertThreadAndMessage(inboxRec, norm);
         counters.threadsCreated += c.threadsCreated;
         counters.threadsUpdated += c.threadsUpdated;
