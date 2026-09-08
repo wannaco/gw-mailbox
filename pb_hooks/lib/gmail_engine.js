@@ -417,11 +417,77 @@ function bumpThreadMessageCount(threadRec, delta) {
 // Sync engines
 // ---------------------------------------------------------------------------
 function fetchFullMessage(uid, messageId) {
-  return h.googleRequest({
+  // format=full returns payload.headers but goja's $http corrupts any non-ASCII
+  // JSON value (decodes UTF-8 as cp1252) — which mangles accents/emoji in
+  // Subject/From. So ALSO fetch format=raw (base64 = pure ASCII, immune) and
+  // parse the real headers from the decoded bytes. Merge them over the full
+  // message so normalizeMessage sees clean Subject/From.
+  const full = h.googleRequest({
     url: h.GMAIL_BASE + "/users/" + encodeURIComponent(uid) + "/messages/" + encodeURIComponent(messageId) + "?format=full",
     scopes: [h.GMAIL_SCOPE],
     subject: uid
   });
+  try {
+    const rawRes = h.googleRequest({
+      url: h.GMAIL_BASE + "/users/" + encodeURIComponent(uid) + "/messages/" + encodeURIComponent(messageId) + "?format=raw",
+      scopes: [h.GMAIL_SCOPE],
+      subject: uid
+    });
+    const raw = rawRes && rawRes.raw ? h.b64ToBytes(rawRes.raw) : null;
+    if (raw && raw.length) {
+      const txt = bytesToUtf8(raw);
+      const headers = parseRawHeaders(txt);
+      const merged = full.payload.headers || [];
+      for (const name of ["Subject", "From"]) {
+        const val = headers[name];
+        if (val) {
+          // replace any existing header with the clean raw-decoded value
+          const idx = merged.findIndex((x) => x.name && x.name.toLowerCase() === name.toLowerCase());
+          if (idx >= 0) merged[idx] = { name: name, value: val };
+          else merged.push({ name: name, value: val });
+        }
+      }
+      full.payload.headers = merged;
+    }
+  } catch (err) {
+    h.warn("raw header fetch failed", messageId, (err && err.message) || err);
+  }
+  return full;
+}
+
+// Raw bytes -> UTF-8 string (goja-safe; no TextDecoder in module scope).
+function bytesToUtf8(bytes) {
+  let out = "";
+  for (let i = 0; i < bytes.length; ) {
+    const b = bytes[i];
+    if (b < 0x80) { out += String.fromCharCode(b); i++; }
+    else if ((b >> 5) === 0x6 && i + 1 < bytes.length) { out += String.fromCharCode(((b & 0x1f) << 6) | (bytes[i + 1] & 0x3f)); i += 2; }
+    else if ((b >> 4) === 0xe && i + 2 < bytes.length) { out += String.fromCharCode(((b & 0x0f) << 12) | ((bytes[i + 1] & 0x3f) << 6) | (bytes[i + 2] & 0x3f)); i += 3; }
+    else if ((b >> 3) === 0x1e && i + 3 < bytes.length) { const cp = ((b & 0x07) << 18) | ((bytes[i + 1] & 0x3f) << 12) | ((bytes[i + 2] & 0x3f) << 6) | (bytes[i + 3] & 0x3f); out += String.fromCharCode(0xd800 + ((cp - 0x10000) >> 10), 0xdc00 + ((cp - 0x10000) & 0x3ff)); i += 4; }
+    else { out += String.fromCharCode(b); i++; }
+  }
+  return out;
+}
+
+// Parse raw MIME headers (name: value, folded lines). Values are kept raw
+// (may be RFC 2047 encoded-words) — decodeEncodedWord handles those later.
+function parseRawHeaders(rawText) {
+  const out = {};
+  let current = "";
+  for (const line of String(rawText || "").split(/\r?\n/)) {
+    if (!line) break; // end of headers
+    if (/^[ \t]/.test(line)) { // folded continuation
+      if (current) out[current] += " " + line.trim();
+      continue;
+    }
+    const ci = line.indexOf(":");
+    if (ci === -1) continue;
+    const name = line.slice(0, ci).trim();
+    const val = line.slice(ci + 1).trim();
+    current = name;
+    out[name] = val;
+  }
+  return out;
 }
 
 function syncFromHistory(inboxRec, startHistoryId, opts) {
