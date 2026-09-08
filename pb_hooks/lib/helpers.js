@@ -393,6 +393,114 @@ function b64urlEncodeBinary(data) {
   return b64urlFromStandard(b64EncodeBytes(bytesToBinaryString(data)));
 }
 
+// Decode RFC 2047 encoded-words in a header value (e.g. Gmail subjects/names):
+//   =?UTF-8?B?....?=   base64 body
+//   =?UTF-8?Q?....?=   quoted-printable body (_ = space, =XX = byte)
+// Literal UTF-8 and ASCII pass through untouched. Unknown/garbled -> best-effort.
+function decodeHeaderWords(s) {
+  s = String(s || "");
+  const re = /=\?([^?]+)\?([bBqQ])\?([^?]*)\?=/g;
+  let m, out = "", last = 0;
+  while ((m = re.exec(s)) !== null) {
+    // RFC 2047: whitespace-only gaps between adjacent encoded-words are
+    // ignored (needed for chunked words and to match Gmail's own decode).
+    const gap = s.slice(last, m.index);
+    if (gap && /[^\s]/.test(gap)) out += gap;
+    const enc = m[2].toUpperCase();
+    let piece = m[3];
+    try {
+      if (enc === "B") {
+        piece = b64DecodeUtf8(m[3]);
+      } else {
+        // Q: underscores are spaces; =XX / %XX are UTF-8 bytes.
+        const q = String(m[3]).replace(/_/g, " ");
+        const bytes = [];
+        let i = 0;
+        while (i < q.length) {
+          if ((q[i] === "=" || q[i] === "%") && i + 2 < q.length && /^[0-9A-Fa-f]{2}$/.test(q.slice(i + 1, i + 3))) {
+            bytes.push(parseInt(q.slice(i + 1, i + 3), 16));
+            i += 3;
+          } else {
+            const cp = q.codePointAt(i);
+            bytes.push(cp < 0x80 ? cp : 0x3f);
+            i += (cp > 0xffff) ? 2 : 1;
+          }
+        }
+        const u8 = new Uint8Array(bytes);
+        let t = "";
+        for (let j = 0; j < u8.length; ) {
+          const b = u8[j];
+          if (b < 0x80) { t += String.fromCharCode(b); j++; }
+          else if ((b >> 5) === 0x6 && j + 1 < u8.length) { t += String.fromCharCode(((b & 0x1f) << 6) | (u8[j + 1] & 0x3f)); j += 2; }
+          else if ((b >> 4) === 0xe && j + 2 < u8.length) { t += String.fromCharCode(((b & 0x0f) << 12) | ((u8[j + 1] & 0x3f) << 6) | (u8[j + 2] & 0x3f)); j += 3; }
+          else if ((b >> 3) === 0x1e && j + 3 < u8.length) { const cp = ((b & 0x07) << 18) | ((u8[j + 1] & 0x3f) << 12) | ((u8[j + 2] & 0x3f) << 6) | (u8[j + 3] & 0x3f); t += String.fromCharCode(0xd800 + ((cp - 0x10000) >> 10), 0xdc00 + ((cp - 0x10000) & 0x3ff)); j += 4; }
+          else { t += String.fromCharCode(b); j++; }
+        }
+        piece = t;
+      }
+    } catch (_) { piece = m[3]; }
+    out += piece;
+    last = re.lastIndex;
+  }
+  return out + s.slice(last);
+}
+
+// Encode a header value for OUTBOUND raw MIME (RFC 2047). Pure ASCII passes
+// through untouched; runs containing non-ASCII become =?UTF-8?Q?...?= words so
+// recipient clients never mis-decode 8-bit headers as Latin-1 (the exact way
+// subjects like "café" got mojibake'd into "cafÃƒÂ©" on the wire).
+function encodeHeaderWords(s) {
+  s = String(s == null ? "" : s);
+  // Pure ASCII (and empty) passes through untouched.
+  let hasHi = false;
+  for (let i = 0; i < s.length; i++) if (s.charCodeAt(i) > 0x7e) { hasHi = true; break; }
+  if (!hasHi) return s;
+  // Whole-value RFC 2047 Q-encoding: raw 8-bit header bytes get mis-decoded as
+  // Latin-1 by many mail clients (caf\u00e9 -> caf\u00c3\u00a9 mojibake), so any
+  // non-ASCII subject/name must travel as =?UTF-8?Q?...?= words. Encode each
+  // CODE POINT's bytes as one unit and group whole units into encoded-words
+  // (max ~55 q-chars) joined by CRLF+space; RFC 2047 concatenates adjacent
+  // words without inserting spaces, and never splitting a multi-byte char
+  // across words keeps every decoder faithful.
+  const qChar = (cp) => {
+    let bytes = [];
+    if (cp < 0x80) bytes.push(cp);
+    else if (cp < 0x800) bytes.push(0xc0 | (cp >> 6), 0x80 | (cp & 0x3f));
+    else if (cp < 0x10000) bytes.push(0xe0 | (cp >> 12), 0x80 | ((cp >> 6) & 0x3f), 0x80 | (cp & 0x3f));
+    else bytes.push(0xf0 | (cp >> 18), 0x80 | ((cp >> 12) & 0x3f), 0x80 | ((cp >> 6) & 0x3f), 0x80 | (cp & 0x3f));
+    let q = "";
+    for (let j = 0; j < bytes.length; j++) {
+      const b = bytes[j];
+      if (b === 0x20) q += "_";
+      else if (b >= 0x21 && b <= 0x7e && b !== 0x3d && b !== 0x3f && b !== 0x5f) q += String.fromCharCode(b);
+      else q += "=" + (b < 16 ? "0" : "") + b.toString(16).toUpperCase();
+    }
+    return q;
+  };
+  const units = [];
+  for (let i = 0; i < s.length; i++) {
+    const cp = s.codePointAt(i);
+    if (cp > 0xffff) i++;
+    units.push(qChar(cp));
+  }
+  const words = [];
+  let cur = "";
+  for (let k = 0; k < units.length; k++) {
+    if (cur && cur.length + units[k].length > 55) { words.push("=?UTF-8?Q?" + cur + "?="); cur = ""; }
+    cur += units[k];
+  }
+  if (cur) words.push("=?UTF-8?Q?" + cur + "?=");
+  return words.join("\r\n ");
+}
+
+// Conservative detector for Latin-1/cp1252 mojibake (UTF-8 bytes mis-decoded as
+// cp1252 then stored/re-encoded) — e.g. "cafÃƒÂ©", "Ã¢Â˜Â•". Used to stop a
+// corrupted subject from a re-synced Gmail message clobbering a clean one.
+const MOJI_BAD = /(=\?[^?]+\?[bBqQ]\?[^?]*\?=|=\?[^?]+\?[bBqQ]\?|=\?[^?]+\?=|Ã[\x80-\xFF]|Â[\x80-\xFF]|â€[™“”•˜–—’‘]|Ã¢|Ãƒ|Ã©|Ã¨|Ã¬|Ã²|Ã¹|Ã¡|Ã­|Ã³|Ãº|Ã±|Ã¼|Ã¶|Ã¤|Ã¯|Ã«|Ã§|\uFFFD)/;
+function looksMojibake(s) {
+  return typeof s === "string" && MOJI_BAD.test(s);
+}
+
 // Decode (standard or URL-safe) base64 into a UTF-8 string without atob.
 function b64DecodeUtf8(b64) {
   let s = String(b64 || "").replace(/-/g, "+").replace(/_/g, "/");
@@ -647,7 +755,7 @@ module.exports = {
   addInternalNote, heartbeatPresence, releasePresence, presenceSnapshot, composingLock,
   // google
   loadServiceAccount, getAccessToken, googleRequest, GoogleApiError,
-  b64urlEncode, b64urlEncodeBinary, b64EncodeBytes, b64DecodeUtf8, b64ToBytes,
+  b64urlEncode, b64urlEncodeBinary, b64EncodeBytes, b64DecodeUtf8, b64ToBytes, decodeHeaderWords, encodeHeaderWords, looksMojibake,
   mimeHeaderValue, htmlToPlain, sanitizeHtmlBasic,
   // alerts
   sendAlertWebhook

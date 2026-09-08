@@ -148,8 +148,11 @@ function fetchAttachmentBytes(uid, messageId, candidates) {
 
 function normalizeMessage(msg, inboxEmail) {
   const headers = msg.payload && msg.payload.headers ? msg.payload.headers : [];
-  const subject = headerValue(headers, "Subject");
-  const from = parseAddress(headerValue(headers, "From"));
+  // Decode any RFC 2047 encoded-words (=?UTF-8?Q|B?...?=) in header values so
+  // non-ASCII subjects/names from Gmail (or re-synced legacy mail) come in
+  // clean. Literal UTF-8/ASCII pass through untouched.
+  const subject = h.decodeHeaderWords(headerValue(headers, "Subject"));
+  const from = parseAddress(h.decodeHeaderWords(headerValue(headers, "From")));
   const toList = collectAddresses(headerValue(headers, "To"));
   const ccList = collectAddresses(headerValue(headers, "Cc"));
   const to = toList.concat(ccList); // merged view (customer detection + legacy field)
@@ -270,7 +273,13 @@ function upsertThreadAndMessage(inboxRec, norm) {
     $app.save(thread);
     counters.threadsCreated++;
   } else {
-    thread.set("subject", norm.subject || thread.getString("subject"));
+    // Guard: never let a mojibake subject (from a re-synced message whose
+    // Gmail headers were corrupted upstream) clobber a clean stored one.
+    const newSubj = norm.subject || "";
+    const curSubj = thread.getString("subject") || "";
+    if (newSubj && newSubj !== curSubj && !(h.looksMojibake(newSubj) && curSubj && !h.looksMojibake(curSubj))) {
+      thread.set("subject", newSubj);
+    }
     thread.set("snippet", norm.snippet || thread.getString("snippet"));
     if (norm.customer) {
       thread.set("customer_email", norm.customer.email);
@@ -682,6 +691,10 @@ function buildReplyRaw(uid, toAddr, toName, ccList, subject, text, htmlBody, att
   // the message land as a NEW conversation in the customer's mailbox.
   const hasParent = String(inReplyTo || "").trim() !== "";
   if (!hasParent && !/^re:\s*/i.test(subj)) subj = "Re: " + subj;
+  // Header encoding: raw UTF-8 in a Subject/name header gets mis-decoded as
+  // Latin-1 by many mail clients (the café -> cafÃ© mojibake). RFC 2047 encode.
+  const encName = h.encodeHeaderWords(name);
+  const encSubj = h.encodeHeaderWords(subj);
   const plain = String(text || "").trim();
   const hasHtml = !!(htmlBody && String(htmlBody).trim());
   const html = hasHtml
@@ -693,10 +706,10 @@ function buildReplyRaw(uid, toAddr, toName, ccList, subject, text, htmlBody, att
   // In-Reply-To / References make the message thread into the customer's
   // existing conversation (Gmail threads by these, not by threadId alone).
   let raw =
-    "To: " + (name ? name + " <" + to + ">" : to) + "\r\n" +
+    "To: " + (encName ? encName + " <" + to + ">" : to) + "\r\n" +
     "From: " + sanitizeHeaderValue(uid) + "\r\n" +
     (cc.length ? "Cc: " + cc.join(", ") + "\r\n" : "") +
-    "Subject: " + subj + "\r\n";
+    "Subject: " + encSubj + "\r\n";
   const ref = String(inReplyTo || "").trim();
   if (ref) {
     const id = ref.indexOf("<") === 0 ? ref : "<" + ref + ">";
@@ -883,13 +896,17 @@ function sendFreshEmail(uid, toEmail, toName, subject, bodyText) {
   const to = sanitizeHeaderValue(toEmail);
   const name = sanitizeHeaderValue(toName || "");
   const subj = sanitizeHeaderValue(subject || "");
+  // RFC 2047 encode non-ASCII header text (subject + display name) so client
+  // mail readers never mis-decode 8-bit headers as Latin-1.
+  const encName = h.encodeHeaderWords(name);
+  const encSubj = h.encodeHeaderWords(subj);
   const plain = String(bodyText || "").trim();
   const html = "<html><body>" + plain.split(/\n+/).map((p) => "<p>" + escHtml(p) + "</p>").join("") + "</body></html>";
   const bAlt = "gwmb_a_" + $security.randomString(12);
   let raw =
-    "To: " + (name ? name + " <" + to + ">" : to) + "\r\n" +
+    "To: " + (encName ? encName + " <" + to + ">" : to) + "\r\n" +
     "From: " + sanitizeHeaderValue(uid) + "\r\n" +
-    "Subject: " + subj + "\r\n" +
+    "Subject: " + encSubj + "\r\n" +
     "MIME-Version: 1.0\r\n";
   raw += "Content-Type: multipart/alternative; boundary=\"" + bAlt + "\"\r\n\r\n" +
     "--" + bAlt + "\r\n" +
