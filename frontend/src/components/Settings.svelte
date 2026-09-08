@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import { appState, toast } from "../lib/appState.svelte.js";
   import * as api from "../lib/api.js";
 
@@ -101,10 +101,7 @@
       loaded = true;
     }
     if (isAdmin) {
-      try {
-        const mb = await api.listMailboxes();
-        mailboxes = mb.inboxes || [];
-      } catch (_) {}
+      await loadMailboxes();
       try {
         const lb = await api.listLabels();
         labels = (lb.items || []).map((l) => ({ id: l.id, name: l.name, color: l.color || "" }));
@@ -380,6 +377,67 @@
       busyWatch = "";
     }
   }
+
+  // ---- Backfill (import existing inbox history after adding a mailbox) ----
+  let busyBf = $state(""); // inbox id whose backfill button is busy
+  let bfTimer = null;
+
+  async function loadMailboxes() {
+    try {
+      const mb = await api.listMailboxes();
+      mailboxes = mb.inboxes || [];
+    } catch (_) {}
+    pollBf();
+  }
+
+  // While any mailbox import is queued/running, refresh the list every 4s so
+  // the progress chip updates live without a manual reload.
+  function pollBf() {
+    const active = mailboxes.some((m) => m.backfill && (m.backfill.status === "queued" || m.backfill.status === "running"));
+    if (active && !bfTimer) {
+      bfTimer = setInterval(async () => {
+        try {
+          const mb = await api.listMailboxes();
+          mailboxes = mb.inboxes || [];
+        } catch (_) {}
+        const still = mailboxes.some((m) => m.backfill && (m.backfill.status === "queued" || m.backfill.status === "running"));
+        if (!still && bfTimer) { clearInterval(bfTimer); bfTimer = null; }
+      }, 4000);
+    } else if (!active && bfTimer) {
+      clearInterval(bfTimer); bfTimer = null;
+    }
+  }
+
+  async function startBackfill(mb) {
+    busyBf = mb.id;
+    try {
+      const r = await api.backfillMailbox(mb.id, "start");
+      if (r.already) toast("info", "An import is already running for " + (mb.email_address || mb.name));
+      else toast("success", "Backfill started — importing existing inbox mail…");
+      await loadMailboxes();
+    } catch (e) {
+      toast("error", e?.message || "Failed to start backfill");
+    } finally {
+      busyBf = "";
+    }
+  }
+
+  async function stopBackfill(mb) {
+    busyBf = mb.id;
+    try {
+      await api.backfillMailbox(mb.id, "stop");
+      toast("success", "Import stopped");
+      await loadMailboxes();
+    } catch (e) {
+      toast("error", e?.message || "Failed to stop backfill");
+    } finally {
+      busyBf = "";
+    }
+  }
+
+  onDestroy(() => {
+    if (bfTimer) { clearInterval(bfTimer); bfTimer = null; }
+  });
 </script>
 
 <div class="settings">
@@ -456,6 +514,7 @@
     <section class="card">
       <h3>Mailboxes</h3>
       <p class="muted">Add the Google Workspace mailboxes you want this team to use. After adding, grant the service account’s domain-wide delegation for each (see Google Admin → API controls). New mail syncs when Poll or Watch is on.</p>
+      <p class="muted"><strong>First time?</strong> Once DWD is granted, click <strong>Backfill history</strong> on the mailbox to import the mail already sitting in its Gmail inbox (your initial queue). It runs in the background (~400 conversations/min) — you can watch the chip fill in, and Stop import at any time.</p>
 
       <ul class="inbox-list">
         {#each mailboxes as mb (mb.id)}
@@ -465,6 +524,17 @@
                 <span class="inbox-name">{mb.name}</span>
                 <span class="muted">{mb.email_address}</span>
                 <span class="pill" class:off={!mb.is_active}>{mb.is_active ? "active" : "paused"}</span>
+                {#if mb.backfill && mb.backfill.status !== "idle"}
+                  <span class="pill bf" class:bf-ok={mb.backfill.status === "done"} class:bf-err={mb.backfill.status === "error"}>
+                    {mb.backfill.status === "queued" ? "import queued…" :
+                     mb.backfill.status === "running" ? "importing " + mb.backfill.threads + "…" :
+                     mb.backfill.status === "done" ? "history imported · " + mb.backfill.threads :
+                     mb.backfill.status === "error" ? "import failed" : ""}
+                  </span>
+                {/if}
+                {#if mb.backfill && mb.backfill.status === "error" && mb.backfill.error}
+                  <span class="muted small" title={mb.backfill.error}>{mb.backfill.error.slice(0, 60)}{mb.backfill.error.length > 60 ? "…" : ""}</span>
+                {/if}
               </div>
               <div class="mb-agents">
                 <span class="muted small">Agents:</span>
@@ -485,6 +555,15 @@
               </div>
             </div>
             <div class="mb-actions">
+              {#if mb.backfill && (mb.backfill.status === "queued" || mb.backfill.status === "running")}
+                <button class="md3-btn tonal small" onclick={() => stopBackfill(mb)} disabled={busyBf === mb.id}>
+                  {busyBf === mb.id ? "Stopping…" : "Stop import"}
+                </button>
+              {:else}
+                <button class="md3-btn tonal small" onclick={() => startBackfill(mb)} disabled={busyBf === mb.id}>
+                  {busyBf === mb.id ? "Starting…" : mb.backfill && mb.backfill.status === "done" ? "Backfill again" : "Backfill history"}
+                </button>
+              {/if}
               <button class="md3-btn tonal small" onclick={() => startWatch(mb.id)} disabled={busyWatch === mb.id}>
                 {busyWatch === mb.id ? "Watching…" : "Watch"}
               </button>
@@ -982,6 +1061,16 @@
     border-radius: 999px;
     padding: 2px 10px;
     color: var(--m3-on-surface-variant);
+  }
+
+  .pill.bf-ok {
+    background: #e6f4ea;
+    color: #137333;
+  }
+
+  .pill.bf-err {
+    background: #fce8e6;
+    color: #c5221f;
   }
 
   .add-inbox {

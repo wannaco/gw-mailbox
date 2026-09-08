@@ -141,8 +141,39 @@ function runMailPollSync() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Backfill stepper — advance any mailbox whose history import is queued/running
+// a few Gmail pages per tick. Started from Settings (per-mailbox "Backfill
+// history") so mailboxes added on setup can pull in their EXISTING inbox mail
+// without ever blocking a request. ~4 pages (<=400 conversations) per minute.
+// ---------------------------------------------------------------------------
+function runBackfillStepper() {
+  let inboxes = [];
+  try {
+    inboxes = $app.findRecordsByFilter("inboxes", "is_active = true", "", 0, 0) || [];
+  } catch (err) {
+    h.warn("backfill stepper list failed:", err.message || err);
+    return;
+  }
+  for (const inbox of inboxes) {
+    try {
+      let st = {};
+      try { st = JSON.parse(inbox.getString("backfill_state") || "{}") || {}; } catch (_) {}
+      if (st.status !== "queued" && st.status !== "running") continue;
+      const gm = require(__hooks + "/lib/gmail_engine.js");
+      const r = gm.stepBackfill(inbox, 4, 100);
+      if (r && r.done) {
+        h.log("backfill finished", inbox.getString("email_address"), "via stepper");
+      }
+    } catch (err) {
+      h.warn("backfill stepper error for", inbox.getString("email_address"), (err && err.message) || err);
+    }
+  }
+}
+
 module.exports = {
   runSlaMonitor,
   runPresenceSweeper,
-  runMailPollSync
+  runMailPollSync,
+  runBackfillStepper
 };

@@ -238,6 +238,15 @@ export function testConnection(subject, serviceAccountJson) {
     ...(serviceAccountJson ? { serviceAccountJson } : {})
   });
 }
+// Start/stop a mailbox's history import (backfill). Called from Settings →
+// Mailboxes after adding a mailbox on setup: pulls the mail ALREADY in the
+// Gmail inbox into the queue. Runs in the background (cron stepper); state is
+// exposed on each inbox via listMailboxes().backfill.
+export function backfillMailbox(id, action = "start") {
+  const q = action && action !== "start" ? "?action=" + encodeURIComponent(action) : "";
+  return pbRequest("POST", `/mailbox/inboxes/${id}/backfill${q}`, {});
+}
+
 export function setPollSync(enabled) {
   return pbRequest("POST", "/mailbox/settings/sync-mode", { enabled });
 }

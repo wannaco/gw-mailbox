@@ -23,4 +23,8 @@ cronAdd("gw-mail-poll-sync", "* * * * *", () => {
   require(__hooks + "/lib/cron_engine.js").runMailPollSync();
 });
 
+cronAdd("gw-backfill", "* * * * *", () => {
+  require(__hooks + "/lib/cron_engine.js").runBackfillStepper();
+});
+
 console.log("[gw-mailbox] cron.pb.js loaded — SLA monitor (hourly) + presence sweeper (every min) registered");

@@ -21,6 +21,10 @@ routerAdd("POST", "/api/mailbox/inboxes/{id}/sync", (e) => {
   require(__hooks + "/lib/gmail_engine.js").handleSync(e);
 }, $apis.requireAuth());
 
+routerAdd("POST", "/api/mailbox/inboxes/{id}/backfill", (e) => {
+  require(__hooks + "/lib/gmail_engine.js").handleBackfill(e);
+}, $apis.requireAuth());
+
 routerAdd("POST", "/api/mailbox/threads/{id}/reply", (e) => {
   require(__hooks + "/lib/gmail_engine.js").handleReply(e);
 }, $apis.requireAuth());

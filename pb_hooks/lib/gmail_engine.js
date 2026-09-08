@@ -564,6 +564,122 @@ function stopWatch(inboxRec) {
 }
 
 // ---------------------------------------------------------------------------
+// Backfill (initial history import) — paged, cron-stepped
+// ---------------------------------------------------------------------------
+// After a mailbox is added on setup, clients want the mail that ALREADY sits
+// in the inbox pulled into the queue (not just new mail). Gmail list results
+// are paged (100/page), so importing "everything" in one request would blow
+// proxy timeouts on big mailboxes. Instead the stepper persists a cursor +
+// counters on the inbox record (inboxes.backfill_state) and the per-minute
+// cron advances a few pages per tick until the inbox history is exhausted.
+// Every message flows through upsertThreadAndMessage, so dedupe / attachment
+// heal / SLA anchoring all apply exactly like live sync.
+function readBackfillState(rec) {
+  try { return JSON.parse(rec.getString("backfill_state") || "{}") || {}; } catch (_) { return {}; }
+}
+
+function writeBackfillState(rec, st) {
+  try {
+    rec.set("backfill_state", JSON.stringify(st));
+    $app.save(rec);
+  } catch (err) {
+    h.warn("could not persist backfill state for", inboxUserEmail(rec), err.message || err);
+  }
+}
+
+function backfillStateView(rec) {
+  const st = readBackfillState(rec);
+  return {
+    status: st.status || "idle",
+    threads: parseInt(st.threads || 0, 10),
+    messages: parseInt(st.messages || 0, 10),
+    batches: parseInt(st.batches || 0, 10),
+    estimate: parseInt(st.estimate || 0, 10) || null,
+    started_at: st.started_at || "",
+    done_at: st.done_at || "",
+    error: st.error || ""
+  };
+}
+
+// Import ONE page of inbox threads (newest first). Each Gmail thread is
+// fetched format=full (all its messages in one request) then upserted.
+function backfillOnePage(inboxRec, pageToken, maxResults) {
+  const uid = inboxUserEmail(inboxRec);
+  let url = h.GMAIL_BASE + "/users/" + encodeURIComponent(uid) +
+    "/threads?q=in:inbox&maxResults=" + (maxResults || 100);
+  if (pageToken) url += "&pageToken=" + encodeURIComponent(pageToken);
+  const listRes = h.googleRequest({ url: url, scopes: [h.GMAIL_SCOPE], subject: uid });
+  const counters = { threadsCreated: 0, threadsUpdated: 0, messagesAdded: 0, skipped: 0 };
+  for (const t of listRes.threads || []) {
+    try {
+      const threadRes = h.googleRequest({
+        url: h.GMAIL_BASE + "/users/" + encodeURIComponent(uid) + "/threads/" + encodeURIComponent(t.id) + "?format=full",
+        scopes: [h.GMAIL_SCOPE],
+        subject: uid
+      });
+      for (const m of threadRes.messages || []) {
+        const norm = normalizeMessage(m, uid);
+        const c = upsertThreadAndMessage(inboxRec, norm);
+        counters.threadsCreated += c.threadsCreated;
+        counters.threadsUpdated += c.threadsUpdated;
+        counters.messagesAdded += c.messagesAdded;
+        counters.skipped += c.skipped;
+      }
+    } catch (err) {
+      h.warn("backfill thread fetch failed", t.id, err.message || err);
+    }
+  }
+  return {
+    counters: counters,
+    nextPageToken: listRes.nextPageToken || "",
+    estimate: parseInt(listRes.resultSizeEstimate || "0", 10) || 0
+  };
+}
+
+// Advance one inbox's backfill by up to `batchesPerTick` pages (cron). State
+// is persisted after every page so an interrupted run resumes from the cursor.
+function stepBackfill(inboxRec, batchesPerTick, pageSize) {
+  const uid = inboxUserEmail(inboxRec);
+  const st = readBackfillState(inboxRec);
+  if (!st || (st.status !== "queued" && st.status !== "running")) {
+    return { done: false, skipped: true };
+  }
+  const lim = batchesPerTick || 3;
+  let token = st.next_page || "";
+  let pages = 0;
+  for (; pages < lim; pages++) {
+    try {
+      const r = backfillOnePage(inboxRec, token, pageSize || 100);
+      st.threads = parseInt(st.threads || 0, 10) + r.counters.threadsCreated + r.counters.threadsUpdated;
+      st.messages = parseInt(st.messages || 0, 10) + r.counters.messagesAdded;
+      st.batches = parseInt(st.batches || 0, 10) + 1;
+      st.status = "running";
+      if (r.estimate && !st.estimate) st.estimate = r.estimate;
+      if (!r.nextPageToken) {
+        st.status = "done";
+        st.next_page = "";
+        st.done_at = new DateTime().string();
+        writeBackfillState(inboxRec, st);
+        h.log("backfill DONE for", uid, "threads:", st.threads, "messages:", st.messages);
+        return { done: true, pages: pages + 1, state: backfillStateView(inboxRec) };
+      }
+      st.next_page = r.nextPageToken;
+      writeBackfillState(inboxRec, st);
+      token = r.nextPageToken;
+    } catch (err) {
+      h.warn("backfill step failed for", uid, err.message || err);
+      st.status = "error";
+      st.error = String((err && err.message) || err).slice(0, 300);
+      st.done_at = new DateTime().string();
+      writeBackfillState(inboxRec, st);
+      return { done: false, error: st.error, state: backfillStateView(inboxRec) };
+    }
+  }
+  writeBackfillState(inboxRec, st);
+  return { done: false, pages: pages, state: backfillStateView(inboxRec) };
+}
+
+// ---------------------------------------------------------------------------
 // Route handlers
 // ---------------------------------------------------------------------------
 function webhookAuthorized(e) {
@@ -641,6 +757,48 @@ function handleSync(e) {
   } catch (err) {
     h.fail(e, 502, "sync_failed", err.message || String(err));
   }
+}
+
+function handleBackfill(e) {
+  if (h.addCorsHeaders(e, "POST, OPTIONS")) return;
+  const actor = h.actorFromEvent(e);
+  if (!actor) return h.fail(e, 401, "unauthorized", "Auth required");
+  const inbox = requireInboxAccess(e, e.request.pathValue("id"), actor);
+  if (!inbox) return;
+
+  const q = e.request.url.query();
+  const action = q.get("action") || "start";
+  const st = readBackfillState(inbox);
+
+  if (action === "stop") {
+    if (st && (st.status === "queued" || st.status === "running")) {
+      st.status = "idle";
+      writeBackfillState(inbox, st);
+    }
+    return e.json(200, { ok: true, backfill: backfillStateView(inbox) });
+  }
+
+  // start / restart (no-op if one is already in flight)
+  if (st && (st.status === "queued" || st.status === "running")) {
+    return e.json(200, { ok: true, already: true, backfill: backfillStateView(inbox) });
+  }
+  const fresh = {
+    status: "queued",
+    threads: 0, messages: 0, batches: 0,
+    next_page: "",
+    started_at: new DateTime().string(),
+    done_at: "", error: ""
+  };
+  writeBackfillState(inbox, fresh);
+  // Process the first page inline so the import starts immediately; the
+  // per-minute cron continues from the saved cursor until done. (Bounded to
+  // one page per request so even a huge mailbox never blocks a request.)
+  try {
+    stepBackfill(inbox, 1, 100);
+  } catch (err) {
+    h.warn("backfill first step failed", inboxUserEmail(inbox), (err && err.message) || err);
+  }
+  e.json(200, { ok: true, started: true, backfill: backfillStateView(inbox) });
 }
 
 // ---------------------------------------------------------------------------
@@ -974,10 +1132,13 @@ module.exports = {
   handleWebhookPush,
   handleWatch,
   handleSync,
+  handleBackfill,
   handleReply,
   sendOutboundEmail,
   sendFreshEmail,
   // exposed for tests / future cron replay
   syncInbox,
+  stepBackfill,
+  backfillStateView,
   findInboxByEmail
 };

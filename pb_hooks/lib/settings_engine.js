@@ -260,6 +260,24 @@ function userMap() {
   return map;
 }
 
+function inboxBackfillView(r) {
+  try {
+    const st = JSON.parse(r.getString("backfill_state") || "{}") || {};
+    return {
+      status: st.status || "idle",
+      threads: parseInt(st.threads || 0, 10),
+      messages: parseInt(st.messages || 0, 10),
+      batches: parseInt(st.batches || 0, 10),
+      estimate: parseInt(st.estimate || 0, 10) || null,
+      started_at: st.started_at || "",
+      done_at: st.done_at || "",
+      error: st.error || ""
+    };
+  } catch (_) {
+    return { status: "idle", threads: 0, messages: 0, batches: 0, estimate: null, started_at: "", done_at: "", error: "" };
+  }
+}
+
 function inboxToView(r) {
   const um = userMap();
   const allowed = r.get("allowed_users") || r.getStringSlice("allowed_users") || [];
@@ -277,7 +295,8 @@ function inboxToView(r) {
     history_id: r.getString("history_id"),
     is_active: r.getBool("is_active"),
     allowed_users: users,
-    team_names: teamNames
+    team_names: teamNames,
+    backfill: inboxBackfillView(r)
   };
 }
 
