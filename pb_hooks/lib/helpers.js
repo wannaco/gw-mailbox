@@ -393,75 +393,6 @@ function b64urlEncodeBinary(data) {
   return b64urlFromStandard(b64EncodeBytes(bytesToBinaryString(data)));
 }
 
-// RFC 2047 encoded-word -> UTF-8, e.g. =?UTF-8?B?w6k=?= (B) or =?UTF-8?Q?caf=C3=A9?= (Q).
-// Gmail returns non-ASCII headers (Subject, names) as these when they aren't
-// ASCII; storing them raw mangles Spanish accents/emoji (cafÃ© â˜•â€¦).
-function decodeEncodedWord(s) {
-  s = String(s || "");
-  const out = [];
-  let last = 0;
-  const re = /=?([^?]+)\?([bqBQ])\?([^?]*)\?=/g;
-  let m;
-  while ((m = re.exec(s)) !== null) {
-    out.push(s.slice(last, m.index));
-    const enc = m[2].toUpperCase();
-    let piece = "";
-    try {
-      if (enc === "B") piece = b64DecodeUtf8(m[3]);
-      else {
-        const q = String(m[3]).replace(/_/g, " ");
-        piece = q.replace(/%([0-9A-Fa-f]{2})/g, function (_, h) { return String.fromCharCode(parseInt(h, 16)); });
-      }
-    } catch (_) { piece = m[3]; }
-    out.push(piece);
-    last = re.lastIndex;
-  }
-  if (!last) return s;
-  out.push(s.slice(last));
-  return out.join("");
-}
-
-// Best-effort repair for already-mangled UTF-8 (mojibake like "cafÃ© â˜•"):
-// goja's $http decodes JSON responses as cp1252, so each non-ASCII char in a
-// header/string is a cp1252 code unit of the ORIGINAL UTF-8 bytes. Re-encode
-// those code units as cp1252 bytes then decode as UTF-8. Handles the cp1252
-// 0x80-0x9F range and emoji (which appear as Â + surrogate pairs -> U+2615 etc).
-function repairMojibake(s) {
-  s = String(s || "");
-  if (!/[\u0080-\uFFFD]/.test(s)) return s;
-  try {
-    // cp1252 mapping for bytes 0x80-0x9F (they're not plain Latin-1)
-    const cpMap = {0x80:0x20AC,0x82:0x201A,0x83:0x0192,0x84:0x201E,0x85:0x2026,0x86:0x2020,0x87:0x2021,0x88:0x02C6,0x89:0x2030,0x8A:0x0160,0x8B:0x2039,0x8C:0x0152,0x8E:0x017D,0x91:0x2018,0x92:0x2019,0x93:0x201C,0x94:0x201D,0x95:0x2022,0x96:0x2013,0x97:0x2014,0x98:0x02DC,0x99:0x2122,0x9A:0x0161,0x9B:0x203A,0x9C:0x0153,0x9E:0x017E,0x9F:0x0178};
-    const rev = {};
-    for (const b in cpMap) rev[cpMap[b]] = parseInt(b, 10);
-    const bytes = [];
-    for (const ch of s) {
-      const cp = ch.codePointAt(0);
-      if (cp < 0x80) bytes.push(cp);
-      else if (rev[cp] !== undefined) bytes.push(rev[cp]);
-      else bytes.push(0x3f); // '?'
-    }
-    const u8 = new Uint8Array(bytes);
-    let out = "";
-    for (let i = 0; i < u8.length; ) {
-      const b = u8[i];
-      if (b < 0x80) { out += String.fromCharCode(b); i++; }
-      else if ((b >> 5) === 0x6 && i + 1 < u8.length) {
-        out += String.fromCharCode(((b & 0x1f) << 6) | (u8[i + 1] & 0x3f)); i += 2;
-      }
-      else if ((b >> 4) === 0xe && i + 2 < u8.length) {
-        out += String.fromCharCode(((b & 0x0f) << 12) | ((u8[i + 1] & 0x3f) << 6) | (u8[i + 2] & 0x3f)); i += 3;
-      }
-      else if ((b >> 3) === 0x1e && i + 3 < u8.length) {
-        const cp = ((b & 0x07) << 18) | ((u8[i + 1] & 0x3f) << 12) | ((u8[i + 2] & 0x3f) << 6) | (u8[i + 3] & 0x3f);
-        out += String.fromCharCode(0xd800 + ((cp - 0x10000) >> 10), 0xdc00 + ((cp - 0x10000) & 0x3ff)); i += 4;
-      }
-      else { out += String.fromCharCode(b); i++; }
-    }
-    return out;
-  } catch (_) { return s; }
-}
-
 // Decode (standard or URL-safe) base64 into a UTF-8 string without atob.
 function b64DecodeUtf8(b64) {
   let s = String(b64 || "").replace(/-/g, "+").replace(/_/g, "/");
@@ -718,7 +649,6 @@ module.exports = {
   loadServiceAccount, getAccessToken, googleRequest, GoogleApiError,
   b64urlEncode, b64urlEncodeBinary, b64EncodeBytes, b64DecodeUtf8, b64ToBytes,
   mimeHeaderValue, htmlToPlain, sanitizeHtmlBasic,
-  decodeEncodedWord, repairMojibake,
   // alerts
   sendAlertWebhook
 };
