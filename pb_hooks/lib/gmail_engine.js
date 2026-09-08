@@ -778,48 +778,6 @@ function handleSync(e) {
   }
 }
 
-function handleBackfill(e) {
-  if (h.addCorsHeaders(e, "POST, OPTIONS")) return;
-  const actor = h.actorFromEvent(e);
-  if (!actor) return h.fail(e, 401, "unauthorized", "Auth required");
-  const inbox = requireInboxAccess(e, e.request.pathValue("id"), actor);
-  if (!inbox) return;
-
-  const q = e.request.url.query();
-  const action = q.get("action") || "start";
-  const st = readBackfillState(inbox);
-
-  if (action === "stop") {
-    if (st && (st.status === "queued" || st.status === "running")) {
-      st.status = "idle";
-      writeBackfillState(inbox, st);
-    }
-    return e.json(200, { ok: true, backfill: backfillStateView(inbox) });
-  }
-
-  // start / restart (no-op if one is already in flight)
-  if (st && (st.status === "queued" || st.status === "running")) {
-    return e.json(200, { ok: true, already: true, backfill: backfillStateView(inbox) });
-  }
-  const fresh = {
-    status: "queued",
-    convs: 0, threads: 0, messages: 0, batches: 0,
-    next_page: "",
-    started_at: new DateTime().string(),
-    done_at: "", error: ""
-  };
-  writeBackfillState(inbox, fresh);
-  // Process the first page inline so the import starts immediately; the
-  // per-minute cron continues from the saved cursor until done. (Bounded to
-  // one page per request so even a huge mailbox never blocks a request.)
-  try {
-    stepBackfill(inbox, 1, 100);
-  } catch (err) {
-    h.warn("backfill first step failed", inboxUserEmail(inbox), (err && err.message) || err);
-  }
-  e.json(200, { ok: true, started: true, backfill: backfillStateView(inbox) });
-}
-
 // ---------------------------------------------------------------------------
 // POST /api/mailbox/threads/{id}/reply — send an email reply on the inbox
 // ---------------------------------------------------------------------------
@@ -1151,7 +1109,6 @@ module.exports = {
   handleWebhookPush,
   handleWatch,
   handleSync,
-  handleBackfill,
   handleReply,
   sendOutboundEmail,
   sendFreshEmail,

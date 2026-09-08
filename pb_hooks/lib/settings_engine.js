@@ -260,25 +260,6 @@ function userMap() {
   return map;
 }
 
-function inboxBackfillView(r) {
-  try {
-    const st = JSON.parse(r.getString("backfill_state") || "{}") || {};
-    return {
-      status: st.status || "idle",
-      conversations: parseInt(st.convs || 0, 10),
-      threads: parseInt(st.threads || 0, 10),
-      messages: parseInt(st.messages || 0, 10),
-      batches: parseInt(st.batches || 0, 10),
-      estimate: parseInt(st.estimate || 0, 10) || null,
-      started_at: st.started_at || "",
-      done_at: st.done_at || "",
-      error: st.error || ""
-    };
-  } catch (_) {
-    return { status: "idle", conversations: 0, threads: 0, messages: 0, batches: 0, estimate: null, started_at: "", done_at: "", error: "" };
-  }
-}
-
 function inboxToView(r) {
   const um = userMap();
   const allowed = r.get("allowed_users") || r.getStringSlice("allowed_users") || [];
@@ -297,8 +278,7 @@ function inboxToView(r) {
     is_active: r.getBool("is_active"),
     import_history: r.getBool("import_history"),
     allowed_users: users,
-    team_names: teamNames,
-    backfill: inboxBackfillView(r)
+    team_names: teamNames
   };
 }
 
@@ -320,7 +300,7 @@ function handleCreateInbox(e) {
   // Duplicate check (inbox email is unique-indexed).
   const existing = h.safeFindFirstByFilter("inboxes", "email_address = {:e}", { e: email });
   if (existing) return h.fail(e, 409, "duplicate", "A mailbox with that address already exists");
-  const importHistory = body.import_history !== false; // default: import existing mail
+  const importHistory = body.import_history === true; // default OFF: new mail only unless explicitly asked to import
   const rec = new Record($app.findCollectionByNameOrId("inboxes"), {
     name: name,
     email_address: email,
