@@ -527,8 +527,8 @@
                 {#if mb.backfill && mb.backfill.status !== "idle"}
                   <span class="pill bf" class:bf-ok={mb.backfill.status === "done"} class:bf-err={mb.backfill.status === "error"}>
                     {mb.backfill.status === "queued" ? "import queued…" :
-                     mb.backfill.status === "running" ? "importing " + mb.backfill.threads + "…" :
-                     mb.backfill.status === "done" ? "history imported · " + mb.backfill.threads :
+                     mb.backfill.status === "running" ? "importing " + (mb.backfill.conversations ?? mb.backfill.threads) + " conversations…" :
+                     mb.backfill.status === "done" ? "history imported · " + (mb.backfill.conversations ?? mb.backfill.threads) + " conversations" :
                      mb.backfill.status === "error" ? "import failed" : ""}
                   </span>
                 {/if}

@@ -265,6 +265,7 @@ function inboxBackfillView(r) {
     const st = JSON.parse(r.getString("backfill_state") || "{}") || {};
     return {
       status: st.status || "idle",
+      conversations: parseInt(st.convs || 0, 10),
       threads: parseInt(st.threads || 0, 10),
       messages: parseInt(st.messages || 0, 10),
       batches: parseInt(st.batches || 0, 10),
@@ -274,7 +275,7 @@ function inboxBackfillView(r) {
       error: st.error || ""
     };
   } catch (_) {
-    return { status: "idle", threads: 0, messages: 0, batches: 0, estimate: null, started_at: "", done_at: "", error: "" };
+    return { status: "idle", conversations: 0, threads: 0, messages: 0, batches: 0, estimate: null, started_at: "", done_at: "", error: "" };
   }
 }
 

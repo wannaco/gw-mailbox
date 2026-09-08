@@ -591,6 +591,7 @@ function backfillStateView(rec) {
   const st = readBackfillState(rec);
   return {
     status: st.status || "idle",
+    conversations: parseInt(st.convs || 0, 10),
     threads: parseInt(st.threads || 0, 10),
     messages: parseInt(st.messages || 0, 10),
     batches: parseInt(st.batches || 0, 10),
@@ -631,6 +632,7 @@ function backfillOnePage(inboxRec, pageToken, maxResults) {
   }
   return {
     counters: counters,
+    conversations: (listRes.threads || []).length,
     nextPageToken: listRes.nextPageToken || "",
     estimate: parseInt(listRes.resultSizeEstimate || "0", 10) || 0
   };
@@ -650,6 +652,9 @@ function stepBackfill(inboxRec, batchesPerTick, pageSize) {
   for (; pages < lim; pages++) {
     try {
       const r = backfillOnePage(inboxRec, token, pageSize || 100);
+      // `conversations` = Gmail threads processed this page (the real count a
+      // client cares about). threads/messages are per-message upsert tallies.
+      st.convs = parseInt(st.convs || 0, 10) + r.conversations;
       st.threads = parseInt(st.threads || 0, 10) + r.counters.threadsCreated + r.counters.threadsUpdated;
       st.messages = parseInt(st.messages || 0, 10) + r.counters.messagesAdded;
       st.batches = parseInt(st.batches || 0, 10) + 1;
@@ -784,7 +789,7 @@ function handleBackfill(e) {
   }
   const fresh = {
     status: "queued",
-    threads: 0, messages: 0, batches: 0,
+    convs: 0, threads: 0, messages: 0, batches: 0,
     next_page: "",
     started_at: new DateTime().string(),
     done_at: "", error: ""
