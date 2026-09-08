@@ -23,6 +23,21 @@
 
   const fmt = (n) => Number(n || 0).toLocaleString();
 
+  // avgHours -> "1h 20m" / "3d 4h" / "45m" (— when none)
+  function fmtDur(h) {
+    if (!h || h <= 0) return "—";
+    const mins = Math.round(h * 60);
+    if (mins < 60) return mins + "m";
+    if (h < 48) {
+      const hh = Math.floor(h);
+      const mm = Math.round((h - hh) * 60);
+      return hh + "h" + (mm ? " " + mm + "m" : "");
+    }
+    const dd = Math.floor(h / 24);
+    const hh = Math.round(h % 24);
+    return dd + "d" + (hh ? " " + hh + "h" : "");
+  }
+
   // Bar-ish helpers for a tiny CSS distribution chart.
   function maxKey(obj) {
     let m = 0;
@@ -59,6 +74,14 @@
         <span class="stat-num">{data.csat.responses ? data.csat.average + "★" : "—"}</span>
         <span class="stat-label">Avg CSAT ({data.csat.responses})</span>
       </div>
+      <div class="stat">
+        <span class="stat-num">{fmtDur(data.responsiveness?.firstResponse.avgHours)}</span>
+        <span class="stat-label">Avg 1st response ({data.responsiveness?.firstResponse.count})</span>
+      </div>
+      <div class="stat">
+        <span class="stat-num">{fmtDur(data.responsiveness?.resolution.avgHours)}</span>
+        <span class="stat-label">Avg resolution ({data.responsiveness?.resolution.count})</span>
+      </div>
     </div>
 
     <div class="panels">
@@ -94,14 +117,14 @@
         <h3>Agents</h3>
         {#if data.agents.length}
           <table class="rep-table">
-            <thead><tr><th>Agent</th><th>Open</th><th>Closed</th><th>Total</th></tr></thead>
+            <thead><tr><th>Agent</th><th>Open</th><th>Closed</th><th>Total</th><th>1st replies</th></tr></thead>
             <tbody>
               {#each data.agents as a (a.id)}
-                <tr><td>{a.name}</td><td>{a.open}</td><td>{a.closed}</td><td>{a.total}</td></tr>
+                <tr><td>{a.name}</td><td>{a.open}</td><td>{a.closed}</td><td>{a.total}</td><td>{a.first_responses || 0}</td></tr>
               {/each}
             </tbody>
           </table>
-          <p class="muted hint">First-response + resolution-time trends start populating as tickets are handled (first_response_at / closed_at now stamped automatically).</p>
+          <p class="muted hint">Avg 1st response = first agent reply − ticket arrival. Avg resolution = close − ticket arrival. Both fill in automatically as agents reply to and close tickets.</p>
         {:else}
           <p class="muted">No assigned tickets yet — assign tickets to agents to see per-agent volume here. ({data.byAssignee.unassignedOpen || 0} open unassigned)</p>
         {/if}

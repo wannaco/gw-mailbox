@@ -104,6 +104,46 @@ function handleReports(e) {
     } catch (_) { /* skip */ }
   }
 
+  // First-response / resolution times — computed only for threads actually
+  // stamped (bounded to the 200 most recent so one reports call stays cheap on
+  // big mailboxes). "Arrival" = the earliest real (non-internal) message date
+  // on the thread; first_response_at / closed_at are stamped by the engine.
+  function arrivalFor(threadId) {
+    try {
+      const msgs = $app.findRecordsByFilter("messages", "thread = {:t}", "", 0, 0, { t: threadId }) || [];
+      let earliest = "";
+      for (const m of msgs) {
+        if (m.getBool("is_internal_note")) continue;
+        const d = m.getString("msg_date") || "";
+        if (d && (!earliest || d < earliest)) earliest = d;
+      }
+      return earliest ? new DateTime(earliest) : null;
+    } catch (_) { return null; }
+  }
+  let frN = 0, frSumNs = 0, resN = 0, resSumNs = 0;
+  const handled = threads.filter((t) => {
+    const fr = t.getDateTime("first_response_at");
+    const cl = t.getDateTime("closed_at");
+    return (fr && !fr.isZero()) || (cl && !cl.isZero());
+  }).slice(0, 200);
+  for (const t of handled) {
+    try {
+      const arrival = arrivalFor(t.id);
+      if (!arrival) continue;
+      const fr = t.getDateTime("first_response_at");
+      if (fr && !fr.isZero()) {
+        const diff = fr.sub(arrival);
+        if (diff > 0) { frN++; frSumNs += diff; }
+      }
+      const cl = t.getDateTime("closed_at");
+      if (cl && !cl.isZero()) {
+        const diff = cl.sub(arrival);
+        if (diff > 0) { resN++; resSumNs += diff; }
+      }
+    } catch (_) { /* skip */ }
+  }
+  const toHours = (ns) => ns / 1e9 / 3600;
+
   // Agent rows (for the leaderboard) — resolve names, filter empties.
   const agentRows = Object.keys(byAssignee)
     .filter((k) => k !== "(unassigned)")
@@ -131,6 +171,10 @@ function handleReports(e) {
     byStatus,
     sla: { total: totalSla, overdue: slaOverdue, dueSoon: slaDueSoon },
     csat: { responses: csatResponses, average: csatResponses ? Math.round((csatSum / csatResponses) * 10) / 10 : 0, pending: csatPending },
+    responsiveness: {
+      firstResponse: { count: frN, avgHours: frN ? Math.round((toHours(frSumNs) / frN) * 10) / 10 : 0 },
+      resolution: { count: resN, avgHours: resN ? Math.round((toHours(resSumNs) / resN) * 10) / 10 : 0 }
+    },
     byInbox: Object.keys(byInbox).map((id) => ({ id, name: inboxNames[id], count: byInbox[id] })),
     byAssignee: { total: agentRows.length > 0 ? agentRows : [], unassignedOpen: byAssignee["(unassigned)"] ? byAssignee["(unassigned)"].open : 0 },
     agents: agentRows,
