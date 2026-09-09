@@ -644,7 +644,7 @@
     <!-- SLA & escalation -->
     <section class="card">
       <h3>SLA &amp; escalation</h3>
-      <p class="muted">Every <b>new</b> ticket gets a first-response deadline (<span class="sla-now">now + {slaHours}h</span>). Tickets still <b>new</b> past their deadline surface <b class="sla-red">SLA overdue</b> in red on the list and board — and the hourly monitor escalates them (status → <i>Escalated</i>, internal note + webhook).</p>
+      <p class="muted">Every <b>new</b> or <b>in-progress</b> ticket gets a first-response deadline (<span class="sla-now">now + {slaHours}h</span>). Tickets past their deadline surface <b class="sla-red">SLA overdue</b> in red on the list and board — and the hourly monitor escalates them (status → <i>Escalated</i>, internal note + webhook).</p>
 
       <label class="switch-row" style="margin:10px 0">
         <span><strong>Enable SLA tracking</strong>

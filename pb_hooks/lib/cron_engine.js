@@ -6,12 +6,12 @@
 
 var h = require(__hooks + "/lib/helpers.js");
 
-var SLA_SCAN_STATUS = "new";        // spec: tickets in `new`
+var SLA_SCAN_STATUSES = ["new", "in_progress"];  // clock runs on New + In progress
 var PRESENCE_MAX_AGE_MIN = 2;       // spec: older than 2 minutes
 var BATCH = 200;
 
 // ---------------------------------------------------------------------------
-// SLA breach monitor — hourly; escalate new tickets past sla_due_at
+// SLA breach monitor — hourly; escalate new/in-progress tickets past sla_due_at
 // ---------------------------------------------------------------------------
 function runSlaMonitor() {
   h.log("SLA monitor run started");
@@ -21,18 +21,20 @@ function runSlaMonitor() {
     return;
   }
   const breached = [];
-  let offset = 0;
-
-  // Drain in batches; a fresh save flips the row out of the status filter so
-  // the next page offset stays consistent.
-  while (true) {
-    const rows = $app.findRecordsByFilter("threads", "status = {:s}", "+created", BATCH, offset, { s: SLA_SCAN_STATUS });
-    if (!rows || rows.length === 0) break;
-    for (const rec of rows) {
-      if (h.isSlaBreached(rec)) breached.push(rec);
+  const statusOf = {};
+  for (const status of SLA_SCAN_STATUSES) {
+    // Drain in batches; a fresh save flips the row out of the status filter so
+    // the next page offset stays consistent.
+    let offset = 0;
+    while (true) {
+      const rows = $app.findRecordsByFilter("threads", "status = {:s}", "+created", BATCH, offset, { s: status });
+      if (!rows || rows.length === 0) break;
+      for (const rec of rows) {
+        if (h.isSlaBreached(rec)) { breached.push(rec); statusOf[rec.id] = status; }
+      }
+      if (rows.length < BATCH) break;
+      offset += BATCH;
     }
-    if (rows.length < BATCH) break;
-    offset += BATCH;
   }
 
   for (const thread of breached) {
@@ -40,10 +42,11 @@ function runSlaMonitor() {
       thread.set("status", "escalated");
       $app.save(thread);
 
+      const wasStatus = statusOf[thread.id] || "new";
       const note = h.addInternalNote(
         thread.id,
         { name: "SLA Monitor", email: "system@mailbox.local" },
-        "⏰ SLA breach: ticket was still '" + SLA_SCAN_STATUS + "' past sla_due_at (" +
+        "⏰ SLA breach: ticket was still '" + wasStatus + "' past sla_due_at (" +
           h.dateToPbString(thread.getDateTime("sla_due_at")) + ") — escalated for review."
       );
 

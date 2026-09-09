@@ -53,13 +53,15 @@ export function statusMeta(value) {
   return STATUSES.find((s) => s.value === value) || STATUSES[0];
 }
 
-// SLA state for a thread row/card. The clock runs on NEW tickets (the hourly
-// monitor escalates breaches out of new). Returns null when the SLA is off, the
-// thread isn't new, or no due time exists; otherwise a chip descriptor.
+// SLA state for a thread row/card. The clock runs on NEW + IN PROGRESS tickets
+// (the hourly monitor escalates breaches out of both). Returns null when the
+// SLA is off, the thread is in another status, or no due time exists;
+// otherwise a chip descriptor.
+const SLA_CLOCK_STATUSES = ["new", "in_progress"];
 export function slaOf(thread) {
   const cfg = appState.slaConfig || { enabled: true, hours: 24 };
   if (!cfg.enabled) return null;
-  if (!thread || (thread.status || "") !== "new") return null;
+  if (!thread || SLA_CLOCK_STATUSES.indexOf(thread.status || "") === -1) return null;
   const raw = thread.sla_due_at;
   if (!raw) return null;
   const due = new Date(String(raw).replace(" ", "T") + (String(raw).includes("Z") ? "" : "Z"));
