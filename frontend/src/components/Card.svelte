@@ -100,16 +100,16 @@
 <style>
   .card {
     position: relative;
-    background: var(--m3-surface-container-low);
-    border-radius: var(--m3-shape-md);
-    box-shadow: var(--m3-elev-1);
+    background: var(--m3-surface-container-lowest);
+    border: 1px solid var(--m3-outline-variant);
+    border-left: 3px solid transparent;
+    border-radius: var(--m3-shape-sm);
     padding: 10px 12px;
     cursor: grab;
-    transition: box-shadow 0.15s ease, opacity 0.15s ease;
-    border-left: 3px solid transparent;
+    transition: box-shadow 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
   }
-
   .card:hover {
+    border-color: var(--m3-outline);
     box-shadow: var(--m3-elev-2);
   }
 
@@ -234,10 +234,10 @@
   }
 
   .tag-chip {
-    background: var(--m3-surface-container-highest);
+    background: var(--m3-surface-container-high);
     color: var(--m3-on-surface-variant);
-    border-radius: var(--m3-shape-full);
-    padding: 1px 8px;
+    border-radius: 6px;
+    padding: 1px 7px;
     font: var(--m3-type-label-sm);
   }
 
@@ -251,10 +251,10 @@
     align-items: center;
     gap: 5px;
     max-width: 118px;
-    background: var(--m3-secondary-container);
-    color: var(--m3-on-secondary-container);
-    border-radius: 999px;
-    padding: 1px 8px 1px 3px;
+    background: var(--m3-surface-container-high);
+    color: var(--m3-on-surface-variant);
+    border-radius: 6px;
+    padding: 1px 7px 1px 3px;
     font: var(--m3-type-label-sm);
     overflow: hidden;
   }
@@ -285,11 +285,10 @@
 
   .sla-chip {
     font: var(--m3-type-label-sm);
-    font-weight: 700;
-    border-radius: 999px;
-    padding: 1px 8px;
+    font-weight: 600;
+    border-radius: 6px;
+    padding: 1px 7px;
     white-space: nowrap;
-    border: 1px solid currentColor;
     flex: 0 0 auto;
     margin-left: auto;
   }
