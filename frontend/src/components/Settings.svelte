@@ -754,31 +754,43 @@
 
   .tabs {
     display: flex;
-    gap: 4px;
+    gap: 2px;
     flex-wrap: wrap;
-    margin-bottom: 16px;
-    padding: 4px;
-    background: var(--m3-surface-container-high);
-    border-radius: var(--m3-shape-full);
-    width: fit-content;
-    max-width: 100%;
+    margin-bottom: 22px;
+    border-bottom: 1px solid var(--m3-outline-variant);
+    width: 100%;
   }
   .tabs button {
+    position: relative;
     border: 0;
     background: none;
-    padding: 7px 14px;
-    border-radius: 999px;
+    padding: 10px 14px;
+    margin-bottom: -1px;
+    border-radius: 6px 6px 0 0;
     font: var(--m3-type-label-lg);
+    letter-spacing: 0.01em;
     color: var(--m3-on-surface-variant);
     cursor: pointer;
     white-space: nowrap;
-  }
-  .tabs button.on {
-    background: var(--m3-primary);
-    color: var(--m3-on-primary);
+    transition: color 0.15s ease, background 0.15s ease;
   }
   .tabs button:hover:not(.on) {
-    background: var(--m3-surface-container-highest);
+    color: var(--m3-on-surface);
+    background: var(--m3-row-hover);
+  }
+  .tabs button.on {
+    color: var(--m3-on-surface);
+    font-weight: 600;
+  }
+  .tabs button.on::after {
+    content: "";
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    bottom: -1px;
+    height: 2px;
+    border-radius: 2px 2px 0 0;
+    background: var(--m3-primary);
   }
 
   .card {
