@@ -8,7 +8,6 @@ var h = require(__hooks + "/lib/helpers.js");
 
 var SLA_SCAN_STATUSES = ["new", "in_progress"];  // clock runs on New + In progress
 var PRESENCE_MAX_AGE_MIN = 2;       // spec: older than 2 minutes
-var BATCH = 200;
 
 // ---------------------------------------------------------------------------
 // SLA breach monitor — hourly; escalate new/in-progress tickets past sla_due_at
@@ -20,20 +19,25 @@ function runSlaMonitor() {
     h.log("SLA monitor skipped — disabled in Settings (sla_enabled=false)");
     return;
   }
+  // IMPORTANT: do NOT sort by +created — this PocketBase fork has no created
+  // field and PB throws on the sort, which silently killed every run before
+  // (zero escalations ever despite days of overdue tickets). Fetch all rows of
+  // each status with no sort; saves flip rows out of the filter so nothing is
+  // re-scanned, and status subsets are small even on big mailboxes.
   const breached = [];
   const statusOf = {};
+  let checked = 0;
   for (const status of SLA_SCAN_STATUSES) {
-    // Drain in batches; a fresh save flips the row out of the status filter so
-    // the next page offset stays consistent.
-    let offset = 0;
-    while (true) {
-      const rows = $app.findRecordsByFilter("threads", "status = {:s}", "+created", BATCH, offset, { s: status });
-      if (!rows || rows.length === 0) break;
-      for (const rec of rows) {
-        if (h.isSlaBreached(rec)) { breached.push(rec); statusOf[rec.id] = status; }
-      }
-      if (rows.length < BATCH) break;
-      offset += BATCH;
+    let rows = [];
+    try {
+      rows = $app.findRecordsByFilter("threads", "status = {:s}", "", 0, 0, { s: status }) || [];
+    } catch (err) {
+      h.warn("SLA monitor scan failed for status", status, (err && err.message) || err);
+      continue;
+    }
+    for (const rec of rows) {
+      checked++;
+      if (h.isSlaBreached(rec)) { breached.push(rec); statusOf[rec.id] = status; }
     }
   }
 
@@ -64,7 +68,8 @@ function runSlaMonitor() {
     }
   }
 
-  h.log("SLA monitor run finished — breached:", breached.length);
+  h.log("SLA monitor run finished — checked:", checked, "breached:", breached.length);
+  return { checked: checked, escalated: breached.length };
 }
 
 // ---------------------------------------------------------------------------
@@ -174,8 +179,24 @@ function runBackfillStepper() {
   }
 }
 
+// Admin-only manual trigger (POST /api/mailbox/admin/run-sla-monitor) so a
+// breach can be enforced immediately instead of waiting for the next hourly
+// tick — and so this can be verified on demand.
+function handleRunSlaMonitor(e) {
+  if (h.addCorsHeaders(e, "POST, OPTIONS")) return;
+  const actor = h.actorFromEvent(e);
+  if (!actor || !actor.isSuperuser) return h.fail(e, 403, "forbidden", "Admins only");
+  try {
+    const r = runSlaMonitor();
+    e.json(200, { ok: true, escalated: (r && r.escalated) || 0, checked: (r && r.checked) || 0 });
+  } catch (err) {
+    h.fail(e, 500, "sla_monitor_failed", (err && err.message) || String(err));
+  }
+}
+
 module.exports = {
   runSlaMonitor,
+  handleRunSlaMonitor,
   runPresenceSweeper,
   runMailPollSync,
   runBackfillStepper
