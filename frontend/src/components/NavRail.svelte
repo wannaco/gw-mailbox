@@ -27,7 +27,7 @@
   .rail {
     width: 128px;
     flex: 0 0 128px;
-    background: var(--m3-surface);
+    background: var(--m3-surface-container-lowest);
     border-right: 1px solid var(--m3-outline-variant);
     display: flex;
     flex-direction: column;
@@ -60,8 +60,8 @@
   }
 
   .rail-item.active {
-    background: var(--m3-primary-container);
-    color: var(--m3-on-primary-container);
+    background: var(--m3-surface-container-high);
+    color: var(--m3-on-surface);
   }
 
   .rail-icon {
@@ -79,8 +79,9 @@
   }
 
   .rail-item.active .rail-icon {
-    background: var(--m3-primary);
-    color: var(--m3-on-primary);
+    background: var(--m3-primary-container);
+    color: var(--m3-on-primary-container);
+    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.04);
   }
 
   .rail-label {

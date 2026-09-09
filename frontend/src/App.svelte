@@ -224,8 +224,8 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 6px 12px;
-    background: var(--m3-surface-container);
+    padding: 7px 16px;
+    background: var(--m3-surface-container-lowest);
     border-bottom: 1px solid var(--m3-outline-variant);
     z-index: 5;
     flex-wrap: wrap;
@@ -240,10 +240,11 @@
   }
 
   .brand-dot {
-    width: 26px;
-    height: 26px;
-    border-radius: 50%;
+    width: 22px;
+    height: 22px;
+    border-radius: 7px;
     background: var(--m3-primary);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.18);
   }
 
   .spacer {

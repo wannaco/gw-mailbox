@@ -110,17 +110,17 @@
    Type scale
    --------------------------------------------------------------------------- */
 :root {
-  --m3-type-display: clamp(2.25rem, 5vw, 3.25rem) / 1.15 "Roboto", "Segoe UI", system-ui, sans-serif;
-  --m3-type-headline: 1.375rem / 1.3 600 "Roboto", "Segoe UI", system-ui, sans-serif;
-  --m3-type-title-lg: 1.125rem / 1.4 600 "Roboto", "Segoe UI", system-ui, sans-serif;
-  --m3-type-title-md: 1rem / 1.4 500 "Roboto", "Segoe UI", system-ui, sans-serif;
-  --m3-type-title-sm: 0.875rem / 1.4 600 "Roboto", "Segoe UI", system-ui, sans-serif;
-  --m3-type-body-lg: 1rem / 1.45 "Roboto", "Segoe UI", system-ui, sans-serif;
-  --m3-type-body-md: 0.875rem / 1.4 "Roboto", "Segoe UI", system-ui, sans-serif;
-  --m3-type-body-sm: 0.75rem / 1.35 "Roboto", "Segoe UI", system-ui, sans-serif;
-  --m3-type-label-lg: 0.875rem / 1.4 500 "Roboto", "Segoe UI", system-ui, sans-serif;
-  --m3-type-label-md: 0.75rem / 1.3 500 "Roboto", "Segoe UI", system-ui, sans-serif;
-  --m3-type-label-sm: 0.6875rem / 1.3 500 "Roboto", "Segoe UI", system-ui, sans-serif;
+  --m3-type-display: clamp(2.25rem, 5vw, 3.25rem) / 1.1 "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --m3-type-headline: 1.375rem / 1.25 600 "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --m3-type-title-lg: 1.125rem / 1.3 600 "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --m3-type-title-md: 1rem / 1.35 500 "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --m3-type-title-sm: 0.875rem / 1.35 600 "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --m3-type-body-lg: 1rem / 1.45 "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --m3-type-body-md: 0.875rem / 1.4 "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --m3-type-body-sm: 0.75rem / 1.35 "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --m3-type-label-lg: 0.875rem / 1.4 500 "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --m3-type-label-md: 0.75rem / 1.3 500 "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --m3-type-label-sm: 0.6875rem / 1.3 500 "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
 /* ---------------------------------------------------------------------------
@@ -184,17 +184,18 @@ a {
   gap: 6px;
   height: 32px;
   padding: 0 14px;
-  border-radius: var(--m3-shape-full);
+  border-radius: var(--m3-shape-sm);
   background: var(--m3-surface-container-lowest);
   border: 1px solid var(--m3-outline-variant);
   font: var(--m3-type-label-lg);
   color: var(--m3-on-surface-variant);
-  transition: background 0.15s ease;
+  transition: background 0.15s ease, border-color 0.15s ease;
   white-space: nowrap;
 }
 
 .md3-chip:hover {
   background: var(--m3-surface-container-high);
+  border-color: var(--m3-outline);
 }
 
 .md3-chip.is-active {
@@ -253,11 +254,11 @@ a {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  height: 40px;
-  padding: 0 20px;
-  border-radius: var(--m3-shape-full);
+  height: 36px;
+  padding: 0 16px;
+  border-radius: var(--m3-shape-sm);
   font: var(--m3-type-label-lg);
-  transition: background 0.15s ease;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .md3-btn.primary {
@@ -296,6 +297,11 @@ a {
 
 .md3-icon-btn:hover {
   background: var(--m3-row-hover);
+}
+
+button:focus-visible {
+  outline: 2px solid var(--m3-primary);
+  outline-offset: 1px;
 }
 
 ::-webkit-scrollbar {
