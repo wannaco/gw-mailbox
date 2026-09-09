@@ -389,11 +389,17 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    height: 40px;
-    padding: 0 14px;
-    background: var(--m3-surface-container-high);
-    border-radius: var(--m3-shape-full);
+    height: 38px;
+    padding: 0 12px;
+    background: var(--m3-surface-container-lowest);
+    border: 1px solid var(--m3-outline-variant);
+    border-radius: var(--m3-shape-sm);
     color: var(--m3-on-surface-variant);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .search:focus-within {
+    border-color: var(--m3-primary);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--m3-primary) 18%, transparent);
   }
   .search input {
     flex: 1;
@@ -401,6 +407,7 @@
     border: 0;
     outline: none;
     min-width: 0;
+    font-size: 0.9rem;
   }
 
   .count {
@@ -469,13 +476,16 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 6px 18px;
-    background: var(--m3-primary-container);
-    color: var(--m3-on-primary-container);
+    padding: 6px 12px;
+    background: var(--m3-surface-container-lowest);
+    color: var(--m3-on-surface);
+    border: 1px solid var(--m3-outline-variant);
     border-radius: var(--m3-shape-sm);
-    margin: 0 16px 8px;
+    box-shadow: var(--m3-elev-2);
+    margin: 0 20px 10px;
     flex-wrap: wrap;
   }
+  .bb-count { color: var(--m3-on-surface-variant); }
   .ck-all { display: inline-flex; align-items: center; }
   .bb-count { font: var(--m3-type-label-lg); }
   .bb-count b { font-weight: 700; }
@@ -499,7 +509,7 @@
   .list {
     flex: 1;
     overflow-y: auto;
-    padding: 0 16px 16px;
+    padding: 0 20px 20px;
   }
 
   .rowline {
@@ -510,6 +520,7 @@
   .rowline:hover {
     background: var(--m3-row-hover);
   }
+  .rowline:hover .when { color: var(--m3-on-surface-variant); }
   .rowline.sel {
     background: var(--m3-primary-container);
   }
@@ -536,7 +547,7 @@
     align-items: center;
     gap: 14px;
     text-align: left;
-    padding: 10px 14px 10px 4px;
+    padding: 11px 14px 11px 4px;
     border: 0;
     background: none;
     cursor: pointer;
@@ -774,19 +785,19 @@
     align-items: center;
     gap: 6px;
     align-self: flex-start;
-    background: var(--m3-secondary-container);
-    color: var(--m3-on-secondary-container);
-    border-radius: 999px;
-    padding: 1px 9px 1px 3px;
+    background: var(--m3-surface-container-high);
+    color: var(--m3-on-surface-variant);
+    border-radius: 6px;
+    padding: 2px 8px 2px 3px;
     font: var(--m3-type-label-sm);
     font-weight: 500;
     max-width: 100%;
   }
-
   .assignee-pill.mine {
     background: var(--m3-primary-container);
     color: var(--m3-on-primary-container);
   }
+
 
   .ap-ava {
     display: inline-flex;
@@ -831,11 +842,10 @@
 
   .sla-chip {
     font: var(--m3-type-label-sm);
-    font-weight: 700;
-    border-radius: 999px;
-    padding: 1px 8px;
+    font-weight: 600;
+    border-radius: 6px;
+    padding: 1px 7px;
     white-space: nowrap;
-    border: 1px solid currentColor;
   }
   .sla-chip.breached {
     animation: sla-pulse 1.8s ease-in-out infinite;
