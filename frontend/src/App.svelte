@@ -42,6 +42,16 @@
   // Request desktop notif permission after we know the user is signed in.
   onMount(async () => {
     applyTheme();
+    if (location.pathname.replace(/\/+$/, "") === "/auth/callback") {
+      try {
+        await handleOAuthCallback();
+        toast("success", "Signed in with Google");
+      } catch (e) {
+        toast("error", e?.message || "Google sign-in failed");
+      }
+      booting = false;
+      return;
+    }
     parseCsatPath();
     if (csatToken) { booting = false; return; } // public survey page — no session
     const t = api.savedToken();
@@ -74,6 +84,32 @@
     localStorage.setItem("gwmb.token", res.token);
     await api.adminSession();
     appState.screen = "mail";
+    api.startRealtime();
+    api.startPresenceLoop();
+  }
+
+  // Google OAuth callback landing (/auth/callback?code=...&state=...).
+  // Completes the PKCE exchange with the verifier the login screen stashed in
+  // sessionStorage, then bootstraps the session exactly like a password login.
+  async function handleOAuthCallback() {
+    const q = new URLSearchParams(location.search);
+    const code = q.get("code") || "";
+    const state = q.get("state") || "";
+    const errParam = q.get("error") || "";
+    let saved = {};
+    try { saved = JSON.parse(sessionStorage.getItem("gwmb.oauth") || "{}") || {}; } catch (_) {}
+    try { sessionStorage.removeItem("gwmb.oauth"); } catch (_) {}
+    history.replaceState(null, "", "/"); // never replay the code on refresh
+    if (errParam) throw new Error(q.get("error_description") || errParam);
+    if (!code) throw new Error("Google sign-in returned no code");
+    if (!saved.verifier) throw new Error("Sign-in session expired — please try again");
+    if (saved.state && state && saved.state !== state) throw new Error("Sign-in state mismatch — please try again");
+    const redirectURL = saved.redirectURL || window.location.origin + "/auth/callback";
+    const res = await api.oauthExchange("google", code, saved.verifier, redirectURL);
+    if (!res || !res.token) throw new Error("Google sign-in returned no session");
+    appState.token = res.token;
+    localStorage.setItem("gwmb.token", res.token);
+    await api.loadSession();
     api.startRealtime();
     api.startPresenceLoop();
   }

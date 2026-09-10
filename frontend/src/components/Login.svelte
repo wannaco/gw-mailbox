@@ -44,89 +44,28 @@
   }
   onMount(detectOAuth);
 
-  // PB 0.39 popup code flow: open provider.authUrl (already has PKCE challenge +
-  // redirect to PB's /api/oauth2-redirect), wait for the popup to post back the
-  // code, then exchange it. Same-origin so we can also read the popup URL.
-  async function googleSignIn() {
+  // Google sign-in — full-page redirect (no popup, no popup-blocker issues and
+  // it works on mobile). PocketBase builds the provider authURL with a BLANK
+  // `redirect_uri=` and expects the CLIENT to append the encoded redirect URL.
+  // We point it at OUR OWN callback route — NOT PB's /api/oauth2-redirect,
+  // which 307s into the PocketBase admin dashboard (its own admin login flow)
+  // so the SPA never received the code. The PKCE verifier is stashed in
+  // sessionStorage and the exchange finishes in App.svelte at /auth/callback.
+  function googleSignIn() {
     if (!oauth.available || oauth.busy) return;
     error = "";
     oauth.busy = true;
-    let popup = null;
-    // PocketBase builds the provider authURL with a BLANK `redirect_uri=` and
-    // expects the client to append the full redirect URL. Without this Google
-    // returns 400 "Missing required parameter: redirect_uri". The same value
-    // must be sent on exchange and registered in the Google OAuth client
-    // (Authorized redirect URIs) — it is PocketBase's OAuth2 callback.
-    const redirectURL = window.location.origin + "/api/oauth2-redirect";
-    const done = new Promise((resolve, reject) => {
-      const origin = window.location.origin;
-      const timeout = setTimeout(() => {
-        cleanup();
-        reject(new Error("Sign-in timed out. Please try again."));
-      }, 180000);
-
-      function cleanup() {
-        clearTimeout(timeout);
-        window.removeEventListener("message", onMsg);
-        if (popup && !popup.closed) popup.close();
-      }
-      function succeed(data) {
-        cleanup();
-        resolve(data);
-      }
-      function onMsg(ev) {
-        if (ev.origin !== origin) return;
-        const d = ev.data || {};
-        if (d && d.code) return succeed(d);
-        if (d && d.state && d.error) {
-          cleanup();
-          reject(new Error(d.error_description || d.error || "Google sign-in was cancelled"));
-        }
-      }
-      window.addEventListener("message", onMsg);
-
-      // Kick off the popup now that the listener is attached.
-      popup = window.open(
-        oauth.google.authUrl + encodeURIComponent(redirectURL),
-        "gwmb_oauth",
-        "width=540,height=640"
-      );
-      if (!popup) {
-        cleanup();
-        reject(new Error("Pop-up blocked — allow pop-ups for this site and try again."));
-        return;
-      }
-      // Fallback: poll the popup URL for a code (same origin after PB redirect).
-      const iv = setInterval(() => {
-        try {
-          const loc = popup && !popup.closed ? popup.location.href : "";
-          if (loc && loc.indexOf("code=") !== -1) {
-            clearInterval(iv);
-            const code = new URL(loc).searchParams.get("code") || "";
-            if (code) succeed({ code });
-          }
-          if (popup && popup.closed) clearInterval(iv);
-        } catch {
-          // cross-origin while on accounts.google.com — safe to ignore
-        }
-      }, 400);
-      const done2 = () => clearInterval(iv);
-      window.addEventListener("unload", done2);
-    });
-
+    const redirectURL = window.location.origin + "/auth/callback";
     try {
-      const { code } = await done;
-      const res = await api.oauthExchange("google", code, oauth.google.codeVerifier, redirectURL);
-      if (res && res.token) {
-        await signInOAuth(res.token);
-      } else {
-        throw new Error("Google sign-in returned no session");
-      }
-    } catch (e) {
-      error = e?.message || "Google sign-in failed";
-      oauth.busy = false;
-    }
+      sessionStorage.setItem("gwmb.oauth", JSON.stringify({
+        verifier: oauth.google.codeVerifier || "",
+        state: oauth.google.state || "",
+        redirectURL: redirectURL
+      }));
+    } catch (_) { /* private mode — exchange will report an error */ }
+    window.location.href = oauth.google.authUrl + encodeURIComponent(redirectURL);
   }
+
 </script>
 
 <div class="login-wrap">
