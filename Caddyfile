@@ -1,0 +1,9 @@
+# Caddy — automatic HTTPS for gw-mailbox.
+# $DOMAIN comes from the environment (docker-compose passes it from .env).
+# Caddy fetches/renews the Let's Encrypt certificate automatically (ports 80+443
+# must be reachable from the internet for the ACME challenge).
+
+{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy app:8090
+}

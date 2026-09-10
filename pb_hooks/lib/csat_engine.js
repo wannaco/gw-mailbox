@@ -15,16 +15,24 @@
 var h = require(__hooks + "/lib/helpers.js");
 
 // Absolute base used in the emailed survey link:
-//   MAILBOX_PUBLIC_URL env -> app_settings.public_url -> default
+//   MAILBOX_PUBLIC_URL env -> app_settings.public_url -> PocketBase appURL
+// Never hardcode a host: the same build is deployed to many domains, and a
+// wrong base would email customers a link into someone else's instance.
+// Returns "" when nothing usable is configured — callers skip sending.
 function publicBase() {
   const env = $os.getenv("MAILBOX_PUBLIC_URL") || "";
   if (env) return String(env).replace(/\/+$/, "");
   try {
     const rec = $app.findFirstRecordByFilter("app_settings", "key = 'instance'");
     const v = rec ? String(rec.getString("public_url") || "").trim() : "";
-    if (v) return v.replace(/\/+$/, "");
+    if (v && !/localhost|127\.0\.0\.1/.test(v)) return v.replace(/\/+$/, "");
   } catch (_) { /* missing */ }
-  return "https://mailbox.thinkcloud.dev";
+  try {
+    const st = $app.settings();
+    const u = String((st && st.meta && st.meta.appURL) || "").trim();
+    if (u && !/localhost|127\.0\.0\.1/.test(u)) return u.replace(/\/+$/, "");
+  } catch (_) { /* missing */ }
+  return "";
 }
 
 function randToken() {
@@ -137,7 +145,12 @@ function dispatchCsatOnClose(threadId) {
 
     // Email (best-effort — if send fails, survey row still exists for manual use)
     try {
-      const url = publicBase() + "/csat/" + token;
+      const base = publicBase();
+      if (!base) {
+        h.warn("CSAT: no public URL configured (set MAILBOX_PUBLIC_URL) — survey not sent for", threadId);
+        return null;
+      }
+      const url = base + "/csat/" + token;
       sendSurveyEmail(thread, uid, url);
       h.log("CSAT survey sent", threadId, "->", email);
     } catch (err) {

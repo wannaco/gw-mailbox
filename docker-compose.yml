@@ -1,0 +1,51 @@
+# =============================================================================
+# gw-mailbox — single-VPS deployment (app + automatic HTTPS)
+#
+#   cp .env.example .env      # then edit DOMAIN + MAILBOX_PUBLIC_URL
+#   docker compose up -d --build
+#
+# Caddy obtains and renews a Let's Encrypt certificate for $DOMAIN and proxies
+# to PocketBase. The app container itself needs no TLS config and the image is
+# domain-agnostic (the SPA is same-origin; the public URL is read at runtime
+# from MAILBOX_PUBLIC_URL), so the same build runs on any host.
+# =============================================================================
+
+services:
+  app:
+    build:
+      context: .
+      # arm64 host? uncomment and point at the matching PocketBase release:
+      # args:
+      #   PB_BINARY_URL: https://github.com/pocketbase/pocketbase/releases/download/v0.39.0/pocketbase_0.39.0_linux_arm64.zip
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Falls back to the Caddy domain so a minimal .env still works.
+      MAILBOX_PUBLIC_URL: ${MAILBOX_PUBLIC_URL:-https://${DOMAIN}}
+      MAILBOX_SEED_DEMO: ${MAILBOX_SEED_DEMO:-0}
+      MAILBOX_TIMEZONE: ${MAILBOX_TIMEZONE:-UTC}
+    volumes:
+      - pb_data:/app/pb_data
+    expose:
+      - "8090"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+
+volumes:
+  pb_data:
+  caddy_data:
+  caddy_config:

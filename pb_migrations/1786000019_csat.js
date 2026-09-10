@@ -70,7 +70,9 @@ migrate((app) => {
     }
     const rec = app.findFirstRecordByFilter("app_settings", "key = 'instance'");
     if (rec && !rec.getString("public_url")) {
-      rec.set("public_url", "https://mailbox.thinkcloud.dev");
+      // Intentionally left empty: MAILBOX_PUBLIC_URL (env) or PocketBase's
+      // appURL fills this in at boot. Hardcoding a host here would make new
+      // installs email links into the original deployment's domain.
       app.save(rec);
     }
     console.log("[gw-mailbox] app_settings.public_url ensured");

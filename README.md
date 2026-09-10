@@ -195,3 +195,22 @@ RESULT: 22 passed, 0 failed
 - Handlers live in `pb_hooks/lib/*` and are registered through inline
   `require()` wrappers because PB 0.39 does not retain closure/top-level
   scope for `routerAdd`/`cronAdd` callbacks (documented in registrar headers).
+
+---
+
+## Deployment
+
+See **[docs/DEPLOY.md](docs/DEPLOY.md)** for the full guide. Quick start on any
+VPS with Docker:
+
+```bash
+cp .env.example .env      # set DOMAIN, MAILBOX_PUBLIC_URL, MAILBOX_ADMIN_*
+docker compose up -d --build
+```
+
+The container is domain-agnostic: the SPA is same-origin and the public URL is
+read at runtime, so the same build runs on any host. On boot the app applies
+migrations, sets PocketBase's `appURL` from `MAILBOX_PUBLIC_URL`, seeds the first
+superuser from env, and (only if `MAILBOX_SEED_DEMO=1`) demo data.
+
+Feature overview: **[docs/FEATURES.md](docs/FEATURES.md)**.

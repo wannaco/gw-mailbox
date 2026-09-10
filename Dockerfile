@@ -27,8 +27,20 @@ FROM alpine:3.20
 RUN apk add --no-cache ca-certificates tzdata openssl
 WORKDIR /app
 
-# PocketBase 0.39 binary (kept in the repo for reproducible builds)
+# PocketBase 0.39 binary (kept in the repo for reproducible builds; the
+# committed one is linux/amd64). On another architecture rebuild with
+#   --build-arg PB_BINARY_URL=<pocketbase_<ver>_linux_<arch>.zip>
+# to fetch and use the matching release instead.
 COPY --chmod=0755 pocketbase /usr/local/bin/pocketbase
+ARG PB_BINARY_URL=""
+RUN if [ -n "$PB_BINARY_URL" ]; then \
+      apk add --no-cache curl unzip && \
+      curl -fsSL "$PB_BINARY_URL" -o /tmp/pb.zip && \
+      unzip -q -o /tmp/pb.zip -d /tmp/pb && \
+      cp /tmp/pb/pocketbase /usr/local/bin/pocketbase && \
+      chmod +x /usr/local/bin/pocketbase && \
+      rm -rf /tmp/pb.zip /tmp/pb; \
+    fi
 
 # Backend: schema migrations + JS hooks
 COPY pb_migrations /app/pb_migrations
@@ -39,8 +51,11 @@ COPY --from=ui /ui/dist /app/pb_public
 
 RUN mkdir -p /app/pb_data
 
+# Demo seed is OFF: enabling it creates working demo logins + fake
+# conversations on a fresh data dir, which must never reach a client install.
+# Opt in per-deployment with MAILBOX_SEED_DEMO=1 (demos only).
 ENV PB_ENCRYPTION_KEY="" \
-    MAILBOX_SEED_DEMO=1 \
+    MAILBOX_SEED_DEMO=0 \
     MAILBOX_TIMEZONE=UTC
 EXPOSE 8090
 VOLUME ["/app/pb_data"]
