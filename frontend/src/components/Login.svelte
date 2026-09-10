@@ -52,6 +52,12 @@
     error = "";
     oauth.busy = true;
     let popup = null;
+    // PocketBase builds the provider authURL with a BLANK `redirect_uri=` and
+    // expects the client to append the full redirect URL. Without this Google
+    // returns 400 "Missing required parameter: redirect_uri". The same value
+    // must be sent on exchange and registered in the Google OAuth client
+    // (Authorized redirect URIs) — it is PocketBase's OAuth2 callback.
+    const redirectURL = window.location.origin + "/api/oauth2-redirect";
     const done = new Promise((resolve, reject) => {
       const origin = window.location.origin;
       const timeout = setTimeout(() => {
@@ -80,7 +86,11 @@
       window.addEventListener("message", onMsg);
 
       // Kick off the popup now that the listener is attached.
-      popup = window.open(oauth.google.authUrl, "gwmb_oauth", "width=540,height=640");
+      popup = window.open(
+        oauth.google.authUrl + encodeURIComponent(redirectURL),
+        "gwmb_oauth",
+        "width=540,height=640"
+      );
       if (!popup) {
         cleanup();
         reject(new Error("Pop-up blocked — allow pop-ups for this site and try again."));
@@ -106,7 +116,7 @@
 
     try {
       const { code } = await done;
-      const res = await api.oauthExchange("google", code, oauth.google.codeVerifier, window.location.origin);
+      const res = await api.oauthExchange("google", code, oauth.google.codeVerifier, redirectURL);
       if (res && res.token) {
         await signInOAuth(res.token);
       } else {
