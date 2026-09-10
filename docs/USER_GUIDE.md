@@ -177,6 +177,8 @@ Below: a **By status** breakdown, per-mailbox volume, and a per-agent table (ope
 
 > First-response and resolution averages only count tickets that have actually been replied to / closed since tracking began — they fill in as your team works.
 
+**Customer satisfaction (CSAT)** is off by default. An admin can enable it in **Settings → People → Customer satisfaction (CSAT)**. Once on, closing a ticket emails the customer a one-question survey (5 stars + optional comment); the response appears on the ticket and in the **Avg CSAT** card here.
+
 ---
 
 ## 9. Your profile & signature
@@ -223,6 +225,8 @@ Paste your Google **service-account JSON** (or upload the file), then **Test con
 **Mentions & notifications** — which admins can be @mentioned.
 **Agents & signatures** — set an agent's signature and auto-insert on their behalf.
 **Customer satisfaction (CSAT)** — off by default. When enabled, closing a ticket emails the customer a short survey link; the rating and comment appear in the ticket.
+
+![A closed ticket showing the customer's five-star rating and comment](screenshots/14-csat-feedback.png)
 
 ### Sync
 **Poll every minute** — the simplest way to keep mail flowing without Pub/Sub.
