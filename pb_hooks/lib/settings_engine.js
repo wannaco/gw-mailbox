@@ -474,7 +474,7 @@ module.exports = {
   handleSetMentionAdmins,
   getMentionAdminIds,
   setMentionAdminIds,
-  listSuperusers,
+  listAdmins,
   handleListInboxes,
   handleCreateInbox,
   handleUpdateInbox,

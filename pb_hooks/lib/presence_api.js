@@ -194,9 +194,12 @@ function handleMe(e) {
   const actor = h.actorFromEvent(e);
   if (!actor) return h.fail(e, 401, "unauthorized", "Auth required");
 
-  if (actor.isAdmin) {
+  // Break-glass ops token (PB dashboard / CLI / ops scripts). NOTE: this is the
+  // ONLY branch gated on isSuperuser — app admins are ordinary users records and
+  // must fall through to the app branch below so they get role/isAdmin and their
+  // own signature.
+  if (actor.isSuperuser) {
     const all = $app.findRecordsByFilter("inboxes", "is_active = true", "name", 0, 0);
-    // Break-glass ops token: signature lives on the _superusers record.
     let sig = "";
     let sigAuto = false;
     try {
@@ -215,11 +218,19 @@ function handleMe(e) {
     return;
   }
 
-  const inboxIds = h.inboxIdsForUser(actor.id).all;
+  // App admin (users.role = admin) manages every active inbox; an agent only the
+  // inboxes they were granted.
+  let inboxIds;
+  if (actor.isAdmin) {
+    inboxIds = ($app.findRecordsByFilter("inboxes", "is_active = true", "name", 0, 0) || []).map((r) => r.id);
+  } else {
+    inboxIds = h.inboxIdsForUser(actor.id).all;
+  }
   const inboxes = inboxIds.length ? $app.findRecordsByIds("inboxes", inboxIds) : [];
-  // Signature fields from the agent's users record (actor.id === users id for
-  // agents; actor.recordId only exists for superusers).
-  const rec = actor.isAdmin ? null : h.safeFindById("users", actor.id);
+  // Signature fields come from the user's OWN record. App admins are ordinary
+  // `users` records too (role=admin), so only a break-glass superuser token has
+  // no users record to read from.
+  const rec = actor.isSuperuser ? null : h.safeFindById("users", actor.id);
   e.json(200, {
     ok: true,
     me: {
@@ -238,8 +249,8 @@ function handleMe(e) {
 }
 
 // POST /api/mailbox/me/signature — the signed-in user (agent OR admin) saves
-// their own signature + auto-insert flag. Agents live in `users`; admins in
-// `_superusers` (they can reply to escalations too).
+// their own signature + auto-insert flag. Both live in `users` (admins are
+// role=admin); only a break-glass superuser token writes to `_superusers`.
 function handleSaveMySignature(e) {
   if (h.addCorsHeaders(e, "POST, OPTIONS")) return;
   const actor = h.actorFromEvent(e);
