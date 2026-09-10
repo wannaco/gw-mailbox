@@ -26,7 +26,7 @@ function handleReports(e) {
   // Scope: all active inboxes for admins; permitted inboxes for agents.
   let inboxIds = [];
   try {
-    if (actor.isSuperuser) {
+    if (actor.isAdmin) {
       const all = $app.findRecordsByFilter("inboxes", "is_active = true", "name", 0, 0) || [];
       inboxIds = (all || []).map((r) => r.id);
     } else {

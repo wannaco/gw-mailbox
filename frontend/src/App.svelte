@@ -78,16 +78,6 @@
     api.startPresenceLoop();
   }
 
-  async function handleAdminLogin(email, password) {
-    const res = await api.adminAuth(email, password);
-    appState.token = res.token;
-    localStorage.setItem("gwmb.token", res.token);
-    await api.adminSession();
-    appState.screen = "mail";
-    api.startRealtime();
-    api.startPresenceLoop();
-  }
-
   // Google OAuth callback landing (/auth/callback?code=...&state=...).
   // Completes the PKCE exchange with the verifier the login screen stashed in
   // sessionStorage, then bootstraps the session exactly like a password login.
@@ -146,7 +136,7 @@
 {:else if csatToken}
   <CsatPage token={csatToken} />
 {:else if !appState.me}
-  <Login signIn={handleLogin} signInAdmin={handleAdminLogin} signInOAuth={handleOAuth} />
+  <Login signIn={handleLogin} signInOAuth={handleOAuth} />
 {:else}
   <div class="shell">
     <header class="topbar">

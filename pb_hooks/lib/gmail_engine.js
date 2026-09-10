@@ -209,7 +209,7 @@ function findInboxByEmail(email) {
 function requireInboxAccess(e, inboxId, actor) {
   const inbox = h.safeFindById("inboxes", inboxId);
   if (!inbox) { h.fail(e, 404, "inbox_not_found", "Inbox not found"); return null; }
-  if (actor && actor.isSuperuser) return inbox;
+  if (actor && actor.isAdmin) return inbox;
   if (actor && h.inboxIdsForUser(actor.id).all.indexOf(inboxId) !== -1) return inbox;
   h.fail(e, 403, "forbidden", "No access to this inbox");
   return null;

@@ -34,9 +34,9 @@ function getMentionAdminIds() {
 }
 
 // Store the opted-in admins as full {id,name,email} objects so consumers never
-// need to query _superusers (which returns nothing in agent request contexts).
+// need another query at mention time.
 function setMentionAdminIds(ids) {
-  const suList = listSuperusers();
+  const suList = listAdmins();
   const objs = suList.filter((s) => (ids || []).indexOf(s.id) !== -1);
   const rec = ensureSettings();
   rec.set("mention_admin_ids", objs);
@@ -44,9 +44,11 @@ function setMentionAdminIds(ids) {
   return objs;
 }
 
-function listSuperusers() {
+// Admins are ordinary app users with role=admin. _superusers is infrastructure
+// only (dashboard/CLI) and is deliberately NOT the source of app roles.
+function listAdmins() {
   try {
-    const rows = $app.findRecordsByFilter("_superusers", "", "", 0, 0) || [];
+    const rows = $app.findRecordsByFilter("users", "role = 'admin'", "name", 0, 0) || [];
     return (rows || []).map((r) => ({ id: r.id, name: r.getString("name") || "", email: r.getString("email") || "" }));
   } catch (_) { return []; }
 }
@@ -132,8 +134,8 @@ function testConnection(subjectEmail, saJson) {
 // ---------------------------------------------------------------------------
 function requireAdmin(e) {
   const actor = h.actorFromEvent(e);
-  if (!actor || !actor.isSuperuser) {
-    h.fail(e, 403, "admin_required", "Superuser access required");
+  if (!actor || !actor.isAdmin) {
+    h.fail(e, 403, "admin_required", "Admin access required");
     return null;
   }
   return actor;
@@ -154,7 +156,7 @@ function handleGetSettings(e) {
     serviceAccountEmail: saEmail,
     pollSync: rec.getBool("poll_sync") || $os.getenv("MAILBOX_POLL_SYNC") === "1",
     mentionAdminIds: getMentionAdminIds().map((a) => a.id),
-    admins: listSuperusers(),
+    admins: listAdmins(),
     slaEnabled: sla.sla_enabled,
     slaHours: sla.sla_hours,
     csatEnabled: csatOn,

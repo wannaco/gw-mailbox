@@ -49,7 +49,7 @@ function handlePresenceHeartbeat(e) {
   // Superusers are observe-only: they are not agents (no `users` record exists
   // for them), so no thread_presence row is persisted — but they still get the
   // composing lock + snapshot so the draft banner works while the admin views.
-  if (actor.isSuperuser) {
+  if (actor.isAdmin) {
     const lock = h.composingLock(threadId, "");
     return e.json(200, {
       ok: true,
@@ -89,7 +89,7 @@ function handlePresenceSnapshot(e) {
   if (!actor) return h.fail(e, 401, "unauthorized", "Auth required");
 
   const threadId = e.request.pathValue("id");
-  if (!actor.isSuperuser) {
+  if (!actor.isAdmin) {
     const access = h.requireThreadAccess(e, threadId, actor);
     if (!access) return;
   }
@@ -194,9 +194,9 @@ function handleMe(e) {
   const actor = h.actorFromEvent(e);
   if (!actor) return h.fail(e, 401, "unauthorized", "Auth required");
 
-  if (actor.isSuperuser) {
+  if (actor.isAdmin) {
     const all = $app.findRecordsByFilter("inboxes", "is_active = true", "name", 0, 0);
-    // Admin signature lives on the _superusers record (actor.recordId = su id).
+    // Break-glass ops token: signature lives on the _superusers record.
     let sig = "";
     let sigAuto = false;
     try {
@@ -208,7 +208,7 @@ function handleMe(e) {
     } catch (_) { /* field may not exist on older rows */ }
     e.json(200, {
       ok: true,
-      me: { id: actor.id, name: actor.name, email: actor.email, isSuperuser: true, signature: sig, signature_auto: sigAuto },
+      me: { id: actor.id, name: actor.name, email: actor.email, isSuperuser: true, isAdmin: true, signature: sig, signature_auto: sigAuto },
       inboxes: (all || []).map(inboxSummary),
       sla: h.readSlaConfig()
     });
@@ -219,13 +219,15 @@ function handleMe(e) {
   const inboxes = inboxIds.length ? $app.findRecordsByIds("inboxes", inboxIds) : [];
   // Signature fields from the agent's users record (actor.id === users id for
   // agents; actor.recordId only exists for superusers).
-  const rec = actor.isSuperuser ? null : h.safeFindById("users", actor.id);
+  const rec = actor.isAdmin ? null : h.safeFindById("users", actor.id);
   e.json(200, {
     ok: true,
     me: {
       id: actor.id,
       name: actor.name,
       email: actor.email,
+      role: actor.role || "agent",
+      isAdmin: !!actor.isAdmin,
       googleEmail: actor.googleEmail || "",
       signature: rec ? (rec.getString("signature") || "") : "",
       signature_auto: rec ? rec.getBool("signature_auto") : false
@@ -244,7 +246,9 @@ function handleSaveMySignature(e) {
   if (!actor) return h.fail(e, 401, "unauthorized", "Auth required");
   let body = {};
   try { body = JSON.parse(toString(e.request.body) || "{}"); } catch (_) { body = {}; }
-  // Superusers: _superusers by recordId; agents: users by actor.id.
+  // The browser only ever authenticates as an app user (users.role), so
+  // signatures live on the users record. The _superusers branch remains only
+  // for break-glass ops tokens (dashboard/CLI scripts).
   const coll = actor.isSuperuser ? "_superusers" : "users";
   const uid = actor.isSuperuser ? (actor.recordId || actor.id) : actor.id;
   const rec = h.safeFindById(coll, uid);
@@ -319,7 +323,7 @@ function actorRow(actor, threadId, status) {
   if (!row) {
     row = new Record($app.findCollectionByNameOrId("agent_presence"), {
       actor: actor.recordId || actor.id,
-      kind: actor.isSuperuser ? "admin" : "agent",
+      kind: actor.isAdmin ? "admin" : "agent",   // app role, not the PB superuser
       name: actor.name || actor.email || "",
       email: actor.email || "",
       status: status || "online"
@@ -333,7 +337,7 @@ function actorRow(actor, threadId, status) {
   if (threadId) {
     const t = h.safeFindById("threads", threadId);
     if (t) {
-      const canView = actor.isSuperuser || h.canViewThreadForUser(t, actor.recordId || actor.id);
+      const canView = actor.isAdmin || h.canViewThreadForUser(t, actor.recordId || actor.id);
       row.set("thread", threadId);
       row.set("inbox", t.getString("inbox") || "");
       row.set("thread_subject", canView ? (t.getString("subject") || "(no subject)") : "");
@@ -442,12 +446,12 @@ function handleBulkThreads(e) {
     const id = ids[i];
     const thread = h.safeFindById("threads", id);
     if (!thread) { results.push({ id, ok: false, error: "not_found" }); continue; }
-    const allowed = actor.isSuperuser || h.canViewThreadForUser(thread, actor.recordId || actor.id);
+    const allowed = actor.isAdmin || h.canViewThreadForUser(thread, actor.recordId || actor.id);
     if (!allowed) { results.push({ id, ok: false, error: "forbidden" }); continue; }
 
     try {
       if (action === "delete") {
-        if (!actor.isSuperuser) { results.push({ id, ok: false, error: "admin_required" }); continue; }
+        if (!actor.isAdmin) { results.push({ id, ok: false, error: "admin_required" }); continue; }
         // Cascade: messages (incl internal notes), notifications, presence rows.
         const msgs = $app.findRecordsByFilter("messages", "thread = {:t}", "", 0, 0, { t: id }) || [];
         for (const m of msgs || []) { try { $app.delete(m); } catch (_) {} }

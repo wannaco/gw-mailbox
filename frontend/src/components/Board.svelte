@@ -163,7 +163,7 @@
       <button class="md3-btn small" onclick={() => runBulk("closed")} disabled={!selIds.length}>Close</button>
       <button class="md3-btn small" onclick={() => runBulk("archived")} disabled={!selIds.length}>Archive</button>
       <button class="md3-btn small danger" onclick={() => runBulk("spam")} disabled={!selIds.length}>Mark spam</button>
-      {#if appState.me?.isSuperuser}
+      {#if appState.me?.isAdmin}
         <button class="md3-btn small danger solid" onclick={() => runBulk("delete")} disabled={!selIds.length}>Delete</button>
       {/if}
       <button class="md3-btn small tonal" onclick={() => (selIds = [])}>Clear</button>

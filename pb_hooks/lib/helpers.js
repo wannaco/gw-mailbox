@@ -58,14 +58,24 @@ function actorFromEvent(e) {
     const su = e.auth;
     const name = (su && (su.getString("name") || "")) || "Admin";
     const email = (su && su.getString("email")) || "admin@mailbox.local";
-    return { id: "superuser", recordId: su ? su.id : "", name: name, email: email, isSuperuser: true };
+    // Break-glass ops token (dashboard/CLI): counts as admin for the app's
+    // routes so scripts keep working, but id !== a users record.
+    return { id: "superuser", recordId: su ? su.id : "", name: name, email: email, isSuperuser: true, isAdmin: true, role: "admin" };
   }
   if (e.auth) {
+    // App user. `role` is the APPLICATION role (users.role: agent|admin) — the
+    // browser never authenticates against _superusers. isSuperuser stays true
+    // only for the PB break-glass token (dashboard/CLI/ops scripts) so those
+    // paths keep working; app code must gate on isAdmin.
+    let role = "";
+    try { role = String(e.auth.getString("role") || ""); } catch (_) { role = ""; }
     return {
       id: e.auth.id,
       name: e.auth.getString("name") || e.auth.getString("email"),
       email: e.auth.getString("email"),
       googleEmail: e.auth.getString("googleEmail") || "",
+      role: role,
+      isAdmin: role === "admin",
       isSuperuser: false
     };
   }
@@ -122,7 +132,7 @@ function canViewThreadForUser(threadRec, userId) {
 function requireThreadAccess(e, threadId, actor) {
   const thread = safeFindById("threads", threadId);
   if (!thread) { fail(e, 404, "thread_not_found", "Thread not found"); return null; }
-  if (actor.isSuperuser) return { thread };
+  if (actor.isAdmin) return { thread };   // app admins see every thread
   if (!canViewThreadForUser(thread, actor.id)) { fail(e, 403, "forbidden", "No access to this thread"); return null; }
   return { thread };
 }

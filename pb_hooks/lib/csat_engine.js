@@ -212,7 +212,7 @@ function handleThreadCsat(e) {
   const actor = h.actorFromEvent(e);
   if (!actor) return h.fail(e, 401, "unauthorized", "Auth required");
   const threadId = e.request.pathValue("id");
-  if (actor.isSuperuser || h.canViewThreadForUser(h.safeFindById("threads", threadId), actor.recordId || actor.id)) {
+  if (actor.isAdmin || h.canViewThreadForUser(h.safeFindById("threads", threadId), actor.recordId || actor.id)) {
     const rows = $app.findRecordsByFilter("csat_feedback", "thread = {:t}", "-sent_at", 0, 0, { t: threadId }) || [];
     return e.json(200, { ok: true, surveys: (rows || []).map(view) });
   }

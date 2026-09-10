@@ -200,7 +200,7 @@ function runFollowupAutomations() {
 function handleGetAutomations(e) {
   if (h.addCorsHeaders(e, "GET, OPTIONS")) return;
   const actor = h.actorFromEvent(e);
-  if (!actor || !actor.isSuperuser) return h.fail(e, 403, "admin_required", "Superuser access required");
+  if (!actor || !actor.isAdmin) return h.fail(e, 403, "admin_required", "Superuser access required");
   e.json(200, { ok: true, automation: readAutoConfig() });
 }
 
@@ -209,7 +209,7 @@ function handleGetAutomations(e) {
 function handleRunNow(e) {
   if (h.addCorsHeaders(e, "POST, OPTIONS")) return;
   const actor = h.actorFromEvent(e);
-  if (!actor || !actor.isSuperuser) return h.fail(e, 403, "admin_required", "Superuser access required");
+  if (!actor || !actor.isAdmin) return h.fail(e, 403, "admin_required", "Superuser access required");
   const cfg = readAutoConfig();
   const out = { ok: true, enabled: cfg.followup_enabled, processed: 0, actions: [], errors: [] };
   try {
@@ -237,7 +237,7 @@ function handleRunNow(e) {
 function handleSaveAutomations(e) {
   if (h.addCorsHeaders(e, "POST, OPTIONS")) return;
   const actor = h.actorFromEvent(e);
-  if (!actor || !actor.isSuperuser) return h.fail(e, 403, "admin_required", "Superuser access required");
+  if (!actor || !actor.isAdmin) return h.fail(e, 403, "admin_required", "Superuser access required");
   let body = {};
   try { body = JSON.parse(toString(e.request.body) || "{}"); } catch (_) { body = {}; }
   const saved = saveAutoConfig(body.automation || body);

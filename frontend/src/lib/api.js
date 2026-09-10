@@ -96,7 +96,8 @@ export function authWithPassword(email, password) {
   );
 }
 
-// PocketBase admin (superuser) sign-in — grants Settings access.
+// PocketBase SUPERUSER auth — infra/ops only (DB root). The app must NOT
+// call this: it would put a root token in localStorage. Kept for ops scripts.
 export function adminAuth(email, password) {
   return pbRequest(
     "POST",
@@ -109,7 +110,7 @@ export function adminAuth(email, password) {
 export async function adminSession() {
   const meRes = await pbRequest("GET", "/mailbox/me");
   loadReadCounts();
-  appState.me = meRes.me; // superuser: isSuperuser true
+  appState.me = meRes.me; // { role, isAdmin, ... } — app-level role
   appState.inboxes = meRes.inboxes || [];
   if (meRes.sla) appState.slaConfig = { enabled: !!meRes.sla.sla_enabled, hours: Number(meRes.sla.sla_hours) || 24 };
   if (appState.inboxes.length) {

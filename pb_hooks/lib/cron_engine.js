@@ -185,7 +185,7 @@ function runBackfillStepper() {
 function handleRunSlaMonitor(e) {
   if (h.addCorsHeaders(e, "POST, OPTIONS")) return;
   const actor = h.actorFromEvent(e);
-  if (!actor || !actor.isSuperuser) return h.fail(e, 403, "forbidden", "Admins only");
+  if (!actor || !actor.isAdmin) return h.fail(e, 403, "forbidden", "Admins only");
   try {
     const r = runSlaMonitor();
     e.json(200, { ok: true, escalated: (r && r.escalated) || 0, checked: (r && r.checked) || 0 });

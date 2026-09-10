@@ -2,9 +2,12 @@
   import { onMount } from "svelte";
   import * as api from "../lib/api.js";
 
-  let { signIn, signInAdmin, signInOAuth } = $props();
+  // NOTE: no admin tab. Admins are ordinary app users (users.role = admin)
+  // who sign in through this same form (Google included). PocketBase's own
+  // superuser is an infrastructure credential used only at /_/ and via CLI —
+  // it must never be entered in the app, since that token is DB root.
+  let { signIn, signInOAuth } = $props();
 
-  let adminMode = $state(false);
   let email = $state("");
   let password = $state("");
   let busy = $state(false);
@@ -23,10 +26,9 @@
     }
     busy = true;
     try {
-      if (adminMode) await signInAdmin(email, password);
-      else await signIn(email, password);
+      await signIn(email, password);
     } catch (e) {
-      error = e?.message || (adminMode ? "Admin sign-in failed" : "Sign-in failed");
+      error = e?.message || "Sign-in failed";
       busy = false;
     }
   }
@@ -90,13 +92,9 @@
       <h1>Welcome back</h1>
       <p class="tag">Sign in to continue to your mailbox</p>
 
-      <div class="md3-seg role-seg">
-        <button type="button" class:is-active={!adminMode} onclick={() => (adminMode = false)}>Agent</button>
-        <button type="button" class:is-active={adminMode} onclick={() => (adminMode = true)}>Admin</button>
-      </div>
-      <p class="subtag">{adminMode ? "PocketBase admin — dashboard &amp; settings" : "Agent workspace"}</p>
+      <p class="subtag">Sign in to your team workspace</p>
 
-      {#if !adminMode && oauth.available}
+      {#if oauth.available}
         <button type="button" class="google-btn" onclick={googleSignIn} disabled={oauth.busy}>
           <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
             <path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3l5.7-5.7C34.1 6.1 29.3 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.3-.1-2.6-.4-3.9z"/>
@@ -109,13 +107,13 @@
         <div class="or-divider"><span>or</span></div>
       {/if}
 
-      {#if !adminMode && oauth.checking}
+      {#if oauth.checking}
         <div class="subtag muted">Checking sign-in options…</div>
       {/if}
 
       <label class="field">
-        <span>{adminMode ? "Admin email" : "Email"}</span>
-        <input type="email" bind:value={email} placeholder={adminMode ? "admin@thinkcloud.dev" : "you@yourdomain.com"} autocomplete="email" />
+        <span>Email</span>
+        <input type="email" bind:value={email} placeholder="you@yourdomain.com" autocomplete="email" />
       </label>
       <label class="field">
         <span>Password</span>
@@ -136,7 +134,7 @@
       {#if error}<div class="err">{error}</div>{/if}
 
       <button class="md3-btn primary signin" type="submit" disabled={busy}>
-        {busy ? "Signing in…" : adminMode ? "Sign in as admin" : "Sign in"}
+        {busy ? "Signing in…" : "Sign in"}
       </button>
     </form>
   </div>
