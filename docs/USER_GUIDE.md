@@ -95,6 +95,10 @@ Click any conversation to open it on the right. The list stays visible on the le
 
 **Canned responses:** type `/` in the reply box to open the list (e.g. `/hours`). Inserted text automatically fills placeholders like `{{customer_name}}`, `{{customer_email}}`, `{{subject}}` and `{{inbox}}` from the open ticket — anything unknown is left as-is.
 
+![The reply composer showing the slash-command menu with saved canned responses](screenshots/15-slash-commands.png)
+
+Navigate the menu with the arrow keys and press Enter (or click) to insert. Admins manage the list in **Settings → Content → Canned responses**.
+
 **Signatures:** if you have auto-insert on, your signature appears **in the editor as you type** (Gmail-style). You can edit or delete it — what you see is what gets sent. The **✍️** button inserts it manually.
 
 ---
