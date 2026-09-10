@@ -2,9 +2,12 @@
   import { appState, agentInitials, slaOf } from "../lib/appState.svelte.js";
   import { timeAgo, avatarColor } from "../lib/utils.js";
 
-  let { thread, open, selectable, selected, onToggleSelect } = $props();
+  let { thread, open, selectable, selected, onToggleSelect, onDragStart, onDragEnd } = $props();
 
   let dragActive = $state(false);
+  // Suppress the click that follows a drag: without this, dropping a card also
+  // opened the thread drawer (dragend fires before click).
+  let justDragged = false;
 
   const tags = $derived(Array.isArray(thread.tags) ? thread.tags : []);
   const someoneComposing = $derived(
@@ -22,7 +25,7 @@
   function openCard() {
     if (selectable) {
       onToggleSelect?.(thread.id);
-    } else if (!dragActive) {
+    } else if (!dragActive && !justDragged) {
       open(thread.id);
     }
   }
@@ -45,8 +48,14 @@
     e.dataTransfer.setData("text/plain", thread.id);
     e.dataTransfer.effectAllowed = "move";
     dragActive = true;
+    onDragStart?.(thread.id);
   }}
-  ondragend={() => (dragActive = false)}
+  ondragend={() => {
+    dragActive = false;
+    justDragged = true;
+    setTimeout(() => (justDragged = false), 220);
+    onDragEnd?.();
+  }}
   onclick={openCard}
   onkeydown={(e) => {
     if (e.key === "Enter" || e.key === " ") {

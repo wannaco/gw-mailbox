@@ -50,16 +50,30 @@
     return visible.filter((t) => (t.status || "new") === status);
   }
 
-  async function dropOn(status) {
-    if (!dragId) return;
-    const thread = appState.threads[dragId];
+  // Card -> Board drag lifecycle. Board must know WHICH card is in flight:
+  // dataTransfer contents are unreadable during dragover, so the column could
+  // never call preventDefault() and the browser refused every drop.
+  function startCardDrag(id) {
+    dragId = id;
+  }
+  function endCardDrag() {
     dragId = "";
     hoverCol = "";
+  }
+
+  // `fallbackId` comes from dataTransfer on drop (belt & braces if the drag
+  // started outside our handlers, e.g. a re-render mid-drag).
+  async function dropOn(status, fallbackId) {
+    const id = dragId || fallbackId || "";
+    dragId = "";
+    hoverCol = "";
+    if (!id) return;
+    const thread = appState.threads[id];
     if (!thread || thread.status === status) return;
     const prev = thread.status;
     thread.status = status; // optimistic
     try {
-      await moveThread(dragId, status);
+      await moveThread(id, status);
     } catch (e) {
       thread.status = prev;
       toast("error", "Move failed: " + (e?.message || ""));
@@ -176,15 +190,16 @@
         class="column"
         class:drag-over={hoverCol === col.value}
         ondragover={(e) => {
-          if (!selectMode && dragId && dragId !== "") {
-            e.preventDefault();
-            hoverCol = col.value;
-          }
+          if (selectMode || !dragId) return;
+          e.preventDefault();               // required: lets the browser allow the drop
+          e.dataTransfer.dropEffect = "move";
+          hoverCol = col.value;
         }}
         ondragleave={() => (hoverCol = "")}
         ondrop={(e) => {
           e.preventDefault();
-          dropOn(col.value);
+          const id = e.dataTransfer ? e.dataTransfer.getData("text/plain") : "";
+          dropOn(col.value, id);
         }}
       >
         <header class="col-head">
@@ -200,6 +215,8 @@
               selectable={selectMode}
               selected={selSet.has(thread.id)}
               onToggleSelect={toggleSel}
+              onDragStart={startCardDrag}
+              onDragEnd={endCardDrag}
             />
           {/each}
           {#if !byStatus(col.value).length}
