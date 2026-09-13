@@ -15,6 +15,46 @@
   // Bulk selection (checkbox mode). Set semantics via array ops for reactivity.
   let selIds = $state([]); // thread ids currently checked
 
+  // ---- pagination -----------------------------------------------------------
+  // The server returns 200 rows per page. `rows` only spans what has been
+  // loaded, so the toolbar count gains a "+" and the footer offers more. Before
+  // this existed an agent simply could not reach conversations past row 200 —
+  // they vanished from the list with no indication anything was missing.
+  let loadingMore = $state(false);
+  let sentinel = $state(null); // scroll marker at the end of the list
+
+  const loadedInInbox = $derived(
+    Object.values(appState.threads).filter((t) => t.inbox === appState.activeInboxId).length
+  );
+  const hasMore = $derived(appState.threadsTotal > loadedInInbox);
+
+  async function loadMore() {
+    if (loadingMore || appState.threadsLoadingMore) return;
+    loadingMore = true;
+    try {
+      await api.loadMoreThreads();
+    } catch (e) {
+      toast("error", e?.message || "Could not load more conversations");
+    } finally {
+      loadingMore = false;
+    }
+  }
+
+  // Auto-load when the sentinel scrolls into view. The button in the footer is
+  // the reliable fallback, and the only path if IntersectionObserver is absent.
+  $effect(() => {
+    if (!sentinel || !hasMore) return;
+    if (typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) loadMore();
+      },
+      { rootMargin: "400px" }
+    );
+    io.observe(sentinel);
+    return () => io.disconnect();
+  });
+
   async function loadCatalog() {
     try {
       const r = await api.listLabels();
@@ -191,7 +231,10 @@
       <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M9.5 3a6.5 6.5 0 1 0 4.05 11.55l4.95 4.95 1.5-1.5-4.95-4.95A6.5 6.5 0 0 0 9.5 3zm0 2a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9z"/></svg>
       <input bind:value={appState.search} placeholder="Search threads… (select all matching below)" />
     </div>
-    <span class="count">{rows.length} conversation{rows.length === 1 ? "" : "s"}</span>
+    <span
+      class="count"
+      title={hasMore ? "More conversations available — scroll or use Load more" : ""}
+    >{rows.length}{hasMore ? "+" : ""} conversation{rows.length === 1 ? "" : "s"}</span>
     <button class="md3-chip" class:is-active={appState.onlyMine} onclick={() => (appState.onlyMine = !appState.onlyMine)}>My tickets</button>
     {#each STATUSES as st (st.value)}
       {#if (counts[st.value] || 0) > 0}
@@ -364,6 +407,22 @@
         </span>
       </div>
     {/each}
+
+    <!-- Pagination footer. The server pages at 200 rows, so without this the
+         oldest conversations would be unreachable from the list. -->
+    {#if hasMore}
+      <div class="more">
+        <button class="md3-btn tonal small" onclick={loadMore} disabled={loadingMore}>
+          {loadingMore ? "Loading…" : "Load more conversations"}
+        </button>
+        <span class="more-hint">
+          Showing {loadedInInbox} of {appState.threadsTotal} in this mailbox
+        </span>
+      </div>
+    {:else if appState.threadsTotal > 0 && rows.length > 0}
+      <p class="more-end">All {appState.threadsTotal} conversation{appState.threadsTotal === 1 ? "" : "s"} loaded</p>
+    {/if}
+    <div class="sentinel" bind:this={sentinel} aria-hidden="true"></div>
   </div>
 </div>
 
@@ -415,6 +474,26 @@
     color: var(--m3-on-surface-variant-2);
     margin-right: 4px;
   }
+
+  .more {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 22px 0 12px;
+  }
+  .more-hint {
+    font: var(--m3-type-body-sm);
+    color: var(--m3-on-surface-variant-2);
+  }
+  .more-end {
+    margin: 0;
+    padding: 20px 0 8px;
+    text-align: center;
+    font: var(--m3-type-body-sm);
+    color: var(--m3-on-surface-variant-2);
+  }
+  .sentinel { height: 1px; }
 
   .mini-chip {
     display: inline-flex;

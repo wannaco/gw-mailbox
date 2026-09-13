@@ -140,14 +140,57 @@ export async function loadSession() {
   ensureNotifications();
 }
 
+export const THREADS_PER_PAGE = 200;
+
+// Page 1 refresh. MERGES into appState.threads — it must never wipe, or the
+// ~10s quiet re-sync would silently discard every page pulled by
+// loadMoreThreads() and the list would snap back to 200 rows.
 export async function refreshThreads() {
   const filter = encodeURIComponent('inbox = "' + appState.activeInboxId + '"');
   const res = await pbRequest(
     "GET",
-    `/collections/threads/records?perPage=200&sort=-last_message_at&filter=${filter}`
+    `/collections/threads/records?perPage=${THREADS_PER_PAGE}&page=1&sort=-last_message_at&filter=${filter}`
   );
   for (const item of res.items || []) {
     appState.threads[item.id] = item;
+  }
+  // Switching inbox invalidates the page cursor — otherwise the next "load
+  // more" would fetch page N of the NEW mailbox and skip everything between.
+  if (appState.threadsPagesInbox !== appState.activeInboxId) {
+    appState.threadsPagesInbox = appState.activeInboxId;
+    appState.threadsLoadedPages = 1;
+  } else if (appState.threadsLoadedPages < 1) {
+    appState.threadsLoadedPages = 1;
+  }
+  appState.threadsTotal = res.totalItems || 0;
+  return res;
+}
+
+// Pull the next page of OLDER conversations (server sort is -last_message_at).
+// Offset paging over a live sort can theoretically skip a row when new mail
+// lands mid-paging: duplicates are harmless (the map is keyed by id) and a skip
+// self-heals on the next page-1 re-sync, which is why the quiet sync exists.
+export async function loadMoreThreads() {
+  if (appState.threadsLoadingMore || !appState.activeInboxId) return 0;
+  const loaded = Object.values(appState.threads).filter(
+    (t) => t.inbox === appState.activeInboxId
+  ).length;
+  if (appState.threadsTotal && loaded >= appState.threadsTotal) return 0; // nothing left
+  appState.threadsLoadingMore = true;
+  try {
+    const next = (appState.threadsLoadedPages || 1) + 1;
+    const filter = encodeURIComponent('inbox = "' + appState.activeInboxId + '"');
+    const res = await pbRequest(
+      "GET",
+      `/collections/threads/records?perPage=${THREADS_PER_PAGE}&page=${next}&sort=-last_message_at&filter=${filter}`
+    );
+    const items = res.items || [];
+    for (const item of items) appState.threads[item.id] = item;
+    appState.threadsLoadedPages = next;
+    appState.threadsTotal = res.totalItems || appState.threadsTotal;
+    return items.length;
+  } finally {
+    appState.threadsLoadingMore = false;
   }
 }
 

@@ -9,6 +9,20 @@ var h = require(__hooks + "/lib/helpers.js");
 var SLA_SCAN_STATUSES = ["new", "in_progress"];  // clock runs on New + In progress
 var PRESENCE_MAX_AGE_MIN = 2;       // spec: older than 2 minutes
 
+// ---- sync serialization ----------------------------------------------------
+// Poll sync and the backfill stepper both hammer the Gmail API, and PB runs each
+// cron job in its own goroutine — so a tick that overruns its minute can overlap
+// with the next one. Two guards keep the Gmail/AI budget predictable:
+//   * syncBusy     — only one Gmail-touching job runs at a time. Without this,
+//                    a slow poll sync and a backfill could interleave and double
+//                    the per-minute call volume.
+//   * one mailbox  — the stepper advances ONE queued mailbox per tick (rotating),
+//     per tick       so importing 5 mailboxes can't become 5x400 calls in a
+//                    single minute and starve the poll sync.
+var syncBusy = false;
+var backfillBusy = false;
+var backfillCursor = 0; // rotates so one huge import can't starve the others
+
 // ---------------------------------------------------------------------------
 // SLA breach monitor — hourly; escalate new/in-progress tickets past sla_due_at
 // ---------------------------------------------------------------------------
@@ -129,6 +143,13 @@ function runMailPollSync() {
   try {
     if (require(__hooks + "/lib/settings_engine.js").effectivePollSync() !== true) return;
   } catch (_) { return; }
+  // Overlap guard: skip this tick rather than run two Gmail passes at once.
+  // The next tick is only 60s away, so a skip costs nothing.
+  if (syncBusy) {
+    h.warn("poll sync skipped — previous sync still running");
+    return;
+  }
+  syncBusy = true;
   try {
     const gm = require(__hooks + "/lib/gmail_engine.js");
     const inboxes = $app.findRecordsByFilter("inboxes", "is_active = true", "", 0, 0) || [];
@@ -146,6 +167,8 @@ function runMailPollSync() {
     }
   } catch (err) {
     h.warn("poll sync error:", err.message || err);
+  } finally {
+    syncBusy = false;
   }
 }
 
@@ -156,6 +179,10 @@ function runMailPollSync() {
 // without ever blocking a request. ~4 pages (<=400 conversations) per minute.
 // ---------------------------------------------------------------------------
 function runBackfillStepper() {
+  // Yield the Gmail budget to a poll sync running in this tick.
+  if (syncBusy) return;
+  if (backfillBusy) return; // previous stepper still going (overrun, not overlap)
+
   let inboxes = [];
   try {
     inboxes = $app.findRecordsByFilter("inboxes", "is_active = true", "", 0, 0) || [];
@@ -163,19 +190,38 @@ function runBackfillStepper() {
     h.warn("backfill stepper list failed:", err.message || err);
     return;
   }
+
+  const queued = [];
   for (const inbox of inboxes) {
     try {
       let st = {};
       try { st = JSON.parse(inbox.getString("backfill_state") || "{}") || {}; } catch (_) {}
-      if (st.status !== "queued" && st.status !== "running") continue;
-      const gm = require(__hooks + "/lib/gmail_engine.js");
-      const r = gm.stepBackfill(inbox, 4, 100);
-      if (r && r.done) {
-        h.log("backfill finished", inbox.getString("email_address"), "via stepper");
-      }
-    } catch (err) {
-      h.warn("backfill stepper error for", inbox.getString("email_address"), (err && err.message) || err);
+      if (st.status === "queued" || st.status === "running") queued.push(inbox);
+    } catch (_) { /* unreadable state — leave it for the next tick */ }
+  }
+  if (!queued.length) return;
+
+  // ONE mailbox per tick, rotating across the queue. A page is up to 100
+  // conversations and stepBackfill does 4 pages, so this caps a backfill at
+  // ~400 Gmail calls/minute no matter how many mailboxes are importing.
+  if (backfillCursor >= queued.length) backfillCursor = 0;
+  const target = queued[backfillCursor];
+  backfillCursor = (backfillCursor + 1) % queued.length;
+
+  backfillBusy = true;
+  try {
+    const gm = require(__hooks + "/lib/gmail_engine.js");
+    const r = gm.stepBackfill(target, 4, 100);
+    if (r && r.done) {
+      h.log("backfill finished", target.getString("email_address"), "via stepper");
     }
+    if (queued.length > 1 && backfillCursor === 0) {
+      h.log("backfill: rotating across", queued.length, "queued mailbox(es)");
+    }
+  } catch (err) {
+    h.warn("backfill stepper error for", target.getString("email_address"), (err && err.message) || err);
+  } finally {
+    backfillBusy = false;
   }
 }
 

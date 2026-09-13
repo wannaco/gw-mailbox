@@ -22,6 +22,13 @@ export const appState = $state({
   search: "",
   onlyMine: false,
   threads: {}, // threadId -> thread record (all permitted inboxes)
+  // Thread-list pagination. `threads` accumulates pages (keyed by id, so a
+  // re-fetched page is harmless); these track how much of the server's result
+  // set we have pulled, so the list can show "X of Y" and offer more.
+  threadsTotal: 0, // server totalItems for the active inbox (page-1 fetch)
+  threadsLoadedPages: 0, // pages pulled so far (1 = first page)
+  threadsLoadingMore: false,
+  threadsPagesInbox: "", // which inbox those pages belong to (reset on switch)
   messages: {}, // threadId -> message records
   readCounts: {}, // threadId -> conversation messages known-read (for unread/new dots)
   openThreadId: "",
