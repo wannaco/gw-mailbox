@@ -396,6 +396,11 @@
     display: flex;
     min-height: 0;
     overflow: hidden;
+    /* Anchors the scrim + drawer to the area BELOW the topbar. They used to be
+       position:fixed with top:0, which put them under the (opaque, z-index 30)
+       topbar — the drawer's own header, including the contact button, was
+       painted over and unreachable. */
+    position: relative;
   }
 
   main {
@@ -405,6 +410,10 @@
     position: relative;
     overflow: hidden;
     transition: filter 0.2s ease;
+    /* Own stacking context. Page-level popovers (list quick-actions z 90,
+       Columns menu z 60) otherwise compete with the drawer at the same level
+       and can paint on top of it. Contained at 0, it stays under the scrim. */
+    z-index: 0;
   }
 
   main.dimmed {
@@ -483,7 +492,7 @@
   }
 
   .scrim {
-    position: fixed;
+    position: absolute;
     inset: 0;
     background: var(--m3-scrim);
     opacity: 0.25;
@@ -491,7 +500,7 @@
   }
 
   .drawer {
-    position: fixed;
+    position: absolute;
     top: 0;
     right: 0;
     bottom: 0;
@@ -499,7 +508,10 @@
     background: var(--m3-surface-container-low);
     box-shadow: var(--m3-elev-4);
     border-left: 1px solid var(--m3-outline-variant);
-    z-index: 25;
+    /* Above the topbar (30) so the drawer's own full-screen overlays — the
+       contact panel (z 95, inside this stacking context) — can cover the whole
+       viewport instead of being clipped at the topbar. */
+    z-index: 35;
     animation: slideIn 0.22s cubic-bezier(0.2, 0, 0, 1);
   }
 
