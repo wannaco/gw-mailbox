@@ -247,13 +247,18 @@
   }
 
   .topbar {
+    /* Above page content: the toolbar inside <main> sets z-index 20 (for its
+       Columns menu), and the account/roster dropdowns live in THIS stacking
+       context — so the topbar must outrank the toolbar or the page paints
+       over the menus (dropdowns appeared under the search box on mobile). */
+    position: relative;
+    z-index: 30;
     display: flex;
     align-items: center;
     gap: 8px;
     padding: 7px 16px;
     background: var(--m3-surface-container-lowest);
     border-bottom: 1px solid var(--m3-outline-variant);
-    z-index: 5;
     flex-wrap: wrap;
   }
 

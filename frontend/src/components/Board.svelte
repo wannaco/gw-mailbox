@@ -237,7 +237,10 @@
 
   .toolbar {
     position: relative;
-    z-index: 20;
+    /* Only needs to sit above the board's columns (which follow it in the
+       flow). Kept well under the topbar's z-index 30 so account/roster
+       dropdowns render above this toolbar. */
+    z-index: 10;
     display: flex;
     align-items: center;
     gap: 10px;
