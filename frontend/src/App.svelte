@@ -15,6 +15,7 @@
   import PresenceRoster from "./components/PresenceRoster.svelte";
   import NotifBell from "./components/NotifBell.svelte";
   import CsatPage from "./components/CsatPage.svelte";
+  import NoticesPage from "./components/NoticesPage.svelte";
 
   let theme = $state("light");
   let booting = $state(true); // true until we know if a session exists
@@ -27,6 +28,9 @@
     csatToken = m ? m[1] : "";
   }
   parseCsatPath();
+
+  // Public third-party notices route: /notices renders a no-login page.
+  let noticesPage = $state(location.pathname.replace(/\/+$/, "").endsWith("/notices"));
 
   function applyTheme() {
     const saved = localStorage.getItem("gwmb.theme");
@@ -54,6 +58,7 @@
     }
     parseCsatPath();
     if (csatToken) { booting = false; return; } // public survey page — no session
+    if (noticesPage) { booting = false; return; } // public notices page — no session
     const t = api.savedToken();
     if (!t) { booting = false; return; }
     appState.token = t;
@@ -135,6 +140,8 @@
   <div class="boot"><span class="brand-dot"></span><span>Loading…</span></div>
 {:else if csatToken}
   <CsatPage token={csatToken} />
+{:else if noticesPage}
+  <NoticesPage />
 {:else if !appState.me}
   <Login signIn={handleLogin} signInOAuth={handleOAuth} />
 {:else}

@@ -737,7 +737,7 @@
 
   <p class="legal">
     Includes PocketBase (MIT, © Gani Georgiev), Svelte (MIT) and the Inter typeface (OFL-1.1).
-    <a href="/THIRD_PARTY_NOTICES.txt" target="_blank" rel="noopener">Third-party notices</a>
+    <a href="/notices">Third-party notices</a>
   </p>
 </div>
 
