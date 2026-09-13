@@ -214,3 +214,27 @@ migrations, sets PocketBase's `appURL` from `MAILBOX_PUBLIC_URL`, seeds the firs
 superuser from env, and (only if `MAILBOX_SEED_DEMO=1`) demo data.
 
 Feature overview: **[docs/FEATURES.md](docs/FEATURES.md)**.
+User guide (screenshots): **[docs/USER_GUIDE.md](docs/USER_GUIDE.md)**.
+
+---
+
+## Third-party software
+
+This app is built on other people's work and ships their notices with it.
+See **[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)** for the full license
+texts.
+
+| Component | Role | License |
+|---|---|---|
+| [PocketBase](https://github.com/pocketbase/pocketbase) | backend runtime (binary in this repo, baked into the image) | MIT © Gani Georgiev |
+| [Svelte](https://github.com/sveltejs/svelte) | front-end framework (compiled into the bundle) | MIT © Svelte Contributors |
+| [Inter](https://github.com/rsms/inter) | UI typeface, via `@fontsource/inter` | SIL OFL 1.1 |
+
+These notices are **required to travel with the software**, so they are not just
+kept in the repo — the Dockerfile bakes them into the image at
+`/app/THIRD_PARTY_NOTICES.md` and into `pb_public`, which serves them at
+`/THIRD_PARTY_NOTICES.txt`. The app also links to that file from the bottom of
+**Settings**.
+
+If you redistribute this app (an image, an archive, a mirror), keep those files
+with it. Note that **the app's own source is not open source** — see `LICENSE`.

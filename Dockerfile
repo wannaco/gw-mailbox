@@ -49,6 +49,13 @@ COPY pb_hooks /app/pb_hooks
 # Frontend SPA served by PocketBase at the domain root
 COPY --from=ui /ui/dist /app/pb_public
 
+# Third-party license notices. PocketBase (MIT), Svelte (MIT) and the Inter
+# font (OFL-1.1) all require their notice to travel with the software, so it is
+# baked into the image rather than left in the repo. The .txt copy sits in
+# pb_public so the running app can serve it at /THIRD_PARTY_NOTICES.txt.
+COPY THIRD_PARTY_NOTICES.md /app/THIRD_PARTY_NOTICES.md
+COPY THIRD_PARTY_NOTICES.md /app/pb_public/THIRD_PARTY_NOTICES.txt
+
 RUN mkdir -p /app/pb_data
 
 # Demo seed is OFF: enabling it creates working demo logins + fake

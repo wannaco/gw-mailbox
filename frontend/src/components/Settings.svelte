@@ -734,9 +734,28 @@
     </section>
     {/if}
   {/if}
+
+  <p class="legal">
+    Includes PocketBase (MIT, © Gani Georgiev), Svelte (MIT) and the Inter typeface (OFL-1.1).
+    <a href="/THIRD_PARTY_NOTICES.txt" target="_blank" rel="noopener">Third-party notices</a>
+  </p>
 </div>
 
 <style>
+  .legal {
+    margin: 26px 0 0;
+    padding-top: 14px;
+    border-top: 1px solid var(--m3-outline-variant);
+    color: var(--m3-on-surface-variant-2);
+    font: var(--m3-type-body-sm);
+    text-align: center;
+  }
+
+  .legal a {
+    color: var(--m3-on-surface-variant);
+    text-decoration: underline;
+  }
+
   .settings {
     max-width: 680px;
     margin: 0 auto;
