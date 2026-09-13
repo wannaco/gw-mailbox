@@ -240,9 +240,81 @@ function handleRunSlaMonitor(e) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// One-time cleanup: archive imported history that was swept into the queue.
+//
+// Before history imports were marked as archive, importing a mailbox created
+// every old conversation as "new" with an SLA clock anchored to the ORIGINAL
+// message date — so months-old mail read as overdue and the hourly monitor
+// escalated the lot. On this instance that put 733 nine-month-old threads into
+// the Escalated column.
+//
+// This archives threads that were never worked and have no owner:
+//   status in (new, in_progress, escalated)
+//   AND no first_response_at AND no closed_at   (nobody ever replied)
+//   AND no assigned_agent                       (nobody owns it)
+// Those three together mean "nobody has acted on this", which is the signature
+// of imported history rather than a real backlog. Deliberately NOT a migration:
+// it is a judgement call about existing data, so it stays an explicit admin
+// action instead of running automatically on every future install.
+function runArchiveImportedHistory(dryRun) {
+  const STATUSES = ["new", "in_progress", "escalated"];
+  let scanned = 0;
+  let archived = 0;
+  const perInbox = {};
+  for (const status of STATUSES) {
+    let rows = [];
+    try {
+      rows = $app.findRecordsByFilter("threads", "status = {:s}", "", 0, 0, { s: status }) || [];
+    } catch (err) {
+      h.warn("archive-history scan failed for", status, (err && err.message) || err);
+      continue;
+    }
+    for (const t of rows) {
+      scanned++;
+      try {
+        const fr = t.getDateTime("first_response_at");
+        const cl = t.getDateTime("closed_at");
+        const hasAgent = !!(t.getString("assigned_agent") || "").trim();
+        if ((fr && !fr.isZero()) || (cl && !cl.isZero()) || hasAgent) continue;
+        const ib = t.getString("inbox") || "?";
+        perInbox[ib] = (perInbox[ib] || 0) + 1;
+        if (dryRun) { archived++; continue; }
+        t.set("status", "archived");
+        t.set("sla_due_at", ""); // archive has no clock — the monitor skips it
+        $app.save(t);
+        archived++;
+      } catch (err) {
+        h.warn("archive-history skip", t.id, (err && err.message) || err);
+      }
+    }
+  }
+  return { scanned: scanned, archived: archived, perInbox: perInbox, dryRun: !!dryRun };
+}
+
+// POST /api/mailbox/admin/archive-imported-history[?dryRun=1]
+function handleArchiveImportedHistory(e) {
+  if (h.addCorsHeaders(e, "POST, OPTIONS")) return;
+  const actor = h.actorFromEvent(e);
+  if (!actor || !actor.isAdmin) return h.fail(e, 403, "forbidden", "Admins only");
+  let dryRun = false;
+  try {
+    const q = e.request.url.query();
+    dryRun = (q.get("dryRun") || "") === "1";
+  } catch (_) { /* default: perform */ }
+  try {
+    const r = runArchiveImportedHistory(dryRun);
+    e.json(200, { ok: true, dryRun: r.dryRun, scanned: r.scanned, archived: r.archived, byInbox: r.perInbox });
+  } catch (err) {
+    h.fail(e, 500, "archive_history_failed", (err && err.message) || String(err));
+  }
+}
+
 module.exports = {
   runSlaMonitor,
   handleRunSlaMonitor,
+  runArchiveImportedHistory,
+  handleArchiveImportedHistory,
   runPresenceSweeper,
   runMailPollSync,
   runBackfillStepper

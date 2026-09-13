@@ -239,8 +239,16 @@ function slaAnchorFromPb(pbDate) {
   }
 }
 
-function upsertThreadAndMessage(inboxRec, norm) {
+// `opts.history` marks a pass over mail that was ALREADY in the mailbox before
+// it was connected (the setup-time "import existing history" choice, and the
+// Backfill stepper). Such threads are ARCHIVE, not queue: they are created with
+// status "archived" and get no SLA clock, so importing a mailbox cannot dump
+// hundreds of month-old conversations into the open list and the Escalated
+// column. Live mail arriving afterwards is created as "new" as usual — and a
+// genuine customer reply on an archived thread revives it (see the update path).
+function upsertThreadAndMessage(inboxRec, norm, opts) {
   const counters = { threadsCreated: 0, threadsUpdated: 0, messagesAdded: 0, skipped: 0 };
+  const history = !!(opts && opts.history);
   const uid = inboxUserEmail(inboxRec);
   // Download attachment bytes for this message once; used for both new rows
   // and healing legacy rows (never saved with files). Safe no-op when none.
@@ -265,9 +273,9 @@ function upsertThreadAndMessage(inboxRec, norm) {
       snippet: norm.snippet,
       customer_email: norm.customer ? norm.customer.email : "",
       customer_name: norm.customer ? norm.customer.name : "",
-      status: "new",
+      status: history ? "archived" : "new",
       last_message_at: dateStr,
-      sla_due_at: dateStr ? slaAnchorFromPb(dateStr) : "",
+      sla_due_at: (!history && dateStr) ? slaAnchorFromPb(dateStr) : "",
       tags: []
     });
     $app.save(thread);
@@ -298,9 +306,20 @@ function upsertThreadAndMessage(inboxRec, norm) {
       thread.set("followup_next_at", "");
       thread.set("followup_last_at", "");
       const prevStatus = thread.getString("status");
-      if (prevStatus === "waiting_customer" || prevStatus === "closed") {
-        thread.set("status", "in_progress");
-        // keep assigned_agent — the handling agent resumes
+      // NOTE: status transitions only happen for LIVE mail. A history pass is
+      // re-reading old messages and must never resurrect a thread the user
+      // deliberately closed, or flip an archived thread back into the queue.
+      if (!history) {
+        if (prevStatus === "waiting_customer" || prevStatus === "closed") {
+          thread.set("status", "in_progress");
+          // keep assigned_agent — the handling agent resumes
+        }
+        // A real reply on an ARCHIVED thread (imported history) revives it into
+        // the queue. Without this, importing a mailbox would permanently hide
+        // every follow-up the customer sends on an existing conversation.
+        if (prevStatus === "archived") {
+          thread.set("status", "new");
+        }
       }
       // A fresh customer message on a still-unanswered (new) ticket restarts
       // the first-response SLA window from THIS message — not from whenever the
@@ -492,7 +511,7 @@ function backfillInbox(inboxRec, opts) {
       });
       for (const m of threadRes.messages || []) {
         const norm = normalizeMessage(m, uid);
-        const c = upsertThreadAndMessage(inboxRec, norm);
+        const c = upsertThreadAndMessage(inboxRec, norm, { history: true });
         counters.threadsCreated += c.threadsCreated;
         counters.threadsUpdated += c.threadsUpdated;
         counters.messagesAdded += c.messagesAdded;
@@ -634,7 +653,7 @@ function backfillOnePage(inboxRec, pageToken, maxResults) {
       });
       for (const m of threadRes.messages || []) {
         const norm = normalizeMessage(m, uid);
-        const c = upsertThreadAndMessage(inboxRec, norm);
+        const c = upsertThreadAndMessage(inboxRec, norm, { history: true });
         counters.threadsCreated += c.threadsCreated;
         counters.threadsUpdated += c.threadsUpdated;
         counters.messagesAdded += c.messagesAdded;

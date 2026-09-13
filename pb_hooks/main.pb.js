@@ -81,6 +81,10 @@ routerAdd("GET", "/api/mailbox/reports", (e) => {
 // --- Admin utilities ---------------------------------------------------------
 // Manual SLA-monitor trigger so a breach can be enforced immediately (and be
 // verified on demand) instead of waiting for the next hourly tick.
+routerAdd("POST", "/api/mailbox/admin/archive-imported-history", (e) => {
+  require(__hooks + "/lib/cron_engine.js").handleArchiveImportedHistory(e);
+});
+
 routerAdd("POST", "/api/mailbox/admin/run-sla-monitor", (e) => {
   require(__hooks + "/lib/cron_engine.js").handleRunSlaMonitor(e);
 }, $apis.requireAuth());
