@@ -7,11 +7,24 @@
   let error = $state("");
   let loading = $state(true);
 
+  // Scope. "" inbox = every mailbox the user may see; range defaults to all
+  // time so the first view matches the previous behaviour exactly.
+  let selInbox = $state("");
+  let selRange = $state("all");
+
+  const RANGES = [
+    { value: "week", label: "Week" },
+    { value: "month", label: "Month" },
+    { value: "quarter", label: "Quarter" },
+    { value: "year", label: "Year" },
+    { value: "all", label: "All time" }
+  ];
+
   async function load() {
     loading = true;
     error = "";
     try {
-      const r = await api.getReports();
+      const r = await api.getReports({ inbox: selInbox, range: selRange });
       data = r;
     } catch (e) {
       error = e?.message || "Could not load reports";
@@ -19,7 +32,23 @@
       loading = false;
     }
   }
-  $effect(() => { load(); });
+
+  // Re-fetch whenever the scope changes. $effect tracks selInbox/selRange, so
+  // changing either picker reloads on its own.
+  $effect(() => {
+    selInbox;
+    selRange;
+    load();
+  });
+
+  // Degraded case: the response carries no `scope` (older server build) —
+  // keep the mailboxes picker usable via the session's inbox list.
+  const mailboxOptions = $derived(
+    (data?.inboxes?.length
+      ? data.inboxes
+      : (appState.inboxes || []).map((i) => ({ id: i.id, name: i.name || i.email_address || i.id }))
+    ).slice()
+  );
 
   const fmt = (n) => Number(n || 0).toLocaleString();
 
@@ -51,6 +80,43 @@
     <h2>Reports</h2>
     <button class="md3-btn tonal small" onclick={load} disabled={loading}>{loading ? "Loading…" : "Refresh"}</button>
   </div>
+
+  <!-- Scope controls: which mailbox, and which time window. -->
+  <div class="scope">
+    <label class="scope-field">
+      <span class="scope-label">Mailbox</span>
+      <select bind:value={selInbox} disabled={loading}>
+        <option value="">All mailboxes</option>
+        {#each mailboxOptions as ib (ib.id)}
+          <option value={ib.id}>{ib.name}</option>
+        {/each}
+      </select>
+    </label>
+
+    <div class="scope-field">
+      <span class="scope-label">Period</span>
+      <div class="range-group" role="group" aria-label="Time range">
+        {#each RANGES as r (r.value)}
+          <button
+            type="button"
+            class="range-btn"
+            class:on={selRange === r.value}
+            aria-pressed={selRange === r.value}
+            onclick={() => (selRange = r.value)}
+            disabled={loading}
+          >{r.label}</button>
+        {/each}
+      </div>
+    </div>
+  </div>
+
+  {#if data?.scope}
+    <p class="scope-note">
+      {data.scope.inboxName} · {data.scope.rangeLabel}
+      {#if data.scope.range !== "all" && data.scope.since}&nbsp;· since {data.scope.since.slice(0, 10)}{/if}
+      {#if selRange !== "all"}&nbsp;— counts conversations with activity in this period{/if}
+    </p>
+  {/if}
 
   {#if error}
     <div class="card err"><strong>{error}</strong></div>
@@ -144,6 +210,62 @@
     box-sizing: border-box;
   }
   .rep-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+
+  .scope {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 14px;
+    margin-bottom: 8px;
+  }
+  .scope-field { display: flex; flex-direction: column; gap: 5px; }
+  .scope-label {
+    font: var(--m3-type-label-sm);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--m3-on-surface-variant-2);
+  }
+  .scope select {
+    height: 34px;
+    min-width: 180px;
+    padding: 0 10px;
+    border: 1px solid var(--m3-outline-variant);
+    border-radius: var(--m3-shape-sm);
+    background: var(--m3-surface-container-lowest);
+    color: var(--m3-on-surface);
+    font: var(--m3-type-body-md);
+    outline: none;
+  }
+  .scope select:focus {
+    border-color: var(--m3-primary);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--m3-primary) 18%, transparent);
+  }
+
+  .range-group {
+    display: inline-flex;
+    gap: 2px;
+    background: var(--m3-surface-container);
+    border-radius: var(--m3-shape-sm);
+    padding: 2px;
+  }
+  .range-btn {
+    font: var(--m3-type-label-md);
+    font-weight: 500;
+    color: var(--m3-on-surface-variant);
+    border-radius: 6px;
+    padding: 5px 11px;
+    cursor: pointer;
+  }
+  .range-btn:hover:not(:disabled) { color: var(--m3-on-surface); }
+  .range-btn.on { background: var(--m3-primary); color: var(--m3-on-primary); }
+  .range-btn:disabled { opacity: 0.6; cursor: default; }
+
+  .scope-note {
+    font: var(--m3-type-body-sm);
+    color: var(--m3-on-surface-variant-2);
+    margin: 0 0 16px;
+  }
   h2 { font: var(--m3-type-headline); margin: 0; }
   .muted { color: var(--m3-on-surface-variant); font: var(--m3-type-body-sm); }
   .hint { margin-top: 10px; }

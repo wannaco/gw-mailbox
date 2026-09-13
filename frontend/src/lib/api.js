@@ -308,8 +308,15 @@ export function saveCsat(enabled) {
 }
 
 // ---- reports ---------------------------------------------------------------
-export function getReports() {
-  return pbRequest("GET", "/mailbox/reports");
+// scope: { inbox?: "" | inboxId, range?: "week"|"month"|"quarter"|"year"|"all" }
+// "all" is the server default, so it is omitted from the query string to keep
+// the un-scoped request byte-identical to the old one.
+export function getReports({ inbox = "", range = "all" } = {}) {
+  const qs = new URLSearchParams();
+  if (inbox) qs.set("inbox", inbox);
+  if (range && range !== "all") qs.set("range", range);
+  const q = qs.toString();
+  return pbRequest("GET", "/mailbox/reports" + (q ? "?" + q : ""));
 }
 
 // ---- agent signatures ------------------------------------------------------
