@@ -3,6 +3,7 @@
   import * as api from "../lib/api.js";
   import ContactPanel from "./ContactPanel.svelte";
   import { timeAgo, fmtDateTime, sanitizeHtml, isoLocalInput, avatarColor } from "../lib/utils.js";
+  import { tick } from "svelte";
 
   let { threadId } = $props();
 
@@ -10,6 +11,7 @@
 
   let tab = $state("conversation"); // conversation | notes
   let detailsOpen = $state(false); // collapse prev tickets + labels by default
+  let composerOpen = $state(false); // reply editor starts collapsed (reading first)
   let contactOpen = $state(false);
   let replyText = $state(""); // kept in sync from the rich editor (innerText)
   let noteText = $state("");
@@ -132,6 +134,7 @@
     if (!tid) return;
 
     // Fresh compose session per thread: drop any previous draft/signature.
+    composerOpen = false;
     sigState = 0;
     if (editorEl) { editorEl.innerHTML = ""; }
     replyText = "";
@@ -502,6 +505,15 @@
     toast("success", "Signature added");
   }
 
+  // The reply editor is collapsed by default and only mounts when opened, so
+  // focus has to wait for the DOM to update.
+  async function openComposer() {
+    if (lock) return;
+    composerOpen = true;
+    await tick();
+    if (editorEl) editorEl.focus();
+  }
+
   async function sendReply() {
     const hasAtt = attachments.length > 0;
     let text = editorText().trim();
@@ -536,6 +548,7 @@
       sigState = 0;
       ccList = [];
       replyMode = "reply";
+      composerOpen = false; // re-collapse so the sent reply gets the space
       await api.fetchMessages(threadId); // show the sent message immediately
     } catch (e) {
       toast("error", "Send failed: " + (e?.message || ""));
@@ -986,73 +999,11 @@
       </select>
     </div>
 
-    {#if prevTickets.length || threadTags.length}
-      <div class="detail-row">
-        <button type="button" class="detail-toggle" onclick={() => (detailsOpen = !detailsOpen)} aria-expanded={detailsOpen}>
-          <svg class="chev" class:open={detailsOpen} width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
-          <span class="detail-summary">
-            {#if prevTickets.length}Previous tickets ({prevTickets.length}){/if}
-            {#if prevTickets.length && threadTags.length} · {/if}
-            {#if threadTags.length}Labels ({threadTags.length}){/if}
-          </span>
-        </button>
-        {#if detailsOpen}
-          <div class="detail-body">
-            {#if prevTickets.length}
-              <div class="dt-group">
-                <span class="dt-label">Previous tickets</span>
-                <div class="dt-chips">
-                  {#each prevTickets as pt (pt.id)}
-                    <button type="button" class="dt-chip" onclick={() => (appState.openThreadId = pt.id)} title={pt.subject || "(no subject)"}>
-                      {pt.subject || "(no subject)"}
-                      <span class="dt-status" style="color:{statusMeta(pt.status).dot}">{statusMeta(pt.status).label}</span>
-                    </button>
-                  {/each}
-                </div>
-              </div>
-            {/if}
-            {#if threadTags.length}
-              <div class="dt-group">
-                <span class="dt-label">Labels</span>
-                <div class="dt-chips">
-                  {#each threadTags as tg (tg)}
-                    <span class="dt-chip plain" style="background:{tagColor(tg)}22;color:{tagColor(tg)}">{tg}</span>
-                  {/each}
-                </div>
-              </div>
-            {/if}
-          </div>
-        {/if}
-      </div>
-    {/if}
-
+    <!-- Only two rows by default: the title block above, and this bar. The
+         secondary controls (assignee, labels, meeting, previous tickets) fold
+         behind "Details" so the message body gets the vertical space — the
+         header used to take ~187px, over a fifth of the drawer. -->
     <div class="tv-actions">
-      <select class="assignee-sel" value={thread.assigned_agent || ""} onchange={(e) => setAssignee(e.target.value)} disabled={busyAssign}>
-        <option value="">Unassigned</option>
-        {#each assigneeOptions as u (u.id)}
-          <option value={u.id}>{u.name || u.email}</option>
-        {/each}
-      </select>
-      <div class="lbl-wrap">
-        <button class="md3-chip" class:is-active={labelsOpen} onclick={() => (labelsOpen = !labelsOpen)} title="Labels">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M17.63 5.84C17.27 5.33 16.67 5 16 5L5 5.01C3.9 5.01 3 5.9 3 7v10c0 1.1.9 1.99 2 1.99L16 19c.67 0 1.27-.33 1.63-.84L22 12l-4.37-6.16zM16 15.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/></svg>
-          Labels
-        </button>
-        {#if labelsOpen}
-          <div class="lbl-menu">
-            {#each catalog as lb (lb.id)}
-              <label class="lbl-item">
-                <input type="checkbox" checked={threadTags.includes(lb.name)} onchange={() => toggleTag(lb.name)} />
-                <span class="lbl-dot" style="background:{lb.color || '#888'}"></span>{lb.name}
-              </label>
-            {/each}
-            <div class="lbl-new">
-              <input type="text" bind:value={newLabelName} placeholder="New label…" onkeydown={(ev) => { if (ev.key === "Enter") { ev.preventDefault(); addCustomLabel(); } }} />
-              <button class="md3-btn tonal small" onclick={addCustomLabel}>Add</button>
-            </div>
-          </div>
-        {/if}
-      </div>
       <button class="md3-chip" class:is-active={tab === "conversation"} onclick={() => (tab = "conversation")}>
         Conversation ({msgsVisible.length})
       </button>
@@ -1061,11 +1012,74 @@
         Internal notes
       </button>
       <div class="spacer"></div>
-      <button class="md3-btn tonal small" onclick={openMeet} disabled={!!lock}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M15 10.5 21 7v10l-6-3.5V18a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v4.5z"/></svg>
-        Book Meet
+      <select class="assignee-sel" value={thread.assigned_agent || ""} onchange={(e) => setAssignee(e.target.value)} disabled={busyAssign} title="Assignee">
+        <option value="">Unassigned</option>
+        {#each assigneeOptions as u (u.id)}
+          <option value={u.id}>{u.name || u.email}</option>
+        {/each}
+      </select>
+      <button type="button" class="detail-toggle" onclick={() => (detailsOpen = !detailsOpen)} aria-expanded={detailsOpen}
+        title="Labels, meeting, previous tickets">
+        <svg class="chev" class:open={detailsOpen} width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
+        <span class="detail-summary">
+          Details{#if prevTickets.length || threadTags.length}&nbsp;({prevTickets.length + threadTags.length}){/if}
+        </span>
       </button>
     </div>
+
+    {#if detailsOpen}
+      <div class="detail-body head-details">
+        <div class="dt-chips">
+          <div class="lbl-wrap">
+            <button class="md3-chip" class:is-active={labelsOpen} onclick={() => (labelsOpen = !labelsOpen)} title="Labels">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M17.63 5.84C17.27 5.33 16.67 5 16 5L5 5.01C3.9 5.01 3 5.9 3 7v10c0 1.1.9 1.99 2 1.99L16 19c.67 0 1.27-.33 1.63-.84L22 12l-4.37-6.16zM16 15.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/></svg>
+              Labels
+            </button>
+            {#if labelsOpen}
+              <div class="lbl-menu">
+                {#each catalog as lb (lb.id)}
+                  <label class="lbl-item">
+                    <input type="checkbox" checked={threadTags.includes(lb.name)} onchange={() => toggleTag(lb.name)} />
+                    <span class="lbl-dot" style="background:{lb.color || '#888'}"></span>{lb.name}
+                  </label>
+                {/each}
+                <div class="lbl-new">
+                  <input type="text" bind:value={newLabelName} placeholder="New label…" onkeydown={(ev) => { if (ev.key === "Enter") { ev.preventDefault(); addCustomLabel(); } }} />
+                  <button class="md3-btn tonal small" onclick={addCustomLabel}>Add</button>
+                </div>
+              </div>
+            {/if}
+          </div>
+          <button class="md3-btn tonal small" onclick={openMeet} disabled={!!lock}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M15 10.5 21 7v10l-6-3.5V18a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v4.5z"/></svg>
+            Book Meet
+          </button>
+        </div>
+        {#if threadTags.length}
+          <div class="dt-group">
+            <span class="dt-label">Labels</span>
+            <div class="dt-chips">
+              {#each threadTags as tg (tg)}
+                <span class="dt-chip plain" style="background:{tagColor(tg)}22;color:{tagColor(tg)}">{tg}</span>
+              {/each}
+            </div>
+          </div>
+        {/if}
+        {#if prevTickets.length}
+          <div class="dt-group">
+            <span class="dt-label">Previous tickets</span>
+            <div class="dt-chips">
+              {#each prevTickets as pt (pt.id)}
+                <button type="button" class="dt-chip" onclick={() => (appState.openThreadId = pt.id)} title={pt.subject || "(no subject)"}>
+                  {pt.subject || "(no subject)"}
+                  <span class="dt-status" style="color:{statusMeta(pt.status).dot}">{statusMeta(pt.status).label}</span>
+                </button>
+              {/each}
+            </div>
+          </div>
+        {/if}
+      </div>
+    {/if}
   </header>
 
   {#if othersOnThread.length}
@@ -1265,8 +1279,20 @@
     {/each}
   </div>
 
-  <footer class="tv-composer">
+  <footer class="tv-composer" class:collapsed={tab === "conversation" && !composerOpen}>
     {#if tab === "conversation"}
+      {#if !composerOpen}
+        <!-- Collapsed by default: reading a thread is the common case, and the
+             open editor costs ~265px of the panel below the conversation. -->
+        <div class="composer-bar">
+          <span class="cb-to">Reply to <strong>{thread.customer_email || "—"}</strong></span>
+          <span class="spacer"></span>
+          <button class="send-btn" onclick={openComposer} disabled={!!lock}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+            Reply
+          </button>
+        </div>
+      {:else}
       <div class="composer-col">
         <div class="composer-top">
           <div class="send-recip">
@@ -1368,6 +1394,7 @@
           </div>
         </div>
       </div>
+      {/if}
     {:else}
       <div class="note-editor">
         {#if mentionItems.length}
@@ -1443,8 +1470,16 @@
 
   .tv-head {
     flex: 0 0 auto;
-    padding: 12px 16px 8px;
+    padding: 10px 16px 8px;
     border-bottom: 1px solid var(--m3-outline-variant);
+  }
+
+  /* The header is fixed-height above a scrolling body, so its height is
+     message-space budget. Cap the subject at two lines: a long subject used to
+     push the whole conversation down. */
+  .head-details {
+    margin-top: 10px;
+    padding: 0;
   }
 
   .tv-title-row {
@@ -1462,6 +1497,10 @@
     font: var(--m3-type-title-lg);
     line-height: 1.3;
     overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
 
   .cust {
@@ -1678,8 +1717,14 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-top: 8px;
+    margin-top: 6px;
     flex-wrap: wrap;
+  }
+
+  /* "Details" toggle now lives in the action bar, not on its own row. */
+  .tv-actions .detail-toggle {
+    flex: 0 0 auto;
+    margin-left: 2px;
   }
 
   .tv-actions .spacer {
@@ -2097,6 +2142,34 @@
     display: block;
     padding: 10px 16px 12px;
     border-top: 1px solid var(--m3-outline-variant);
+  }
+
+  .tv-composer.collapsed {
+    padding: 8px 16px;
+  }
+
+  /* Collapsed reply bar — a single row, restoring the vertical space the full
+     editor would otherwise take while reading. */
+  .composer-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+  .composer-bar .spacer {
+    flex: 1;
+  }
+  .cb-to {
+    font: var(--m3-type-body-sm);
+    color: var(--m3-on-surface-variant);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .cb-to strong {
+    color: var(--m3-on-surface);
+    font-weight: 600;
   }
 
   .composer-col {
