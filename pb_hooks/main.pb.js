@@ -81,6 +81,12 @@ routerAdd("GET", "/api/mailbox/reports", (e) => {
 // --- Admin utilities ---------------------------------------------------------
 // Manual SLA-monitor trigger so a breach can be enforced immediately (and be
 // verified on demand) instead of waiting for the next hourly tick.
+// Public health for an external uptime monitor — reports SYNC freshness, not
+// just "is the container up", so a silently stalled mailbox gets caught.
+routerAdd("GET", "/api/mailbox/health", (e) => {
+  require(__hooks + "/lib/health_engine.js").handleHealth(e);
+});
+
 routerAdd("POST", "/api/mailbox/admin/archive-imported-history", (e) => {
   require(__hooks + "/lib/cron_engine.js").handleArchiveImportedHistory(e);
 });

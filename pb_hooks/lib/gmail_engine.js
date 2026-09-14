@@ -220,6 +220,92 @@ function inboxUserEmail(inboxRec) {
 }
 
 // ---------------------------------------------------------------------------
+// Sync health — make a stalled sync visible instead of silent
+// ---------------------------------------------------------------------------
+function markSyncOk(inboxRec) {
+  try {
+    inboxRec.set("last_sync_at", new DateTime().string());
+    if (inboxRec.getString("sync_error")) inboxRec.set("sync_error", "");
+    $app.save(inboxRec);
+  } catch (err) {
+    h.warn("could not record sync health for", inboxUserEmail(inboxRec), (err && err.message) || err);
+  }
+}
+
+// Record a failure. Alerts only on the ok -> failing TRANSITION, so a mailbox
+// that fails every minute does not fire an alert every minute.
+function markSyncError(inboxRec, message) {
+  try {
+    const wasOk = !inboxRec.getString("sync_error");
+    inboxRec.set("sync_error", String(message || "unknown error").slice(0, 500));
+    $app.save(inboxRec);
+    if (wasOk) {
+      h.sendAlertWebhook("sync_failing", {
+        inbox: inboxRec.id,
+        email: inboxUserEmail(inboxRec),
+        error: String(message || "").slice(0, 300)
+      });
+    }
+  } catch (err) {
+    h.warn("could not record sync failure for", inboxUserEmail(inboxRec), (err && err.message) || err);
+  }
+}
+
+// True when an error means "the stored Gmail history cursor is too old".
+// Gmail's history.list returns 404 once the cursor falls outside its retention
+// window. Duck-typed on err.status rather than instanceof: the error crosses a
+// module boundary and goja does not guarantee prototype identity across
+// require()s.
+function isCursorStaleError(err) {
+  try {
+    if (!err) return false;
+    const st = err.status || err.statusCode || 0;
+    return st === 404;
+  } catch (_) { return false; }
+}
+
+// Recover from an expired history cursor.
+// Without this, syncFromHistory throws, the catch in runMailPollSync logs a
+// warning, and the SAME stale cursor stays stored — so every subsequent tick
+// fails identically and the mailbox never ingests mail again, silently.
+//
+// Recovery: drop the cursor and queue a full resync through the existing
+// backfill stepper (history semantics, so archived threads stay archived and
+// live mail still revives on a customer reply). The stepper pages through at
+// ~400 conversations/min so a big mailbox cannot blow a request timeout, and
+// upsert-dedupe means re-reading mail we already have is harmless.
+function recoverStaleCursor(inboxRec) {
+  const uid = inboxUserEmail(inboxRec);
+  h.warn("stale Gmail history cursor for", uid, "- resetting and queueing a full resync");
+  try {
+    inboxRec.set("history_id", "");
+    const st = readBackfillState(inboxRec);
+    // Never stomp a resync that is already queued or running.
+    if (st.status !== "queued" && st.status !== "running") {
+      writeBackfillState(inboxRec, {
+        status: "queued",
+        next_page: "",
+        convs: 0,
+        threads: 0,
+        messages: 0,
+        batches: 0,
+        estimate: 0,
+        reason: "stale_cursor",
+        started_at: new DateTime().string()
+      });
+    }
+    $app.save(inboxRec);
+  } catch (err) {
+    h.warn("stale-cursor recovery failed for", uid, (err && err.message) || err);
+  }
+  h.sendAlertWebhook("sync_stale_cursor", {
+    inbox: inboxRec.id,
+    email: uid,
+    note: "Gmail history cursor expired; full resync queued. No mail is lost."
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Storage (thread + message upserts)
 // ---------------------------------------------------------------------------
 function isoToPb(iso) {
@@ -457,7 +543,20 @@ function syncFromHistory(inboxRec, startHistoryId, opts) {
       "?historyTypes=messageAdded&labelId=INBOX&startHistoryId=" + encodeURIComponent(start);
     if (pageToken) url += "&pageToken=" + encodeURIComponent(pageToken);
 
-    const res = h.googleRequest({ url: url, scopes: [h.GMAIL_SCOPE], subject: uid });
+    let res;
+    try {
+      res = h.googleRequest({ url: url, scopes: [h.GMAIL_SCOPE], subject: uid });
+    } catch (err) {
+      // Only the FIRST page can mean an expired cursor: a 404 later in the
+      // paging would be something else. If we do not handle it here, the stale
+      // cursor stays stored and every future tick fails the same way forever.
+      if (page === 0 && isCursorStaleError(err)) {
+        recoverStaleCursor(inboxRec);
+        counters.recovered = 1;
+        return counters;
+      }
+      throw err;
+    }
 
     const history = res.history || [];
     counters.historyRead += history.length;
@@ -541,7 +640,20 @@ function storeHistoryCursor(inboxRec) {
   }
 }
 
+// Health-recording wrapper. Every sync path (poll, Pub/Sub push, manual) goes
+// through here, so last_sync_at / sync_error always reflect reality.
 function syncInbox(inboxRec, opts) {
+  try {
+    const r = syncInboxInner(inboxRec, opts);
+    markSyncOk(inboxRec);
+    return r;
+  } catch (err) {
+    markSyncError(inboxRec, (err && err.message) || String(err));
+    throw err;
+  }
+}
+
+function syncInboxInner(inboxRec, opts) {
   opts = opts || {};
   const hasCursor = !!inboxRec.getString("history_id");
   // A brand-new mailbox set to import_history=false ("receive new mail only")
@@ -685,6 +797,9 @@ function stepBackfill(inboxRec, batchesPerTick, pageSize) {
   for (; pages < lim; pages++) {
     try {
       const r = backfillOnePage(inboxRec, token, pageSize || 100);
+      // A backfill IS a successful sync — otherwise a long import would look
+      // like a stalled mailbox to the health check.
+      markSyncOk(inboxRec);
       // `conversations` = Gmail threads processed this page (the real count a
       // client cares about). threads/messages are per-message upsert tallies.
       st.convs = parseInt(st.convs || 0, 10) + r.conversations;
