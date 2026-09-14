@@ -304,7 +304,10 @@
     padding: 1px 7px;
     white-space: nowrap;
     flex: 0 0 auto;
-    margin-left: auto;
+    /* No margin-left:auto. That pinned the chip to the right edge while every
+       other item in the card (avatar, subject, snippet, tags) is left-aligned —
+       so once the row wrapped, the chip sat alone and floating right. Left to
+       flow, it wraps onto the next line aligned with everything else. */
   }
   .sla-chip.breached {
     animation: sla-pulse 1.8s ease-in-out infinite;
