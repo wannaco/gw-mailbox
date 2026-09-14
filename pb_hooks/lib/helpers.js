@@ -163,6 +163,42 @@ function isoToPbString(iso) {
   try { return new DateTime(iso).string(); } catch (_) { return new DateTime().string(); }
 }
 
+// Give a thread its first-response deadline when a human moves it INTO an
+// active state (new / in_progress) and it has none.
+//
+// Why this is needed: imported history and archived threads deliberately carry
+// NO deadline (they are archive, not queue). Picking one up to actually work it
+// changed the status but started no clock, so the ticket sat in an active column
+// with no SLA at all.
+//
+// Anchoring: the customer's message, so the deadline still means "respond N
+// hours after they wrote" — but never a deadline that has already passed, since
+// a thread you just started working must not appear instantly breached. A clock
+// that already exists is left untouched, so toggling status can never be used to
+// reset a deadline and dodge it.
+function ensureSlaDeadline(threadRec) {
+  try {
+    if (!threadRec) return false;
+    const cur = threadRec.getDateTime("sla_due_at");
+    if (cur && !cur.isZero()) return false; // already ticking — leave it alone
+    const hours = effectiveSlaHours() || 24;
+    const now = new DateTime();
+    let due = now.add(hours * 3600 * 1e9);
+    const last = threadRec.getDateTime("last_message_at");
+    if (last && !last.isZero()) {
+      const fromLast = last.add(hours * 3600 * 1e9);
+      if (fromLast.after(now)) due = fromLast; // still inside the customer's window
+    }
+    threadRec.set("sla_due_at", due.string());
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+// Statuses where the SLA clock should be running.
+var SLA_ACTIVE_STATUSES = ["new", "in_progress"];
+
 // true when thread.sla_due_at <= now (breached)
 function isSlaBreached(threadRec) {
   const due = threadRec.getDateTime("sla_due_at");
@@ -761,6 +797,7 @@ module.exports = {
   // dates
   nowDateTime, dateToPbString, isoToPbString, isSlaBreached,
   readSlaConfig, saveSlaConfig, effectiveSlaHours, markThreadClosed,
+  ensureSlaDeadline, SLA_ACTIVE_STATUSES,
   // notes / presence
   addInternalNote, heartbeatPresence, releasePresence, presenceSnapshot, composingLock,
   // google

@@ -165,6 +165,9 @@ function handleMoveThread(e) {
     else thread.set("assigned_agent", body.assigned_agent);
   }
   if (body.tags !== undefined) thread.set("tags", Array.isArray(body.tags) ? body.tags : []);
+  // Moving INTO an active column starts the first-response clock if the thread
+  // has none (imported history and archived threads carry no deadline).
+  if (h.SLA_ACTIVE_STATUSES.indexOf(status) !== -1) h.ensureSlaDeadline(thread);
 
   $app.save(thread);
 
@@ -479,6 +482,9 @@ function handleBulkThreads(e) {
         if (action === "waiting_customer" && prev !== "waiting_customer") {
           try { require(__hooks + "/lib/automations_engine.js").resetFollowups(thread); } catch (_) {}
         }
+        // Bulk move into an active column gets a clock too, same rule as the
+        // single-thread move — otherwise the two paths behave differently.
+        if (h.SLA_ACTIVE_STATUSES.indexOf(action) !== -1) h.ensureSlaDeadline(thread);
         $app.save(thread);
         if (action === "closed" && actor.recordId) h.releasePresence(id, actor.recordId);
         // Entering closed -> fire CSAT survey to the customer.

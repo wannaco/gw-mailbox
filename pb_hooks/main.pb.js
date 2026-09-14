@@ -105,9 +105,18 @@ routerAdd("POST", "/api/mailbox/notifications/read-all", (e) => {
 // New threads start on the "new" column; SLA defaults to now + sla_hours
 // from app_settings (Settings -> SLA), falling back to MAILBOX_SLA_HOURS env
 // and then 24 — unless the ingest engine already set sla_due_at.
+//
+// ARCHIVED records are exempt. The ingest engine creates imported history as
+// "archived" with an intentionally empty sla_due_at (history is reference, not
+// queue), and this hook used to stamp a deadline straight back on — anchored to
+// IMPORT time rather than to the customer's message. That defeated the archive
+// rule for every future import, and left a thread that was later picked up with
+// a meaningless countdown. Archived threads get their clock when a human moves
+// them into an active column, via ensureSlaDeadline().
 onRecordCreate((e) => {
   const rec = e.record;
   if (!rec.getString("status")) rec.set("status", "new");
+  if (rec.getString("status") === "archived") { e.next(); return; }
   const sla = rec.getDateTime("sla_due_at");
   if (!sla || sla.isZero()) {
     let hours = 24;
