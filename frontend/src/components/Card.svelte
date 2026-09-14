@@ -211,6 +211,11 @@
     display: flex;
     align-items: center;
     gap: 6px;
+    /* Must wrap. Columns are only 250px wide at their narrowest, and a card can
+       carry a customer, two tags, an assignee AND the SLA chip — more than one
+       row's worth. Without wrap the row grew past the card and the SLA chip
+       (flex: 0 0 auto, so it cannot shrink) spilled out of the column. */
+    flex-wrap: wrap;
   }
 
   .who {
