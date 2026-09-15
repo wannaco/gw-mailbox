@@ -385,17 +385,26 @@ function upsertThreadAndMessage(inboxRec, norm, opts) {
     }
     const isCustomerMail = norm.from.email && norm.from.email.toLowerCase() !== uid.toLowerCase();
     if (isCustomerMail) {
-      // Customer replied: restart the follow-up/auto-close sequence so no more
-      // nudges trigger, and put the ticket back IN PROGRESS (kept assigned to
-      // the handling agent) so work continues immediately.
-      thread.set("followup_sent", 0);
-      thread.set("followup_next_at", "");
-      thread.set("followup_last_at", "");
+      // Customer replied: restart the follow-up/auto-close sequence and put the
+      // ticket back IN PROGRESS (kept assigned to the handling agent) so work
+      // continues immediately.
+      //
+      // NOTE: EVERYTHING in this branch is gated on !history — the counter reset
+      // as well as the status transitions. The reset used to sit outside this
+      // guard, which meant a history pass (backfill, "import existing mail", or
+      // the stale-cursor recovery) re-reading an OLD customer message wiped
+      // followup_sent back to 0 while leaving the status alone. Consequences:
+      //   * the nudge sequence restarted from #1, so followup_max was defeated
+      //     and the customer got nagged indefinitely, and
+      //   * auto-close (which fires when count >= max) never triggered, so the
+      //     thread sat in waiting_customer forever.
+      // A history pass is a re-read, not a reply. It must change no automation
+      // state at all.
       const prevStatus = thread.getString("status");
-      // NOTE: status transitions only happen for LIVE mail. A history pass is
-      // re-reading old messages and must never resurrect a thread the user
-      // deliberately closed, or flip an archived thread back into the queue.
       if (!history) {
+        thread.set("followup_sent", 0);
+        thread.set("followup_next_at", "");
+        thread.set("followup_last_at", "");
         if (prevStatus === "waiting_customer" || prevStatus === "closed") {
           thread.set("status", "in_progress");
           // keep assigned_agent — the handling agent resumes
