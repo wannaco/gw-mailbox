@@ -100,6 +100,14 @@ function fillTemplate(tpl, threadRec) {
 
 function threadDue(threadRec, cfg, now) {
   const count = threadRec.getInt("followup_sent") || 0;
+
+  // Maxed out: the only remaining action is auto-close, and that is not time
+  // based — so this is always due. Checked BEFORE the next_at test below, which
+  // returns false when next_at is missing: without this, a thread whose
+  // followup_next_at went missing while count > 0 was skipped forever — never
+  // nudged again, never auto-closed, stranded in waiting_customer indefinitely.
+  if (count >= cfg.followup_max) return true;
+
   if (count === 0) {
     // no follow-up sent yet -> due after the initial delay from last activity
     const last = threadRec.getDateTime("last_message_at");
