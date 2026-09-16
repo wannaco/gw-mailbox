@@ -165,6 +165,9 @@ function handleMoveThread(e) {
     else thread.set("assigned_agent", body.assigned_agent);
   }
   if (body.tags !== undefined) thread.set("tags", Array.isArray(body.tags) ? body.tags : []);
+  // Rescuing a thread out of spam gives it a FRESH clock rather than the stale
+  // one it carried while classified as junk (see resetSlaDeadline).
+  if (prev === "spam" && status !== "spam") h.resetSlaDeadline(thread);
   // Moving INTO an active column starts the first-response clock if the thread
   // has none (imported history and archived threads carry no deadline).
   if (h.SLA_ACTIVE_STATUSES.indexOf(status) !== -1) h.ensureSlaDeadline(thread);
@@ -482,6 +485,9 @@ function handleBulkThreads(e) {
         if (action === "waiting_customer" && prev !== "waiting_customer") {
           try { require(__hooks + "/lib/automations_engine.js").resetFollowups(thread); } catch (_) {}
         }
+        // Same rescue rule as the single-thread move: out of spam means a fresh
+        // clock, otherwise the stale deadline escalates it immediately.
+        if (prev === "spam" && action !== "spam") h.resetSlaDeadline(thread);
         // Bulk move into an active column gets a clock too, same rule as the
         // single-thread move — otherwise the two paths behave differently.
         if (h.SLA_ACTIVE_STATUSES.indexOf(action) !== -1) h.ensureSlaDeadline(thread);

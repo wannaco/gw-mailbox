@@ -104,7 +104,11 @@
     selIds = visible.map((t) => t.id);
   }
 
-  const ACTION_LABEL = { spam: "spam", archived: "archive", closed: "closed", delete: "deleted" };
+  const ACTION_LABEL = { spam: "spam", archived: "archive", closed: "closed", delete: "deleted", new: "moved back to New" };
+
+  // "Not spam" appears only when the selection contains spam — see ListView for
+  // why the bulk spam action needed a way back.
+  const selHasSpam = $derived(selIds.some((id) => appState.threads[id]?.status === "spam"));
   async function runBulk(action) {
     if (!selIds.length) return;
     const n = selIds.length;
@@ -176,6 +180,9 @@
       <span class="bb-spacer"></span>
       <button class="md3-btn small" onclick={() => runBulk("closed")} disabled={!selIds.length}>Close</button>
       <button class="md3-btn small" onclick={() => runBulk("archived")} disabled={!selIds.length}>Archive</button>
+      {#if selHasSpam}
+        <button class="md3-btn small" onclick={() => runBulk("new")} disabled={!selIds.length}>Not spam</button>
+      {/if}
       <button class="md3-btn small danger" onclick={() => runBulk("spam")} disabled={!selIds.length}>Mark spam</button>
       {#if appState.me?.isAdmin}
         <button class="md3-btn small danger solid" onclick={() => runBulk("delete")} disabled={!selIds.length}>Delete</button>

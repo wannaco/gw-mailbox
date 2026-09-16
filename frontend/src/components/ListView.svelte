@@ -195,7 +195,13 @@
   function clearSel() { selIds = []; }
 
   // ---- bulk actions ---------------------------------------------------------
-  const ACTION_LABEL = { spam: "spam", archived: "archive", closed: "closed", delete: "deleted" };
+  const ACTION_LABEL = { spam: "spam", archived: "archive", closed: "closed", delete: "deleted", new: "moved back to New" };
+
+  // Show "Not spam" only when the selection actually contains spam. Marking spam
+  // was one-way in bulk: the threads kept their status and there was no way back
+  // from the list, so a mis-click was a dead end. Tying it to the selection keeps
+  // the bar uncluttered while making the rescue available exactly when it applies.
+  const selHasSpam = $derived(selIds.some((id) => appState.threads[id]?.status === "spam"));
   async function runBulk(action) {
     if (!selIds.length) return;
     const n = selIds.length;
@@ -277,6 +283,9 @@
       <span class="bb-spacer"></span>
       <button class="md3-btn small" onclick={() => runBulk("closed")} disabled={selIds.length === 0}>Close</button>
       <button class="md3-btn small" onclick={() => runBulk("archived")} disabled={selIds.length === 0}>Archive</button>
+      {#if selHasSpam}
+        <button class="md3-btn small" onclick={() => runBulk("new")} disabled={selIds.length === 0}>Not spam</button>
+      {/if}
       <button class="md3-btn small danger" onclick={() => runBulk("spam")} disabled={selIds.length === 0}>Mark spam</button>
       {#if appState.me?.isAdmin}
         <button class="md3-btn small danger solid" onclick={() => runBulk("delete")} disabled={selIds.length === 0}>Delete</button>

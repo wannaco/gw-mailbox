@@ -199,6 +199,24 @@ function ensureSlaDeadline(threadRec) {
 // Statuses where the SLA clock should be running.
 var SLA_ACTIVE_STATUSES = ["new", "in_progress"];
 
+// Clear a thread's first-response deadline so the next ensureSlaDeadline()
+// computes a FRESH one.
+//
+// Needed when a thread is rescued OUT of spam. Marking spam leaves sla_due_at
+// untouched, so a thread that sat in spam for a day still carries its old, now
+// past deadline. Un-spamming it without clearing that would leave it reading as
+// instantly overdue and the hourly monitor would escalate it straight back out
+// of the queue — the rescue would look like it failed.
+//
+// Same principle as imported history: never let a clock that is already in the
+// past decide an active ticket's fate.
+function resetSlaDeadline(threadRec) {
+  try {
+    if (!threadRec) return;
+    threadRec.set("sla_due_at", "");
+  } catch (_) { /* non-fatal */ }
+}
+
 // true when thread.sla_due_at <= now (breached)
 function isSlaBreached(threadRec) {
   const due = threadRec.getDateTime("sla_due_at");
@@ -808,7 +826,7 @@ module.exports = {
   // dates
   nowDateTime, dateToPbString, isoToPbString, isSlaBreached,
   readSlaConfig, saveSlaConfig, effectiveSlaHours, markThreadClosed,
-  ensureSlaDeadline, SLA_ACTIVE_STATUSES,
+  ensureSlaDeadline, resetSlaDeadline, SLA_ACTIVE_STATUSES,
   // notes / presence
   addInternalNote, heartbeatPresence, releasePresence, presenceSnapshot, composingLock,
   // google
