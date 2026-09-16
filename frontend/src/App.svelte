@@ -16,6 +16,7 @@
   import NotifBell from "./components/NotifBell.svelte";
   import CsatPage from "./components/CsatPage.svelte";
   import NoticesPage from "./components/NoticesPage.svelte";
+  import { parsePath, buildPath, isPublicPath } from "./lib/router.js";
 
   let theme = $state("light");
   let booting = $state(true); // true until we know if a session exists
@@ -31,6 +32,107 @@
 
   // Public third-party notices route: /notices renders a no-login page.
   let noticesPage = $state(location.pathname.replace(/\/+$/, "").endsWith("/notices"));
+
+  // ---- URL routing ---------------------------------------------------------
+  // The app's default inbox is "/", not "/inbox/<id>", so a plain visit does not
+  // bake an id into the address bar. Captured once and kept for buildPath().
+  let defaultInboxId = null;
+
+  // The path the user actually arrived on, captured ONCE at init.
+  //
+  // Must be captured here, not read later: loadSession() assigns activeInboxId,
+  // which makes routingActive() true and lets the sync effect write the URL —
+  // overwriting the arrival path with the bare inbox BEFORE anything has read it.
+  // Reading location.pathname inside adoptArrivalUrl() therefore saw the already
+  // truncated "/inbox/<id>" and dropped the thread from cold deep links.
+  const arrivalPath = location.pathname;
+
+  // URL writes stay off until the arrival path has been applied, so nothing can
+  // clobber the user's link during boot.
+  let routeReady = false;
+
+  // Suppresses the write-back while we are applying a URL (boot, back/forward),
+  // so the sync effect cannot bounce the path against itself.
+  let applyingUrl = false;
+
+  // True when the current view is something we own and reflect in the URL. Public
+  // pages (csat/notices/auth-callback) and the logged-out screen are excluded.
+  function routingActive() {
+    return routeReady && !csatToken && !noticesPage && !booting;
+  }
+
+  // `push=true` records a history entry so the browser Back button returns here;
+  // `push=false` corrects the URL in place.
+  //
+  // PUSH for navigation the user performed deliberately — switching section,
+  // changing mailbox, opening or closing a thread — because Back should undo
+  // those. REPLACE for the default inbox id being resolved after boot: that is
+  // bookkeeping, and pushing it would mean Back lands on a URL that immediately
+  // redirects forward again, which is the classic history trap.
+  function syncUrl(push) {
+    if (!routingActive() || applyingUrl) return;
+    const next = buildPath(
+      {
+        screen: appState.screen,
+        view: appState.view,
+        activeInboxId: appState.activeInboxId,
+        openThreadId: appState.openThreadId
+      },
+      defaultInboxId
+    );
+    const cur = location.pathname.replace(/\/+$/, "") || "/";
+    if (cur === next) return;
+    if (push) history.pushState(null, "", next);
+    else history.replaceState(null, "", next);
+  }
+
+  // Apply a pathname to the view state. Returns false if the inbox in the URL is
+  // not one this user may see, in which case we fall back to the default list
+  // rather than leaving them on an empty screen.
+  function applyPath(pathname) {
+    const next = parsePath(pathname);
+    applyingUrl = true;
+    try {
+      appState.screen = next.screen;
+      appState.view = next.view;
+      if (next.activeInboxId) {
+        const known = (appState.inboxes || []).some((i) => i.id === next.activeInboxId);
+        if (!known) {
+          appState.activeInboxId = defaultInboxId || appState.activeInboxId;
+          appState.openThreadId = "";
+          history.replaceState(null, "", buildPath({
+            screen: appState.screen, view: appState.view,
+            activeInboxId: appState.activeInboxId, openThreadId: ""
+          }, defaultInboxId));
+          return false;
+        }
+        if (next.activeInboxId !== appState.activeInboxId) {
+          appState.activeInboxId = next.activeInboxId;
+          appState.threadsPagesInbox = ""; // force a page-1 reload for this mailbox
+          api.refreshThreads().catch(() => {});
+        }
+      }
+      appState.openThreadId = next.openThreadId;
+    } finally {
+      applyingUrl = false;
+    }
+    return true;
+  }
+
+  // Mirror appState into the URL whenever the parts a URL encodes change.
+  $effect(() => {
+    appState.screen;
+    appState.view;
+    appState.activeInboxId;
+    appState.openThreadId;
+    appState.me;
+    syncUrl(true);
+  });
+
+  function onPopState() {
+    if (!routingActive()) return;
+    applyPath(location.pathname);
+  }
 
   function applyTheme() {
     const saved = localStorage.getItem("gwmb.theme");
@@ -53,12 +155,21 @@
       } catch (e) {
         toast("error", e?.message || "Google sign-in failed");
       }
+      // The OAuth flow lands on /auth/callback, which is not a view path — it has
+      // already been rewritten to "/" by handleOAuthCallback. So there is no
+      // arrival URL to adopt here; just start mirroring state so later navigation
+      // updates the URL. (A deep link cannot survive this flow, since the
+      // provider redirects to the fixed callback path.)
+      defaultInboxId = appState.inboxes[0]?.id || null;
+      routeReady = true;
+      syncUrl(false);
       booting = false;
       return;
     }
     parseCsatPath();
     if (csatToken) { booting = false; return; } // public survey page — no session
     if (noticesPage) { booting = false; return; } // public notices page — no session
+    window.addEventListener("popstate", onPopState);
     const t = api.savedToken();
     if (!t) { booting = false; return; }
     appState.token = t;
@@ -66,6 +177,9 @@
       await api.loadSession();
       api.startRealtime();
       api.startPresenceLoop();
+      // Now that inboxes are known, adopt the URL. Any signed-in path resolves
+      // here, so a refresh or a pasted link lands where it should.
+      adoptArrivalUrl();
     } catch {
       logout();
       toast("error", "Session expired — sign in again");
@@ -81,6 +195,7 @@
     await api.loadSession();
     api.startRealtime();
     api.startPresenceLoop();
+    adoptArrivalUrl();
   }
 
   // Google OAuth callback landing (/auth/callback?code=...&state=...).
@@ -116,6 +231,7 @@
     await api.loadSession();
     api.startRealtime();
     api.startPresenceLoop();
+    adoptArrivalUrl();
   }
 
   function logout() {
@@ -129,6 +245,37 @@
     appState.activeInboxId = id;
     appState.openThreadId = "";
     await api.refreshThreads();
+  }
+
+  // Section navigation. The $effect above is what writes the URL; these just set
+  // state, so there is a single code path that touches history.
+  function goScreen(screen) {
+    appState.screen = screen;
+  }
+
+  // Adopt whatever URL the user arrived on, once a session exists.
+  //
+  // Needed after login specifically: a cold deep link ("<domain>/inbox/x/thread/y")
+  // is loaded while signed out, when the inbox list is still empty, so parsing it
+  // there can only set the screen — the thread id would be dropped. Re-applying
+  // now that inboxes are known is what makes the link land on the ticket the
+  // sender intended rather than the bare mailbox.
+  function adoptArrivalUrl() {
+    defaultInboxId = appState.inboxes[0]?.id || null;
+    const arrivedOn = arrivalPath.replace(/\/+$/, "") || "/";
+    applyPath(arrivedOn);
+    // Landing on "/" resolves an inbox id that should NOT be written back to the
+    // URL — replace only, so Back never bounces forward again.
+    if (arrivedOn === "/") {
+      const canonical = buildPath(
+        { screen: appState.screen, view: appState.view, activeInboxId: "", openThreadId: "" },
+        defaultInboxId
+      );
+      history.replaceState(null, "", canonical === "/" ? "/" : canonical);
+    }
+    // From here on the URL mirrors state normally.
+    routeReady = true;
+    syncUrl(false);
   }
 </script>
 
@@ -163,7 +310,7 @@
         </button>
       </div>
       <span class="md3-chip is-active">{appState.inboxes.find((i) => i.id === appState.activeInboxId)?.name || "—"}</span>
-      <button class="md3-icon-btn" title="Settings" onclick={() => (appState.screen = appState.screen === "settings" ? "mail" : "settings")}>
+      <button class="md3-icon-btn" title="Settings" onclick={() => goScreen(appState.screen === "settings" ? "mail" : "settings")}>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96a7.02 7.02 0 0 0-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84a.48.48 0 0 0-.48.41l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.48-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/></svg>
       </button>
       <button class="md3-icon-btn" title="Toggle theme" onclick={toggleTheme}>
@@ -189,19 +336,19 @@
               <strong>{appState.me?.name || "Account"}</strong>
               <span class="mm-email">{appState.me?.email}</span>
             </div>
-            <button class="mm-item" role="menuitem" onclick={() => { userMenuOpen = false; appState.screen = "mail"; }}>
+            <button class="mm-item" role="menuitem" onclick={() => { userMenuOpen = false; goScreen("mail"); }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/></svg>
               Inbox
             </button>
-            <button class="mm-item" role="menuitem" onclick={() => { userMenuOpen = false; appState.screen = "settings"; }}>
+            <button class="mm-item" role="menuitem" onclick={() => { userMenuOpen = false; goScreen("settings"); }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96a7.02 7.02 0 0 0-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84a.48.48 0 0 0-.48.41l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.48-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/></svg>
               Settings
             </button>
-            <button class="mm-item" role="menuitem" onclick={() => { userMenuOpen = false; appState.screen = "profile"; }}>
+            <button class="mm-item" role="menuitem" onclick={() => { userMenuOpen = false; goScreen("profile"); }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
               My profile
             </button>
-            <button class="mm-item" role="menuitem" onclick={() => { userMenuOpen = false; appState.screen = "reports"; }}>
+            <button class="mm-item" role="menuitem" onclick={() => { userMenuOpen = false; goScreen("reports"); }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M5 9h3v9H5zm5.5-5h3v14h-3zm5.5 8h3v6h-3z"/></svg>
               Reports
             </button>
