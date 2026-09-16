@@ -1,5 +1,5 @@
 <script>
-  import { appState, statusMeta, threadUnread, slaOf, toast, STATUSES } from "../lib/appState.svelte.js";
+  import { appState, statusMeta, threadUnread, threadUnreadNotes, slaOf, toast, STATUSES } from "../lib/appState.svelte.js";
   import { timeAgo, avatarColor } from "../lib/utils.js";
   import { agentInitials } from "../lib/appState.svelte.js";
   import * as api from "../lib/api.js";
@@ -112,6 +112,10 @@
   // Unread-ish: new + escalated threads render bold, like Gmail.
   const isHot = (t) => t.status === "new" || t.status === "escalated";
   const msgCount = (t) => t.message_count || 0;
+  // Unread internal notes. Distinct badge from the message count: notes are
+  // internal discussion, so an agent needs to see at a glance that a colleague
+  // left a comment they have not read.
+  const unreadNotes = (t) => threadUnreadNotes(t.id);
   const isUnread = (t) => threadUnread(t.id) > 0;
 
   const composingOf = (threadId) =>
@@ -314,6 +318,16 @@
               <span class="subject">{t.subject || "(no subject)"}</span>
               {#if msgCount(t) > 0}
                 <span class="mcount" class:unread={isUnread(t)} title={`${msgCount(t)} message${msgCount(t) === 1 ? "" : "s"}`}>{msgCount(t)}</span>
+              {/if}
+              {#if unreadNotes(t) > 0}
+                <span
+                  class="ncount"
+                  title={`${unreadNotes(t)} unread internal note${unreadNotes(t) === 1 ? "" : "s"}`}
+                  aria-label={`${unreadNotes(t)} unread internal notes`}
+                >
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 4h16v2H4zm0 4h10v2H4zm0 4h10v2H4zm12-2h4v10a1 1 0 0 1-1 1h-3v-2h2v-7h-2z"/></svg>
+                  {unreadNotes(t)}
+                </span>
               {/if}
               {#each (Array.isArray(t.tags) ? t.tags : []).slice(0, 3) as tag (tag)}
                 <span class="tag">{tag}</span>
@@ -816,6 +830,25 @@
     color: var(--m3-primary);
     border-color: var(--m3-primary);
     font-weight: 600;
+  }
+
+  /* Unread internal notes — a filled round badge, deliberately NOT the outlined
+     pill the message count uses, and in the tertiary (internal/drafting) violet
+     rather than the primary blue. Two similar blue badges side by side would be
+     ambiguous; these must read as different things at a glance. */
+  .ncount {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font: var(--m3-type-label-sm);
+    font-weight: 700;
+    color: var(--m3-on-tertiary);
+    background: var(--m3-tertiary);
+    border-radius: 999px;
+    padding: 1px 7px;
+    line-height: 16px;
+    flex: 0 0 auto;
+    white-space: nowrap;
   }
 
   .tag {

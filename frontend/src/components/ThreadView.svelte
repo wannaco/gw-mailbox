@@ -1,5 +1,5 @@
 <script>
-  import { appState, toast, statusMeta, composingLock, agentInitials, userName, STATUSES, markThreadRead } from "../lib/appState.svelte.js";
+  import { appState, toast, statusMeta, composingLock, agentInitials, userName, STATUSES, markThreadRead, markNotesRead, threadUnreadNotes } from "../lib/appState.svelte.js";
   import * as api from "../lib/api.js";
   import ContactPanel from "./ContactPanel.svelte";
   import { timeAgo, fmtDateTime, sanitizeHtml, isoLocalInput, avatarColor } from "../lib/utils.js";
@@ -36,6 +36,21 @@
       ? messages.filter((m) => !m.is_internal_note)
       : messages.filter((m) => m.is_internal_note)
   );
+
+  // Unread internal notes — shown as a count on the Internal notes tab.
+  const unreadNotes = $derived(threadUnreadNotes(threadId));
+
+  // Clear the unread-notes badge only once the NOTES TAB has actually been shown.
+  // Deliberately NOT tied to markThreadRead: opening a thread lands on the
+  // conversation, so clearing there would mark notes read that were never seen.
+  // Tracks the message list so a note arriving while the tab is open is marked
+  // read too.
+  $effect(() => {
+    if (tab !== "notes") return;
+    appState.messages[threadId]; // track loads and arrivals
+    if (!threadId) return;
+    markNotesRead(threadId);
+  });
 
   // Other tickets from the same customer (in any inbox) — "previous tickets".
   const prevTickets = $derived(
@@ -1009,7 +1024,7 @@
       </button>
       <button class="md3-chip" class:is-active={tab === "notes"} onclick={() => (tab = "notes")}>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M4 4h16v2H4zm0 4h10v2H4zm0 4h10v2H4zm12-2h4v10a1 1 0 0 1-1 1h-3v-2h2v-7h-2z"/></svg>
-        Internal notes
+        Internal notes{#if unreadNotes > 0}<span class="tab-badge">{unreadNotes}</span>{/if}
       </button>
       <div class="spacer"></div>
       <select class="assignee-sel" value={thread.assigned_agent || ""} onchange={(e) => setAssignee(e.target.value)} disabled={busyAssign} title="Assignee">
@@ -1741,6 +1756,24 @@
     background: var(--m3-tertiary-container);
     color: var(--m3-on-tertiary-container);
     font: var(--m3-type-body-md);
+  }
+
+  /* Unread-notes count inside the Internal notes tab. Uses the same violet as
+     the row/card badge, so the number on the tab is obviously the same thing the
+     list badge was counting. */
+  .tab-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    margin-left: 5px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: var(--m3-tertiary);
+    color: var(--m3-on-tertiary);
+    font: var(--m3-type-label-sm);
+    font-weight: 700;
+    line-height: 16px;
   }
 
   .csat-strip {

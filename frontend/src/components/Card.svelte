@@ -1,5 +1,5 @@
 <script>
-  import { appState, agentInitials, slaOf } from "../lib/appState.svelte.js";
+  import { appState, agentInitials, slaOf, threadUnreadNotes } from "../lib/appState.svelte.js";
   import { timeAgo, avatarColor } from "../lib/utils.js";
 
   let { thread, open, selectable, selected, onToggleSelect, onDragStart, onDragEnd } = $props();
@@ -21,6 +21,9 @@
   const assignedEmail = $derived(thread.assigned_agent ? appState.users[thread.assigned_agent]?.email || "" : "");
   const isMine = $derived(thread.assigned_agent && thread.assigned_agent === appState.me?.id);
   const sla = $derived(slaOf(thread));
+  // Unread internal notes — see ListView for why this is a separate, filled
+  // badge rather than reusing the message count.
+  const unreadNotes = $derived(threadUnreadNotes(thread.id));
 
   function openCard() {
     if (selectable) {
@@ -98,6 +101,16 @@
       <span class="assignee" class:mine={isMine} title={`Assigned to ${assigned}`}>
         <span class="a-ava" style="background:{avatarColor(assignedEmail || thread.assigned_agent)}">{agentInitials(assigned)}</span>
         <span class="a-name">{assigned}</span>
+      </span>
+    {/if}
+    {#if unreadNotes > 0}
+      <span
+        class="ncount"
+        title={`${unreadNotes} unread internal note${unreadNotes === 1 ? "" : "s"}`}
+        aria-label={`${unreadNotes} unread internal notes`}
+      >
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 4h16v2H4zm0 4h10v2H4zm0 4h10v2H4zm12-2h4v10a1 1 0 0 1-1 1h-3v-2h2v-7h-2z"/></svg>
+        {unreadNotes}
       </span>
     {/if}
     {#if sla}
@@ -295,6 +308,22 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /* Unread internal notes: filled round badge in the tertiary (internal)
+     violet, distinct from the primary-blue chips around it. */
+  .ncount {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font: var(--m3-type-label-sm);
+    font-weight: 700;
+    color: var(--m3-on-tertiary);
+    background: var(--m3-tertiary);
+    border-radius: 999px;
+    padding: 1px 7px;
+    white-space: nowrap;
+    flex: 0 0 auto;
   }
 
   .sla-chip {

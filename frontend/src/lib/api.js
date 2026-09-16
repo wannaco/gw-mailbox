@@ -7,7 +7,7 @@
 // POST /api/realtime {clientId, subscriptions:[...]}.
 // =============================================================================
 
-import { appState, toast, loadReadCounts } from "./appState.svelte.js";
+import { appState, toast, loadReadCounts, loadNotesReadCounts } from "./appState.svelte.js";
 
 export const PB_URL = (import.meta.env.VITE_PB_URL || "").replace(/\/$/, "");
 
@@ -110,6 +110,7 @@ export function adminAuth(email, password) {
 export async function adminSession() {
   const meRes = await pbRequest("GET", "/mailbox/me");
   loadReadCounts();
+  loadNotesReadCounts();
   appState.me = meRes.me; // { role, isAdmin, ... } — app-level role
   appState.inboxes = meRes.inboxes || [];
   if (meRes.sla) appState.slaConfig = { enabled: !!meRes.sla.sla_enabled, hours: Number(meRes.sla.sla_hours) || 24 };
@@ -127,6 +128,7 @@ export async function loadSession() {
   // bootstrap /me + permitted inboxes + lightweight directory
   const meRes = await pbRequest("GET", "/mailbox/me");
   loadReadCounts();
+  loadNotesReadCounts();
   appState.me = meRes.me;
   appState.inboxes = meRes.inboxes || [];
   if (meRes.sla) appState.slaConfig = { enabled: !!meRes.sla.sla_enabled, hours: Number(meRes.sla.sla_hours) || 24 };

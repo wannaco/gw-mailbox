@@ -280,6 +280,17 @@ function addInternalNote(threadId, actor, bodyText, meta) {
     is_internal_note: true
   });
   $app.save(note);
+
+  // Bump the thread's note counter. This is the single place every internal note
+  // is created, so it is the only place that needs to maintain notes_count — the
+  // UI uses it to show an unread-notes badge without loading messages.
+  try {
+    thread.set("notes_count", (thread.getInt("notes_count") || 0) + 1);
+    $app.save(thread);
+  } catch (err) {
+    warn("could not bump notes_count for", threadId, (err && err.message) || err);
+  }
+
   log("internal note added", threadId, "by", actor ? actor.name : "system");
 
   // Notify @mentioned teammates + the thread's assignee (skip author).

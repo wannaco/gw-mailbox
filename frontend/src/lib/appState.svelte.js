@@ -31,6 +31,11 @@ export const appState = $state({
   threadsPagesInbox: "", // which inbox those pages belong to (reset on switch)
   messages: {}, // threadId -> message records
   readCounts: {}, // threadId -> conversation messages known-read (for unread/new dots)
+  // threadId -> internal notes known-read. Tracked separately from readCounts
+  // because notes are not part of the customer conversation: a note is internal
+  // discussion, so "I looked at the customer's email" is not "I read the note".
+  // Powers the unread-notes badge.
+  notesReadCounts: {},
   openThreadId: "",
   view: "list", // list (Gmail-style) | board (kanban)
   screen: "mail", // mail | settings
@@ -123,6 +128,46 @@ export function loadReadCounts() {
   } catch (_) { /* ignore */ }
 }
 
+// ---------------------------------------------------------------------------
+// Internal notes — unread badge
+//
+// `threads.notes_count` is maintained server-side by addInternalNote(), so the
+// list and board know how many notes a thread has without loading its messages.
+// We only need to remember how many this user has actually looked at.
+// ---------------------------------------------------------------------------
+
+// Unread internal notes on a thread. 0 = none new (or none at all).
+export function threadUnreadNotes(threadId) {
+  const total = appState.threads[threadId]?.notes_count || 0;
+  if (!total) return 0;
+  const read = appState.notesReadCounts[threadId] || 0;
+  return Math.max(0, total - read);
+}
+
+// Called when the NOTES TAB is actually viewed — not merely when the thread is
+// opened. Opening a thread lands on the conversation, so treating that as
+// "notes read" would clear the badge for something the agent never saw.
+// The thread's notes_count is authoritative, so a note added while the tab is
+// open is marked read too (the effect re-runs when messages change).
+export function markNotesRead(threadId) {
+  const n = appState.threads[threadId]?.notes_count || 0;
+  if (n > 0) {
+    appState.notesReadCounts[threadId] = n;
+    persistNotesReadCounts();
+  }
+}
+
+const NOTES_READ_KEY = "gwmb.notesReadCounts";
+function persistNotesReadCounts() {
+  try { localStorage.setItem(NOTES_READ_KEY, JSON.stringify(appState.notesReadCounts)); } catch (_) { /* private mode */ }
+}
+export function loadNotesReadCounts() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(NOTES_READ_KEY) || "{}");
+    if (saved && typeof saved === "object") appState.notesReadCounts = saved;
+  } catch (_) { /* ignore */ }
+}
+
 // Number of unread notifications for the current user.
 export function unreadNotifs() {
   return (appState.notifications || []).filter((n) => !n.read).length;
@@ -162,6 +207,7 @@ export function resetSession() {
   appState.threads = {};
   appState.messages = {};
   appState.readCounts = {};
+  appState.notesReadCounts = {};
   appState.presence = {};
   appState.roster = [];
   appState.notifications = [];
