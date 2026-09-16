@@ -245,7 +245,12 @@
     }
   }
 
-  const slashItems = $derived(
+  // Matches are NOT capped at a handful any more. The old `.slice(0, 8)` hid
+  // everything past the eighth match with no indication there was more, so a
+  // long catalog became unreachable. The list scrolls instead, and the footer
+  // reports the count so it is obvious when there is more to see.
+  const SLASH_MAX = 50;
+  const slashMatches = $derived(
     slash
       ? canned.filter((c) => {
           const q = (slash.query || "").toLowerCase();
@@ -254,9 +259,43 @@
             (c.title || "").toLowerCase().includes(q) ||
             (c.body || "").toLowerCase().includes(q)
           );
-        }).slice(0, 8)
+        })
       : []
   );
+  const slashItems = $derived(slashMatches.slice(0, SLASH_MAX));
+  const slashHidden = $derived(Math.max(0, slashMatches.length - slashItems.length));
+
+  // Escape first, then wrap the matched run — so highlighting can never inject
+  // markup from a canned response's own text.
+  function hl(text, query) {
+    const t = String(text || "");
+    const q = String(query || "");
+    if (!q) return esc(t);
+    const i = t.toLowerCase().indexOf(q.toLowerCase());
+    if (i === -1) return esc(t);
+    return (
+      esc(t.slice(0, i)) +
+      "<mark>" + esc(t.slice(i, i + q.length)) + "</mark>" +
+      esc(t.slice(i + q.length))
+    );
+  }
+
+  let slashListEl = $state(null);
+
+  // Keep the keyboard-selected row in view while arrowing through the list.
+  // scrollTop is adjusted directly rather than with scrollIntoView(), which can
+  // also scroll the page behind the drawer.
+  $effect(() => {
+    const idx = slashIdx;
+    const el = slashListEl;
+    if (!el) return;
+    const li = el.querySelector(`[data-slash-item="${idx}"]`);
+    if (!li) return;
+    const top = li.offsetTop;
+    const bottom = top + li.offsetHeight;
+    if (top < el.scrollTop) el.scrollTop = top;
+    else if (bottom > el.scrollTop + el.clientHeight) el.scrollTop = bottom - el.clientHeight;
+  });
 
   // Walk backwards from the caret to select the `/query` token (generic).
   function caretTokenRange(caretNode, caretOffset, marker) {
@@ -344,16 +383,20 @@
   }
 
   function onEditorKeydown(ev) {
-    if (!slash || !slashItems.length) return;
+    if (!slash) return;
+    // Escape closes the menu even when nothing matched — otherwise a query with
+    // no results left the menu logically open but invisible and unresponsive.
+    if (ev.key === "Escape") { slash = null; return; }
+    if (!slashItems.length) return;
     if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
       ev.preventDefault();
       const len = slashItems.length;
       slashIdx = (slashIdx + (ev.key === "ArrowDown" ? 1 : -1) + len) % len;
     } else if (ev.key === "Enter" || ev.key === "Tab") {
       ev.preventDefault();
-      pickCanned(slashItems[slashIdx]);
-    } else if (ev.key === "Escape") {
-      slash = null;
+      // Fall back to the first row: arrow-wrap can leave slashIdx past the end
+      // when typing shrinks the filtered list mid-navigation.
+      pickCanned(slashItems[slashIdx] || slashItems[0]);
     }
   }
 
@@ -1358,24 +1401,41 @@
             <span class="hint">{lock ? `Locked — ${lock.agentName} is composing` : "Reply to " + (thread.customer_email || "customer")}</span>
           </div>
           <div class="ed-rel">
-            {#if slashItems.length}
-              <ul class="slash-menu" role="listbox">
-                {#each slashItems as c, i (c.id)}
-                  <li
-                    role="option"
-                    class:sel={i === slashIdx}
-                    onmousedown={(ev) => {
-                      ev.preventDefault();
-                      pickCanned(c);
-                    }}
-                    onmouseenter={() => (slashIdx = i)}
-                  >
-                    <span class="sl-mark">/</span>
-                    <span class="sl-title">{c.title}</span>
-                    <span class="sl-prev">{c.body.replace(/\s+/g, " ").trim().slice(0, 60)}</span>
-                  </li>
-                {/each}
-              </ul>
+            {#if slash}
+              <div class="slash-wrap">
+                {#if slashItems.length}
+                  <ul class="slash-menu" role="listbox" aria-label="Saved responses" bind:this={slashListEl}>
+                    {#each slashItems as c, i (c.id)}
+                      <li
+                        role="option"
+                        aria-selected={i === slashIdx}
+                        class:sel={i === slashIdx}
+                        data-slash-item={i}
+                        onmousedown={(ev) => {
+                          ev.preventDefault();
+                          pickCanned(c);
+                        }}
+                        onmouseenter={() => (slashIdx = i)}
+                      >
+                        <span class="sl-mark">/</span>
+                        <span class="sl-title">{@html hl(c.title, slash.query)}</span>
+                        <span class="sl-prev">{@html hl(c.body.replace(/\s+/g, " ").trim().slice(0, 70), slash.query)}</span>
+                      </li>
+                    {/each}
+                  </ul>
+                  <div class="slash-foot">
+                    <span>
+                      {slashItems.length}{slashHidden ? ` of ${slashMatches.length}` : ""}
+                      response{slashMatches.length === 1 ? "" : "s"}
+                    </span>
+                    <span class="sf-keys"><kbd>↑</kbd><kbd>↓</kbd> move · <kbd>Enter</kbd> insert · <kbd>Esc</kbd> close</span>
+                  </div>
+                {:else}
+                  <div class="slash-empty">
+                    No saved response matches “{slash.query}”
+                  </div>
+                {/if}
+              </div>
             {/if}
             <div
               class="rich-body"
@@ -2414,21 +2474,81 @@
     position: relative;
   }
 
-  .slash-menu {
+  /* One positioned wrapper holds the scrollable list AND the footer, so the
+     count/key hints stay pinned under the list instead of scrolling with it. */
+  .slash-wrap {
     position: absolute;
     top: 4px;
     left: 8px;
     right: 8px;
     z-index: 70;
-    list-style: none;
-    margin: 0;
     background: var(--m3-surface-container-high);
     border: 1px solid var(--m3-outline-variant);
     border-radius: var(--m3-shape-sm);
     box-shadow: var(--m3-elev-3);
-    max-height: 220px;
+    overflow: hidden;
+  }
+
+  .slash-menu {
+    list-style: none;
+    margin: 0;
+    /* Roughly six rows visible, then it scrolls. Deliberately shorter than
+       before so a long catalog is obviously scrollable rather than looking like
+       the whole list. */
+    max-height: 224px;
     overflow-y: auto;
+    overscroll-behavior: contain;
     padding: 4px;
+  }
+
+  .slash-menu::-webkit-scrollbar {
+    width: 10px;
+  }
+  .slash-menu::-webkit-scrollbar-thumb {
+    background: var(--m3-outline);
+    border-radius: 999px;
+    border: 3px solid var(--m3-surface-container-high);
+  }
+
+  .slash-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 5px 10px;
+    border-top: 1px solid var(--m3-outline-variant);
+    color: var(--m3-on-surface-variant-2);
+    font: var(--m3-type-body-sm);
+  }
+
+  .sf-keys {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+  }
+
+  .slash-menu :global(mark) {
+    background: color-mix(in srgb, var(--m3-primary) 26%, transparent);
+    color: inherit;
+    border-radius: 3px;
+    padding: 0 1px;
+  }
+
+  .slash-foot kbd {
+    font: var(--m3-type-body-sm);
+    background: var(--m3-surface-container-high);
+    border: 1px solid var(--m3-outline-variant);
+    border-radius: 4px;
+    padding: 0 4px;
+    color: var(--m3-on-surface-variant);
+  }
+
+  .slash-empty {
+    padding: 12px 10px;
+    color: var(--m3-on-surface-variant-2);
+    font: var(--m3-type-body-sm);
+    text-align: center;
   }
 
   .slash-menu li {
