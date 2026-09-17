@@ -71,10 +71,16 @@
 </script>
 
 <div class="login-wrap">
+  <!-- Decoration lives in its own clipped layer. Putting `overflow: hidden` on
+       .login-wrap directly would clip the FORM on a short viewport, leaving no
+       way to scroll to the button. -->
+  <div class="deco" aria-hidden="true">
+    <span class="p1"></span>
+    <span class="p2"></span>
+  </div>
+
   <div class="login-shell">
     <section class="brand-panel" aria-hidden="true">
-      <div class="blob b1"></div>
-      <div class="blob b2"></div>
       <div class="brand-inner">
         <div class="logo">
           <span class="mark">
@@ -163,21 +169,66 @@
 
 <style>
   .login-wrap {
-    height: 100dvh;
+    position: relative;
+    min-height: 100dvh;
     display: grid;
     place-items: center;
     padding: 16px;
     background: var(--m3-surface);
   }
 
+  /* Angled planes behind the card — the structural idea from the reference:
+     the panel does not sit flat on the page, it sits on rotated layers that
+     extend past it. Two different rotations and opacities so they read as
+     stacked depth rather than one flat shape. */
+  .deco {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+  .deco span {
+    position: absolute;
+    display: block;
+    border-radius: 52px;
+    background: linear-gradient(140deg, var(--m3-primary), #0b57d0);
+  }
+  .p1 {
+    width: min(540px, 58vw);
+    height: min(540px, 58vw);
+    top: -15%;
+    left: -7%;
+    transform: rotate(34deg);
+    opacity: 0.14;
+  }
+  .p2 {
+    width: min(430px, 47vw);
+    height: min(430px, 47vw);
+    bottom: -17%;
+    right: -5%;
+    transform: rotate(21deg);
+    opacity: 0.1;
+  }
+
+  /* Above the decoration layer. */
   .login-shell {
+    position: relative;
+    z-index: 1;
+  }
+
+  .login-shell {
+    position: relative;
+    z-index: 1;
     display: grid;
     grid-template-columns: minmax(0, 1.1fr) minmax(340px, 0.9fr);
     width: min(920px, 100%);
     max-height: min(620px, calc(100dvh - 32px));
     border-radius: 24px;
     overflow: hidden;
-    box-shadow: var(--m3-elev-4);
+    /* Same colour as the card: the brand panel's slanted edge is clipped, and
+       this is what shows through the wedge it leaves behind. */
+    background: var(--m3-surface-container-low);
+    box-shadow: 0 32px 64px -28px rgb(11 87 208 / 0.42), 0 6px 20px -10px rgb(0 0 0 / 0.18);
     border: 1px solid var(--m3-outline-variant);
   }
 
@@ -187,14 +238,40 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 40px;
+    padding: 40px 52px 40px 40px;
     background: linear-gradient(150deg, #0b57d0 0%, #1a73e8 45%, #3949ab 100%);
     color: #fff;
     overflow: hidden;
+    /* Slanted right edge. 9% over a ~600px panel is a shallow lean, which is
+       deliberate - a steeper angle would eat the text column and read as a
+       gimmick. The angled bands below carry the rest of the geometry. */
+    clip-path: polygon(0 0, 100% 0, 91% 100%, 0 100%);
   }
-  .blob { position: absolute; border-radius: 50%; filter: blur(2px); opacity: 0.22; }
-  .b1 { width: 300px; height: 300px; background: #aecbfa; top: -90px; right: -90px; }
-  .b2 { width: 260px; height: 260px; background: #d2e3fc; bottom: -80px; left: -70px; }
+
+  /* Rotated bands in place of the old blurred circles. Circles read as soft
+     decoration; bands read as planes at an angle, which is the point. */
+  .brand-panel::before,
+  .brand-panel::after {
+    content: "";
+    position: absolute;
+    pointer-events: none;
+    transform: rotate(-17deg);
+  }
+  .brand-panel::before {
+    width: 200%;
+    height: 230px;
+    top: 1%;
+    left: -50%;
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.17), rgba(255, 255, 255, 0.015));
+  }
+  .brand-panel::after {
+    width: 200%;
+    height: 190px;
+    bottom: 3%;
+    left: -60%;
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.15));
+  }
+
   .brand-inner { position: relative; z-index: 1; max-width: 380px; }
   .brand-inner p { opacity: 0.92; font-size: 0.98rem; line-height: 1.45; }
 
