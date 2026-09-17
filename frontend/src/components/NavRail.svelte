@@ -99,9 +99,11 @@
     font-weight: 600;
   }
 
-  .rail-item {
-    width: 84px;
-  }
+  /* NOTE: there used to be a second `.rail-item { width: 84px }` rule here. It
+     silently overrode the `width: 100%` above, so every item sat 84px wide
+     inside the rail's 107px content box — the active pill covered barely
+     two-thirds of the rail and left 34px of dead space down the right edge.
+     Removed; items now fill the rail evenly. */
 
   .empty {
     font: var(--m3-type-body-sm);
