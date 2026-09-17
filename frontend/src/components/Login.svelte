@@ -76,8 +76,14 @@
       <div class="blob b1"></div>
       <div class="blob b2"></div>
       <div class="brand-inner">
-        <div class="logo"><span class="dot"></span><span class="mark">M</span></div>
-        <h2>Mailbox</h2>
+        <div class="logo">
+          <span class="mark">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm0 12h-4a3 3 0 0 1-6 0H5V5h14v10z"/>
+            </svg>
+          </span>
+          <span class="wordmark">Mailbox</span>
+        </div>
         <p>One shared inbox for your whole team — tickets, replies, SLAs and CSAT in one place.</p>
         <ul class="features">
           <li><span>✓</span> Shared Gmail queue &amp; kanban</li>
@@ -88,11 +94,17 @@
     </section>
 
     <form class="login-card" onsubmit={(ev) => { ev.preventDefault(); submit(); }}>
-      <div class="logo mobile-logo"><span class="dot"></span></div>
-      <h1>Welcome back</h1>
-      <p class="tag">Sign in to continue to your mailbox</p>
+      <div class="card-logo">
+        <span class="mark">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm0 12h-4a3 3 0 0 1-6 0H5V5h14v10z"/>
+          </svg>
+        </span>
+        <span class="wordmark">Mailbox</span>
+      </div>
 
-      <p class="subtag">Sign in to your team workspace</p>
+      <h1>Welcome back</h1>
+      <p class="tag">Sign in to your team workspace</p>
 
       {#if oauth.available}
         <button type="button" class="google-btn" onclick={googleSignIn} disabled={oauth.busy}>
@@ -112,20 +124,29 @@
       {/if}
 
       <label class="field">
-        <span>Email</span>
-        <input type="email" bind:value={email} placeholder="you@yourdomain.com" autocomplete="email" />
+        <span class="lbl">Email</span>
+        <div class="input-wrap">
+          <input type="email" bind:value={email} placeholder="you@yourdomain.com" autocomplete="email" />
+          <span class="fld-icon" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2.5" y="4.5" width="19" height="15" rx="2.5"/>
+              <path d="M3 7l9 6 9-6"/>
+            </svg>
+          </span>
+        </div>
       </label>
+
       <label class="field">
-        <span>Password</span>
-        <div class="pw-wrap">
+        <span class="lbl">Password</span>
+        <div class="input-wrap">
           <input type={showPw ? "text" : "password"} bind:value={password} placeholder="••••••••" autocomplete="current-password" />
           <button type="button" class="pw-toggle" onclick={() => (showPw = !showPw)} tabindex="-1" aria-label={showPw ? "Hide password" : "Show password"}>
             {#if showPw}
               <!-- eye-off: password is visible, click to hide -->
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
             {:else}
               <!-- eye: password is hidden, click to show -->
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
             {/if}
           </button>
         </div>
@@ -175,10 +196,33 @@
   .b1 { width: 300px; height: 300px; background: #aecbfa; top: -90px; right: -90px; }
   .b2 { width: 260px; height: 260px; background: #d2e3fc; bottom: -80px; left: -70px; }
   .brand-inner { position: relative; z-index: 1; max-width: 380px; }
-  .brand-inner .logo { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
-  .mark { font-weight: 800; font-size: 1.15rem; }
-  .brand-inner h2 { font-size: 1.9rem; margin: 0 0 8px; }
   .brand-inner p { opacity: 0.92; font-size: 0.98rem; line-height: 1.45; }
+
+  /* Logo mark: an inbox glyph, not a letter. It previously rendered as a bare
+     "M" because `.dot` had no styles on desktop at all (only `.mobile-logo
+     .dot` was defined) — so the only visible part of the logo was the letter. */
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .mark {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    flex: 0 0 auto;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+  .wordmark {
+    font-size: 1.4rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+
   .features { list-style: none; margin: 24px 0 0; padding: 0; display: grid; gap: 10px; }
   .features li { display: flex; align-items: center; gap: 9px; font-size: 0.9rem; opacity: 0.95; }
   .features span {
@@ -190,14 +234,24 @@
   .login-card {
     display: flex;
     flex-direction: column;
-    padding: 34px 34px 30px;
+    padding: 30px 34px 30px;
     background: var(--m3-surface-container-low);
     overflow-y: auto;
   }
-  .mobile-logo { display: none; }
+
+  /* Compact mark for the card, where the brand panel is hidden (mobile). */
+  .card-logo { display: flex; align-items: center; gap: 9px; margin-bottom: 16px; }
+  .card-logo .mark {
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    background: var(--m3-primary-container);
+    color: var(--m3-on-primary-container);
+  }
+  .card-logo .wordmark { font-size: 1.05rem; color: var(--m3-on-surface); }
+
   h1 { font: var(--m3-type-headline); margin: 0 0 4px; }
   .tag { color: var(--m3-on-surface-variant); margin: 0 0 18px; font: var(--m3-type-body-md); }
-  .role-seg { align-self: flex-start; margin-bottom: 4px; }
   .subtag { font: var(--m3-type-label-sm); color: var(--m3-on-surface-variant-2); margin-bottom: 16px; }
   .subtag.muted { color: var(--m3-on-surface-variant-2); }
 
@@ -239,23 +293,42 @@
     color: var(--m3-on-surface-variant);
     font: var(--m3-type-label-md);
   }
+  .lbl { font-weight: 600; }
+  .input-wrap { position: relative; display: flex; align-items: center; }
+
   .field input {
+    width: 100%;
     height: 46px;
-    padding: 0 13px;
+    padding: 0 44px 0 13px; /* room for the trailing icon */
     border-radius: var(--m3-shape-xs);
     border: 1px solid var(--m3-outline);
     background: var(--m3-surface);
+    color: var(--m3-on-surface);
     outline: none;
     transition: border-color 0.12s ease, box-shadow 0.12s ease;
   }
   .field input:focus { border: 2px solid var(--m3-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--m3-primary) 18%, transparent); }
-  .pw-wrap { position: relative; }
-  .pw-wrap input { width: 100%; padding-right: 46px; }
-  .pw-toggle {
-    position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
-    background: none; border: 0; cursor: pointer; font-size: 1rem; padding: 6px; border-radius: 50%;
+
+  /* Trailing field icon — the envelope. Purely decorative, hence aria-hidden
+     and pointer-events:none so it never swallows a click into the input. */
+  .fld-icon {
+    position: absolute;
+    right: 13px;
+    display: grid;
+    place-items: center;
+    color: var(--m3-on-surface-variant-2);
+    pointer-events: none;
   }
-  .pw-toggle:hover { background: var(--m3-surface-container-highest); }
+
+  .pw-toggle {
+    position: absolute; right: 6px;
+    display: grid; place-items: center;
+    width: 34px; height: 34px;
+    background: none; border: 0; cursor: pointer;
+    color: var(--m3-on-surface-variant-2);
+    border-radius: 50%;
+  }
+  .pw-toggle:hover { background: var(--m3-surface-container-highest); color: var(--m3-on-surface); }
 
   .err {
     background: var(--m3-error-container);
@@ -265,12 +338,17 @@
     font: var(--m3-type-body-sm);
     margin-bottom: 10px;
   }
-  .signin { margin-top: 4px; height: 46px; }
+
+  /* Pill CTA, as in the reference. Overrides the 8px .md3-btn radius. */
+  .signin {
+    margin-top: 6px;
+    height: 48px;
+    border-radius: 999px;
+    font-weight: 600;
+  }
 
   @media (max-width: 760px) {
     .login-shell { grid-template-columns: 1fr; max-height: none; }
     .brand-panel { display: none; }
-    .mobile-logo { display: block; margin-bottom: 10px; }
   }
-  .mobile-logo .dot { width: 36px; height: 36px; border-radius: 50%; background: var(--m3-primary); display: block; }
 </style>
