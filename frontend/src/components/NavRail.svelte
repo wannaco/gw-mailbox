@@ -1,5 +1,5 @@
 <script>
-  import { appState, agentInitials } from "../lib/appState.svelte.js";
+  import { appState } from "../lib/appState.svelte.js";
 
   let { select } = $props();
 </script>
@@ -15,7 +15,15 @@
         title={inbox.email_address}
         aria-current={appState.activeInboxId === inbox.id ? "true" : undefined}
       >
-        <span class="rail-icon">{agentInitials(inbox.name)}</span>
+        <span class="rail-icon" aria-hidden="true">
+          <!-- Inbox glyph rather than the mailbox's initials: two letters in a
+               box read as an avatar (a person), which is the wrong idea — a
+               mailbox is a place. The name is right next to it anyway, so the
+               initials were saying nothing the label didn't. -->
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm0 12h-4a3 3 0 0 1-6 0H5V5h14v10z"/>
+          </svg>
+        </span>
         <span class="rail-label">{inbox.name}</span>
       </button>
     {/each}
@@ -106,10 +114,13 @@
     border-radius: var(--m3-shape-sm);
     background: var(--m3-surface-container-high);
     color: var(--m3-on-surface-variant);
-    font-size: 0.625rem;
-    font-weight: 700;
-    letter-spacing: 0.03em;
     transition: background 0.12s ease, color 0.12s ease;
+  }
+
+  /* Glyph is 16px inside the 26px chip — same optical weight as the 20px
+     toolbar icons, without the chip reading as a button. */
+  .rail-icon svg {
+    display: block;
   }
 
   .rail-item.active .rail-icon {
@@ -177,7 +188,11 @@
       width: 22px;
       height: 22px;
       flex: 0 0 22px;
-      font-size: 0.5625rem;
+    }
+
+    .rail-icon svg {
+      width: 14px;
+      height: 14px;
     }
 
     .rail-label {
