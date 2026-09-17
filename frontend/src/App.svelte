@@ -641,8 +641,8 @@
   .scrim {
     position: absolute;
     inset: 0;
-    background: var(--m3-scrim);
-    opacity: 0.25;
+    /* One dimming token for the whole app — see --m3-scrim-soft in m3.css. */
+    background: var(--m3-scrim-soft);
     z-index: 20;
   }
 

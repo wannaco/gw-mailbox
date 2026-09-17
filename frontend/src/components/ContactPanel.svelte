@@ -144,7 +144,9 @@
 </div>
 
 <style>
-  .contact-overlay { position: fixed; inset: 0; z-index: 95; background: var(--m3-scrim); display: flex; align-items: center; justify-content: center; padding: 12px; }
+  /* --m3-scrim-soft, not --m3-scrim: the latter is opaque and blacked out the
+     whole app behind the panel. */
+  .contact-overlay { position: fixed; inset: 0; z-index: 95; background: var(--m3-scrim-soft); display: flex; align-items: center; justify-content: center; padding: 12px; }
   .contact-panel { width: min(480px, 96vw); max-height: 92vh; display: flex; flex-direction: column; background: var(--m3-surface-container-low); border-radius: var(--m3-shape-lg); box-shadow: var(--m3-elev-4); overflow: hidden; }
   .cp-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--m3-outline-variant); }
   .cp-head h3 { font: var(--m3-type-title-md); }

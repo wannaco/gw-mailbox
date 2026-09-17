@@ -45,6 +45,11 @@
   --m3-inverse-surface: #2f3036;
   --m3-inverse-on-surface: #f1f0f4;
   --m3-scrim: #000000;
+  /* Dimming layer for modals. Opaque `--m3-scrim` is the raw colour — using it
+     directly as a background paints the page SOLID BLACK behind a dialog.
+     Always dim with this token (alpha baked in) so the overlay never needs the
+     `opacity` property: opacity on an overlay fades its dialog child too. */
+  --m3-scrim-soft: rgb(0 0 0 / 0.32);
   --m3-shadow: #000000;
 
   /* row hover / selection (list view) */
@@ -101,6 +106,8 @@
   --m3-outline-variant: #4a4a4a;
   --m3-inverse-surface: #e4e4e4;
   --m3-inverse-on-surface: #2f3036;
+
+  --m3-scrim-soft: rgb(0 0 0 / 0.48);
 
   --m3-row-hover: #2c2c2c;
   --m3-row-active: #30353b;

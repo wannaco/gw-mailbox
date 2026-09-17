@@ -408,9 +408,120 @@
     } catch (_) { /* ignored */ }
     onEditorInput();
   }
+  // ---- insert-link dialog -----------------------------------------------------
+  // Replaces window.prompt(). A native prompt is browser chrome: it can't be
+  // styled, it blocks the whole tab, and some browsers suppress it outright.
+  //
+  // The old code called document.execCommand("createLink"), which needs a live
+  // selection *inside* the editor. Clicking the toolbar button moves focus to
+  // the prompt and drops that selection, so createLink silently did nothing
+  // unless text happened to be selected. This places a real <a> node instead,
+  // which works with or without a selection and can't fail the same way.
+  let linkOpen = $state(false);
+  let linkUrl = $state("");
+  let linkFor = $state("composer"); // composer | note
+  let linkErr = $state("");
+  let linkInputEl;
+  let savedRange = null; // the editor's caret/selection, captured before focus moves
+
+  // The dialog's input takes focus, which drops the editor's selection — and
+  // the selection is where the link has to go. So snapshot it first. Without
+  // this the browser reports a collapsed range at offset 0 and the link lands
+  // at the START of the draft instead of where the user was typing.
+  function captureCaret(el) {
+    savedRange = null;
+    if (!el) return;
+    const sel = window.getSelection && window.getSelection();
+    if (!sel || !sel.rangeCount) return;
+    try {
+      const r = sel.getRangeAt(0);
+      if (el.contains(r.startContainer)) savedRange = r.cloneRange();
+    } catch (_) { savedRange = null; }
+  }
+
+  function openLinkDialog(which) {
+    linkFor = which;
+    linkUrl = "";
+    linkErr = "";
+    linkOpen = true;
+    tick().then(() => linkInputEl && linkInputEl.focus());
+  }
+
+  function closeLinkDialog() {
+    savedRange = null;
+    linkOpen = false;
+  }
+
+  // "example.com" is what people actually type, so assume https. Anything that
+  // isn't http(s) is refused: javascript:/data: are how a pasted "link" turns
+  // into XSS in an email body.
+  function normalizeUrl(raw) {
+    const v = String(raw || "").trim();
+    if (!v) return { err: "Enter a URL." };
+    const withProto = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(v) ? v : "https://" + v;
+    let u;
+    try { u = new URL(withProto); } catch (_) { return { err: "That doesn't look like a URL." }; }
+    if (u.protocol !== "http:" && u.protocol !== "https:") {
+      return { err: "Only http:// and https:// links can be inserted." };
+    }
+    return { href: u.href };
+  }
+
+  // Puts an <a> at the captured caret. If text was selected, that text becomes
+  // the link's own label (so it reads as a link, not a pasted URL); otherwise
+  // the URL is inserted as the link text.
+  // New URL() percent-encodes quotes, so href is safe in an attribute.
+  function placeLink(el, href, isNote) {
+    if (!el) return false;
+    el.focus();
+    const a = document.createElement("a");
+    a.setAttribute("href", href);
+    a.setAttribute("target", "_blank");
+    a.setAttribute("rel", "noopener noreferrer");
+
+    const sel = window.getSelection && window.getSelection();
+    let range = null;
+    if (savedRange && el.contains(savedRange.startContainer)) range = savedRange;
+    else if (sel && sel.rangeCount && el.contains(sel.getRangeAt(0).startContainer)) range = sel.getRangeAt(0);
+
+    const selectedText = range && !range.collapsed ? String(range.toString() || "") : "";
+    a.textContent = selectedText || href;
+
+    if (range) {
+      try {
+        range.deleteContents();
+        range.insertNode(a);
+        const after = document.createRange();
+        after.setStartAfter(a);
+        after.collapse(true);
+        if (sel) { sel.removeAllRanges(); sel.addRange(after); }
+        savedRange = after.cloneRange();
+      } catch (_) { el.appendChild(a); }
+    } else {
+      el.appendChild(a);
+    }
+    savedRange = null;
+    if (isNote) onNoteEditorInput(); else onEditorInput();
+    return true;
+  }
+
+  function confirmLink() {
+    const norm = normalizeUrl(linkUrl);
+    if (norm.err) { linkErr = norm.err; return; }
+    const ok = placeLink(linkFor === "composer" ? editorEl : noteEditorEl, norm.href, linkFor === "note");
+    if (!ok) { linkErr = "The editor isn't open — try again."; return; }
+    linkOpen = false;
+  }
+
+  function onLinkKey(ev) {
+    if (ev.key === "Enter") { ev.preventDefault(); confirmLink(); }
+    else if (ev.key === "Escape") { ev.preventDefault(); closeLinkDialog(); }
+  }
+
   function addLink() {
-    const url = window.prompt("Link URL (https://...)");
-    if (url) exec("createLink", url);
+    if (lock) return;
+    captureCaret(editorEl);
+    openLinkDialog("composer");
   }
 
   // ---- attachment handling ----------------------------------------------------
@@ -641,8 +752,8 @@
     detectMention();
   }
   function addNoteLink() {
-    const url = window.prompt("Link URL (https://...)");
-    if (url) execNote("createLink", url);
+    captureCaret(noteEditorEl);
+    openLinkDialog("note");
   }
 
   function noteTextBeforeCaret() {
@@ -1284,6 +1395,32 @@
     </div>
   {/if}
 
+  {#if linkOpen}
+    <div class="link-overlay" onclick={(e) => { if (e.target === e.currentTarget) closeLinkDialog(); }}>
+      <div class="link-modal" role="dialog" aria-modal="true" aria-label="Insert link">
+        <h3>Insert link</h3>
+        <p class="lm-sub">Paste a URL. <b>example.com</b> works — https:// is assumed.</p>
+        <input
+          type="text"
+          class="lm-input"
+          placeholder="https://example.com"
+          bind:this={linkInputEl}
+          bind:value={linkUrl}
+          onkeydown={onLinkKey}
+          aria-invalid={linkErr ? "true" : undefined}
+          aria-label="Link URL"
+        />
+        {#if linkErr}<p class="lm-err">{linkErr}</p>{/if}
+        <div class="lm-actions">
+          <span class="lm-hint">Enter to insert · Esc to cancel</span>
+          <span class="spacer"></span>
+          <button class="md3-btn tonal" onclick={closeLinkDialog}>Cancel</button>
+          <button class="md3-btn primary" onclick={confirmLink}>Insert</button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
   <div class="tv-body">
     {#if !msgsVisible.length}
       <p class="muted center">{tab === "notes" ? "No internal notes yet." : "No messages yet."}</p>
@@ -1886,7 +2023,9 @@
     position: fixed;
     inset: 0;
     z-index: 90;
-    background: var(--m3-scrim);
+    /* Was `var(--m3-scrim)` — a solid black backdrop, so opening this dialog
+       blanked the entire app instead of dimming it. */
+    background: var(--m3-scrim-soft);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2456,6 +2595,82 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     max-width: 45%;
+  }
+
+  /* Insert-link dialog. Same overlay/modal shape as .meet-*, but sized for a
+     single field. Was window.prompt() — see the comment in addLink(). */
+  .link-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    /* Alpha lives in the token, NOT in an `opacity` property — opacity on the
+       overlay would also fade .link-modal to 35%, making the page show through
+       the dialog itself. */
+    background: var(--m3-scrim-soft);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 14px;
+  }
+
+  .link-modal {
+    width: min(440px, 96vw);
+    background: var(--m3-surface-container-low);
+    border: 1px solid var(--m3-outline-variant);
+    border-radius: var(--m3-shape-lg);
+    box-shadow: var(--m3-elev-4);
+    padding: 16px;
+  }
+
+  .link-modal h3 {
+    font: var(--m3-type-title-md);
+    margin: 0 0 4px;
+  }
+
+  .lm-sub {
+    font: var(--m3-type-body-sm);
+    color: var(--m3-on-surface-variant);
+    margin: 0 0 10px;
+  }
+
+  .lm-input {
+    width: 100%;
+    height: 40px;
+    padding: 0 12px;
+    box-sizing: border-box;
+    border: 1px solid var(--m3-outline);
+    border-radius: var(--m3-shape-sm);
+    background: var(--m3-surface-container-lowest);
+    color: var(--m3-on-surface);
+    font: var(--m3-type-body-lg);
+  }
+
+  .lm-input:focus {
+    outline: 2px solid var(--m3-primary);
+    outline-offset: -1px;
+    border-color: var(--m3-primary);
+  }
+
+  .lm-input[aria-invalid="true"] {
+    border-color: var(--m3-error);
+  }
+
+  .lm-err {
+    font: var(--m3-type-body-sm);
+    color: var(--m3-error);
+    margin: 6px 0 0;
+  }
+
+  .lm-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 14px;
+  }
+
+  .lm-hint {
+    font: var(--m3-type-body-sm);
+    color: var(--m3-on-surface-variant);
   }
 
   .rich-body {
