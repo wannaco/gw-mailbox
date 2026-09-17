@@ -35,6 +35,11 @@
   --m3-surface-bright: #ffffff;
   --m3-surface-container-lowest: #ffffff;
   --m3-surface-container-low: #ffffff;
+  /* A panel that sits ON the page and needs to read as raised. Light: pure
+     white against the grey page. Dark: it must be LIGHTER than the page —
+     surface-container-lowest is #121212 in dark, so a card using it came out
+     darker than the #1f1f1f background and looked like a hole. */
+  --m3-surface-raised: #ffffff;
   --m3-surface-container: #eef1f6;
   --m3-surface-container-high: #e6eaf1;
   --m3-surface-container-highest: #dfe4ec;
@@ -56,11 +61,17 @@
   --m3-row-hover: #f1f5fb;
   --m3-row-active: #e8f0fe;
 
-  /* elevation */
-  --m3-elev-1: 0 1px 2px rgb(0 0 0 / 0.14);
-  --m3-elev-2: 0 1px 2px rgb(0 0 0 / 0.16), 0 2px 6px rgb(0 0 0 / 0.1);
-  --m3-elev-3: 0 1px 3px rgb(0 0 0 / 0.18), 0 4px 8px rgb(0 0 0 / 0.12);
-  --m3-elev-4: 0 2px 3px rgb(0 0 0 / 0.2), 0 6px 12px rgb(0 0 0 / 0.14);
+  /* elevation — tinted, not neutral black. A pure-black shadow over a
+     near-white surface reads as dirt; the same shadow in the primary hue reads
+     as depth. This is the trick that makes the login card look lifted, and it
+     is what the app was missing. */
+  --m3-elev-1: 0 1px 2px rgb(15 40 80 / 0.10);
+  --m3-elev-2: 0 1px 2px rgb(15 40 80 / 0.10), 0 2px 6px rgb(15 40 80 / 0.07);
+  --m3-elev-3: 0 1px 3px rgb(15 40 80 / 0.12), 0 4px 10px rgb(15 40 80 / 0.09);
+  --m3-elev-4: 0 2px 4px rgb(15 40 80 / 0.12), 0 8px 20px rgb(15 40 80 / 0.13);
+  /* A whole surface separating from the page (topbar over content, card over
+     background) rather than a floating overlay. */
+  --m3-elev-layer: 0 1px 2px rgb(15 40 80 / 0.05), 0 1px 3px rgb(15 40 80 / 0.04);
 
   /* shape */
   --m3-shape-xs: 6px;
@@ -97,6 +108,7 @@
   --m3-surface-bright: #3a3a3a;
   --m3-surface-container-lowest: #121212;
   --m3-surface-container-low: #262626;
+  --m3-surface-raised: #2d2d2d;
   --m3-surface-container: #2d2d2d;
   --m3-surface-container-high: #343434;
   --m3-surface-container-highest: #3c3c3c;

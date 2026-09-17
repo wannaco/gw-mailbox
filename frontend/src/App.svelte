@@ -317,7 +317,11 @@
         {#if theme === "dark"}
           <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36a5.39 5.39 0 0 1-4.4 2.26 5.4 5.4 0 0 1-3.14-9.8c-.44-.06-.9-.1-1.36-.1z"/></svg>
         {:else}
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 17a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-12V3m0 18v-2M4.22 4.22l1.42 1.42m12.72 12.72 1.42 1.42M3 12h2m14 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+          <!-- Stroke, not fill: these paths are bare line segments (M12 17a5 5…
+               and the rays). With fill="currentColor" and no stroke they had no
+               area to paint, so the light-theme toggle rendered as a black dot
+               where the sun's rays should have been. -->
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.6v2.2m0 14.4v2.2M4.4 4.4l1.6 1.6m12 12 1.6 1.6M2.6 12h2.2m14.4 0h2.2M4.4 19.6l1.6-1.6m12-12 1.6-1.6"/></svg>
         {/if}
       </button>
       <PresenceRoster />
@@ -411,8 +415,12 @@
     align-items: center;
     gap: 8px;
     padding: 7px 16px;
-    background: var(--m3-surface-container-lowest);
-    border-bottom: 1px solid var(--m3-outline-variant);
+    /* Not surface-container-lowest: in dark that tone is DARKER than the page,
+       so the topbar read as a recess rather than a raised bar. */
+    background: var(--m3-surface-raised);
+    /* Shadow instead of a hairline: the topbar is a surface sitting above the
+       content, and a tinted shadow says that more cleanly than a grey rule. */
+    box-shadow: var(--m3-elev-layer);
     flex-wrap: wrap;
   }
 

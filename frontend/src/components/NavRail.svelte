@@ -92,17 +92,26 @@
     transition: background 0.12s ease, color 0.12s ease;
   }
 
-  .rail-item:hover {
-    background: var(--m3-row-hover);
-    color: var(--m3-on-surface);
+  /* hover-gated: on touch the tapped mailbox kept the hover tint afterwards,
+     which made it look selected alongside the real active item. */
+  @media (hover: hover) {
+    .rail-item:hover {
+      background: var(--m3-row-hover);
+      color: var(--m3-on-surface);
+    }
   }
 
   /* Matches the list view's selected-row tint, so "current" means the same
      thing everywhere in the app. The icon carries the accent; the row itself
-     stays calm — two competing emphases was part of what looked wrong. */
+     stays calm — two competing emphases was part of what looked wrong.
+
+     The inset bar is drawn with box-shadow rather than a border or a ::before
+     so it costs no layout: a left border would shift the label, and a negative
+     offset pseudo-element gets clipped by .rail-inner's overflow. */
   .rail-item.active {
     background: var(--m3-row-active);
     color: var(--m3-on-surface);
+    box-shadow: inset 3px 0 0 var(--m3-primary);
   }
 
   .rail-icon {

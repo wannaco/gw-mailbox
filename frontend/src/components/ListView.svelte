@@ -350,19 +350,21 @@
             <span class="snip">
               <span class="from">{t.customer_name || t.customer_email || "—"}</span>
               <span class="snippet-text">{t.snippet || ""}</span>
+              {#if assignedName(t)}
+                <span class="assignee-pill" class:mine={t.assigned_agent === appState.me?.id} title={`Assigned to ${assignedName(t)}`}>
+                  <span class="ap-ava" style="background:{avatarColor(t.assigned_agent)}">{agentInitials(assignedName(t))}</span>
+                  <span class="ap-name">{assignedName(t)}</span>
+                </span>
+              {/if}
             </span>
-            {#if assignedName(t)}
-              <span class="assignee-pill" class:mine={t.assigned_agent === appState.me?.id} title={`Assigned to ${assignedName(t)}`}>
-                <span class="ap-ava" style="background:{avatarColor(t.assigned_agent)}">{agentInitials(assignedName(t))}</span>
-                <span class="ap-name">{assignedName(t)}</span>
-              </span>
-            {/if}
           </span>
 
           <span class="right">
-            <span class="when">{timeAgo(t.last_message_at)}</span>
-            <span class="status-pill" style="background:{statusMeta(t.status).dot}22;color:{statusMeta(t.status).dot}">
-              {statusMeta(t.status).label}
+            <span class="right-top">
+              <span class="when">{timeAgo(t.last_message_at)}</span>
+              <span class="status-pill" style="background:{statusMeta(t.status).dot}22;color:{statusMeta(t.status).dot}">
+                {statusMeta(t.status).label}
+              </span>
             </span>
             {#if sla}
               <span class="sla-chip" class:breached={sla.kind === "breached"} style="background:{sla.color}18;color:{sla.color}" title={sla.title}>
@@ -454,13 +456,19 @@
     height: 100%;
     display: flex;
     flex-direction: column;
+    /* Content stops growing past a comfortable reading width and centres in
+       what's left. On a wide desktop the rows were stretching to 1400px+,
+       which is what made the layout feel loose rather than crisp. */
+    width: 100%;
+    max-width: 1180px;
+    margin: 0 auto;
   }
 
   .toolbar {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 12px 20px 8px;
+    padding: 12px 20px 10px;
     flex-wrap: wrap;
   }
 
@@ -608,21 +616,48 @@
     color: #ba1a1a;
   }
 
+  /* The rows sit on their own surface, lifted off the page with the same
+     tinted shadow family the login card uses. Same idea as the login: a panel
+     separated from the background reads as designed; rows floating directly on
+     a flat background read as a table. */
   .list {
     flex: 1;
     overflow-y: auto;
-    padding: 0 20px 20px;
+    margin: 0 20px 20px;
+    padding: 4px 0;
+    background: var(--m3-surface-raised);
+    border: 1px solid color-mix(in srgb, var(--m3-outline-variant) 70%, transparent);
+    border-radius: var(--m3-shape-lg);
+    /* A crisp 1px edge rather than an ambient lift. The larger shadow looked
+       soft against a hairline-bordered card and read as blur. */
+    box-shadow: 0 1px 2px rgb(15 40 80 / 0.06);
   }
 
+  /* Rows are separated by a hairline inset from the right, not a full-bleed
+     rule: the line stops short of the edge so the list reads as a stack of
+     items rather than a table with gridlines. */
+  /* Margin, not padding: the border-bottom is drawn at the box edge, so a
+     margin is what insets the separator from the card's rounded sides. */
+  /* Separator as border-TOP on every row but the first, rather than
+     border-bottom on all: the bottom version also drew a line under the last
+     row, which read as an unfinished list. */
   .rowline {
     display: flex;
     align-items: center;
-    border-bottom: 1px solid var(--m3-outline-variant);
+    margin: 0 10px;
+    transition: background 0.1s ease;
   }
-  .rowline:hover {
-    background: var(--m3-row-hover);
+  .rowline + .rowline {
+    border-top: 1px solid color-mix(in srgb, var(--m3-outline-variant) 60%, transparent);
   }
-  .rowline:hover .when { color: var(--m3-on-surface-variant); }
+  /* Gated on hover-capable pointers: on touch, :hover sticks after a tap, so
+     the row the user last touched stayed highlighted as if it were selected. */
+  @media (hover: hover) {
+    .rowline:hover {
+      background: var(--m3-row-hover);
+    }
+    .rowline:hover .when { color: var(--m3-on-surface-variant); }
+  }
   .rowline.sel {
     background: var(--m3-primary-container);
   }
@@ -647,12 +682,15 @@
     min-width: 0;
     display: flex;
     align-items: center;
-    gap: 14px;
+    gap: 13px;
     text-align: left;
-    padding: 11px 14px 11px 4px;
+    /* Extra left padding is where the unread accent bar sits, so it reads as
+       belonging to the row rather than as a rule at the card's edge. */
+    padding: 13px 14px 13px 14px;
     border: 0;
     background: none;
     cursor: pointer;
+    position: relative;
   }
   .row:focus-visible {
     outline: 2px solid var(--m3-primary);
@@ -791,7 +829,7 @@
     min-width: 0;
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 3px;
   }
 
   .top {
@@ -799,26 +837,41 @@
     align-items: center;
     gap: 8px;
     min-width: 0;
+    /* The subject takes the slack and ellipsises; badges keep their size. */
+    flex-wrap: nowrap;
   }
 
   .subject {
-    font: var(--m3-type-body-lg);
+    font: var(--m3-type-body-md);
+    font-size: 0.9375rem;
+    line-height: 1.35;
     font-weight: 400;
     color: var(--m3-on-surface-variant);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    min-width: 0;
+    flex: 0 1 auto;
   }
 
+  /* Unread reads as the primary thing on the row; read mail recedes. */
   .row.hot .subject,
   .row.unread .subject {
     font-weight: 600;
     color: var(--m3-on-surface);
   }
 
+  /* No accent bar here. I added one and removed it: sitting between the
+     checkbox and the avatar it read as a stray divider, and the row already
+     carries two unread cues (the dot and the heavier subject). The bar was
+     redundant AND confusing, which is worse than neither.
+
+     The row background is deliberately left untouched by unread state so the
+     hover and selected tints stay legible underneath. */
+
   .unread-dot {
-    width: 8px;
-    height: 8px;
+    width: 7px;
+    height: 7px;
     border-radius: 50%;
     background: var(--m3-primary);
     flex: 0 0 auto;
@@ -874,27 +927,39 @@
     display: inline-flex;
   }
 
+  /* Second line: who wrote, what they said, and (if any) the assignee. The
+     assignee used to sit on its OWN third row, which made every assigned row
+     ~30px taller than the rest — the main reason the list looked uneven. */
   .snip {
     display: flex;
     gap: 8px;
     min-width: 0;
-    align-items: baseline;
+    align-items: center;
   }
 
   .from {
-    font: var(--m3-type-body-md);
+    font: var(--m3-type-body-sm);
+    font-size: 0.8125rem;
     font-weight: 600;
     color: var(--m3-on-surface-variant-2);
     white-space: nowrap;
     flex: 0 0 auto;
+    max-width: 30%;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
+  /* flex:1 so it absorbs the remaining width and ellipsises, letting the
+     assignee sit hard right instead of being pushed off the row. */
   .snippet-text {
-    font: var(--m3-type-body-md);
+    font: var(--m3-type-body-sm);
+    font-size: 0.8125rem;
     color: var(--m3-on-surface-variant-2);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    flex: 1 1 auto;
+    min-width: 0;
   }
 
   .row.hot .from {
@@ -904,15 +969,17 @@
   .assignee-pill {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    align-self: flex-start;
+    gap: 5px;
+    margin-left: auto;
+    flex: 0 0 auto;
     background: var(--m3-surface-container-high);
     color: var(--m3-on-surface-variant);
-    border-radius: 6px;
+    border-radius: 999px;
     padding: 2px 8px 2px 3px;
     font: var(--m3-type-label-sm);
     font-weight: 500;
-    max-width: 100%;
+    max-width: 34%;
+    overflow: hidden;
   }
   .assignee-pill.mine {
     background: var(--m3-primary-container);
@@ -939,16 +1006,26 @@
     white-space: nowrap;
   }
 
+  /* Two rows, not three: time and status share a line, the SLA chip sits
+     under them. Three stacked items made the right column the tallest thing in
+     the row and drove the row height. */
   .right {
     display: flex;
     flex-direction: column;
     align-items: flex-end;
-    gap: 5px;
+    gap: 4px;
     flex: 0 0 auto;
+  }
+
+  .right-top {
+    display: flex;
+    align-items: center;
+    gap: 7px;
   }
 
   .when {
     font: var(--m3-type-label-sm);
+    font-variant-numeric: tabular-nums;
     color: var(--m3-on-surface-variant-2);
     white-space: nowrap;
   }
@@ -956,17 +1033,18 @@
   .status-pill {
     font: var(--m3-type-label-sm);
     font-weight: 600;
-    border-radius: 4px;
-    padding: 1px 7px;
+    border-radius: 999px;
+    padding: 2px 8px;
     white-space: nowrap;
   }
 
   .sla-chip {
     font: var(--m3-type-label-sm);
     font-weight: 600;
-    border-radius: 6px;
-    padding: 1px 7px;
+    border-radius: 999px;
+    padding: 2px 8px;
     white-space: nowrap;
+    font-variant-numeric: tabular-nums;
   }
   .sla-chip.breached {
     animation: sla-pulse 1.8s ease-in-out infinite;
