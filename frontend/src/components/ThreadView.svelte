@@ -993,9 +993,11 @@
   let meetNote = $state("");
   let meeting = $state(false);
   let meetErr = $state("");
-  const CELL_START = 8 * 60; // 08:00
-  const CELL_END = 19 * 60; // 19:00
-  const CELL_STEP = 30;
+  const DAY_START_MIN = 8 * 60; // 08:00
+  const DAY_END_MIN = 19 * 60; // 19:00
+  // freebusy only needs to be fine-grained enough to detect a clash with any
+  // offered slot; the slot grid itself is derived from the duration.
+  const BUSY_STEP = 15;
 
   function dayStart(d) {
     const x = new Date(d);
@@ -1003,31 +1005,42 @@
     return x;
   }
 
-  function dayCells(d) {
+  // The grid IS the list of bookable meetings: the day is divided into slots
+  // of exactly `dur` minutes, so a slot is something you can book as-is rather
+  // than a fixed 30-minute box that sometimes lights up in pairs.
+  //
+  // That also makes the busy check honest. A 30-minute grid only tests the
+  // first half hour of an hour-long booking, so a meeting at 09:15 looked free
+  // for a 09:00-10:00 slot. Checking the whole [start, start+dur) span is what
+  // the old code got wrong.
+  function daySlots(d, dur) {
     const out = [];
     const base = dayStart(d).getTime();
-    for (let m = CELL_START; m < CELL_END; m += CELL_STEP) out.push(new Date(base + m * 60000));
+    for (let m = DAY_START_MIN; m + dur <= DAY_END_MIN; m += dur) {
+      out.push(new Date(base + m * 60000));
+    }
     return out;
   }
 
-  function cellBusy(d) {
-    const s = d.getTime();
-    const e = s + CELL_STEP * 60000;
+  function slotEnd(d, dur) {
+    return new Date(d.getTime() + (dur || meetDur) * 60000);
+  }
+
+  function overlapsBusy(start, mins) {
+    const s = start.getTime();
+    const e = s + mins * 60000;
     return busyList.some((b) => new Date(b.start).getTime() < e && new Date(b.end).getTime() > s);
+  }
+
+  function cellBusy(d) {
+    return overlapsBusy(d, meetDur);
   }
   function cellPast(d) {
     return d.getTime() < Date.now() - 60000;
   }
-  function inSelection(d) {
-    if (!selStart) return false;
-    const s = selStart.getTime();
-    const e = s + meetDur * 60000;
-    const t = d.getTime();
-    return t >= s && t < e;
-  }
 
   const selectedDay = $derived(meetDays[meetIdx]);
-  const selectedCells = $derived(selectedDay ? dayCells(selectedDay) : []);
+  const selectedCells = $derived(selectedDay ? daySlots(selectedDay, meetDur) : []);
 
   function fmtDayLabel(d, withYear) {
     return d.toLocaleDateString([], withYear
@@ -1036,6 +1049,9 @@
   }
   function fmtCellTime(d) {
     return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+  function fmtSlotRange(d) {
+    return fmtCellTime(d) + " – " + fmtCellTime(slotEnd(d));
   }
 
   async function openMeet() {
@@ -1077,23 +1093,17 @@
     meetErr = "";
   }
 
-  // Change duration: keep the selection anchored at its start, but if the new
-  // length pushes past a busy cell / the day's end, clear it so the agent picks
-  // a fresh slot (never silently book over something).
+  // Changing the duration re-divides the day, so the previously picked start
+  // may not exist any more (09:30 is a slot at 30m but not at 60m). Keep the
+  // selection only if that exact start is still an offerable slot; otherwise
+  // drop it rather than silently moving the meeting.
   function setDuration(d) {
+    if (d === meetDur) return;
     meetDur = d;
     meetErr = "";
-    if (selStart) {
-      const s = selStart.getTime();
-      const e = s + d * 60000;
-      const dayEnd = dayStart(selectedDay).getTime() + CELL_END * 60000;
-      const clashes = busyList.some(
-        (b) => new Date(b.start).getTime() < e && new Date(b.end).getTime() > s
-      );
-      if (clashes || e > dayEnd) {
-        selStart = null; // make them re-pick
-      }
-    }
+    if (!selStart || !selectedDay) return;
+    const stillOffered = daySlots(selectedDay, d).some((s) => s.getTime() === selStart.getTime());
+    if (!stillOffered || overlapsBusy(selStart, d)) selStart = null;
   }
 
   const meName = $derived(appState.me?.name || appState.me?.email || "");
@@ -1335,26 +1345,33 @@
               {/each}
             </div>
 
+            <div class="mm-dur-row">
+              <span class="mm-lbl">Duration</span>
+              <div class="mm-seg" role="group">
+                {#each [15, 30, 45, 60] as d (d)}
+                  <button type="button" class:on={meetDur === d} onclick={() => setDuration(d)}>{d}m</button>
+                {/each}
+              </div>
+              <span class="mm-count">{selectedCells.length} slots</span>
+            </div>
+
             <div class="mm-grid-wrap">
               <div class="mm-grid">
                 {#each selectedCells as c (c.getTime())}
                   {@const busy = cellBusy(c)}
                   {@const past = cellPast(c)}
-                  {@const sel = inSelection(c)}
-                  {@const selStartCell = selStart && c.getTime() === selStart.getTime()}
+                  {@const sel = !!(selStart && c.getTime() === selStart.getTime())}
                   <button
                     type="button"
                     class="mm-cell"
                     class:busy={busy}
                     class:past={past}
                     class:sel={sel}
-                    class:selstart={selStartCell}
                     disabled={busy || past}
                     onclick={() => clickCell(c)}
-                    title={busy ? "Busy" : past ? "In the past" : fmtCellTime(c)}
+                    title={busy ? "Busy" : past ? "In the past" : fmtSlotRange(c) + " (" + meetDur + " min)"}
                   >
                     <span class="mm-t">{fmtCellTime(c)}</span>
-                    {#if sel}<span class="mm-dur">{meetDur}m</span>{/if}
                   </button>
                 {/each}
               </div>
@@ -1365,14 +1382,13 @@
               </div>
             </div>
 
-            <div class="mm-dur">
-              <span class="mm-lbl">Duration</span>
-              <div class="mm-seg" role="group">
-                {#each [15, 30, 45, 60] as d (d)}
-                  <button type="button" class:on={meetDur === d} onclick={() => setDuration(d)}>{d}m</button>
-                {/each}
-              </div>
-            </div>
+            <p class="mm-chosen" class:picked={!!selStart}>
+              {#if selStart}
+                {fmtDayLabel(selStart, true)} · <b>{fmtSlotRange(selStart)}</b> · {meetDur} min
+              {:else}
+                Pick a start time — every slot below is {meetDur} minutes.
+              {/if}
+            </p>
           {/if}
         </div>
 
@@ -2115,9 +2131,22 @@
 
   .mm-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(86px, 1fr));
+    /* Wide enough for a full "08:00 AM" label plus its padding. At 74px the
+       label is wider than the cell's content box, so it ate the padding and
+       touched the borders. */
+    grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
     gap: 6px;
-    max-height: 260px;
+    /* `start`, not the default `stretch`: without it the auto rows stretch to
+       fill min-height, so a 60-minute day (2 rows) rendered 79px-tall cells
+       while a 15-minute day (6 rows) rendered 39px ones. */
+    align-content: start;
+    /* Height is tuned to whole rows (34px cell + 6px gap = 40px) so a scroll
+       never stops mid-row — 200px shows exactly 5 rows in the 196px content
+       box. No min-height: the grid is content-sized, because reserving room for
+       rows that don't exist left a large blank block under the last row at 60m
+       (2 rows) that read as a rendering fault. The modal resizing between
+       durations is the lesser evil. */
+    max-height: 200px;
     overflow-y: auto;
     padding: 2px;
   }
@@ -2126,15 +2155,24 @@
     position: relative;
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: center;
     gap: 4px;
+    /* Uniform height regardless of how many rows the duration produces. */
+    height: 34px;
     border: 1px solid var(--m3-outline-variant);
     border-radius: var(--m3-shape-sm);
-    padding: 5px 7px;
+    padding: 0 6px;
     background: var(--m3-surface-container-lowest);
     color: var(--m3-on-surface);
     font: var(--m3-type-label-sm);
     cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .mm-t {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .mm-cell:hover:not(:disabled) {
@@ -2150,20 +2188,43 @@
     opacity: 0.7;
   }
 
-  .mm-cell.sel {
+  /* `.sel:hover` is required, not tidiness: `.mm-cell:hover:not(:disabled)` scores
+     0,3,0 and would otherwise beat `.mm-cell.sel` at 0,2,0 — so hovering the
+     chosen slot repainted it primary-container while keeping the white text,
+     i.e. the selected slot looked blank. */
+  .mm-cell.sel,
+  .mm-cell.sel:hover {
     background: var(--m3-primary);
     color: var(--m3-on-primary);
     border-color: var(--m3-primary);
   }
 
-  .mm-cell.selstart {
-    outline: 2px solid var(--m3-on-primary);
-    outline-offset: -2px;
+  /* The chosen slot is a single cell now, so the primary fill is the state and
+     there is no second cell to mark with an outline. */
+
+  .mm-count {
+    margin-left: auto;
+    font: var(--m3-type-label-sm);
+    color: var(--m3-on-surface-variant);
   }
 
-  .mm-dur {
-    font: var(--m3-type-label-sm);
-    font-weight: 700;
+  .mm-chosen {
+    font: var(--m3-type-body-sm);
+    color: var(--m3-on-surface-variant);
+    margin: -4px 0 0;
+    min-height: 18px;
+  }
+
+  .mm-chosen.picked {
+    color: var(--m3-on-surface);
+  }
+
+  /* .mm-grid-wrap is a plain wrapper (no styles), so without this the legend
+     sat flush against the last row of slots. */
+  .mm-grid-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
   }
 
   .mm-legend {
@@ -2197,8 +2258,7 @@
     background: var(--m3-primary);
   }
 
-  .mm-dur-row,
-  .mm-dur {
+  .mm-dur-row {
     display: flex;
     align-items: center;
     gap: 8px;
