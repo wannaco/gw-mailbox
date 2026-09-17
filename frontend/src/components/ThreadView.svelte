@@ -1047,11 +1047,86 @@
       ? { weekday: "short", month: "short", day: "numeric" }
       : { weekday: "short", day: "numeric" });
   }
+
+  // Slot time without the meridiem: every cell used to repeat "AM"/"PM", which
+  // at 15 minutes meant 44 labels saying the same thing twice a day. The
+  // meridiem is now shown once per half-day group instead.
+  function slotClock(d) {
+    const h24 = d.getHours();
+    const h = h24 % 12 === 0 ? 12 : h24 % 12;
+    return h + ":" + String(d.getMinutes()).padStart(2, "0");
+  }
+  function groupMeridiem(d) {
+    return d.getHours() < 12 ? "AM" : "PM";
+  }
+
+  // Slots bucketed into morning/afternoon so each run can be labelled once.
+  const slotGroups = $derived.by(() => {
+    const out = [];
+    for (const c of selectedCells) {
+      const g = groupMeridiem(c);
+      const last = out[out.length - 1];
+      if (last && last.label === g) last.slots.push(c);
+      else out.push({ label: g, slots: [c] });
+    }
+    return out;
+  });
+
+  // True when the previous day chip was a different month, so the month is
+  // labelled once per run rather than under every date.
+  function monthChanged(i) {
+    if (i === 0) return true;
+    return meetDays[i].getMonth() !== meetDays[i - 1].getMonth();
+  }
+
+  // Bare-time label for a blocked slot (the column already states AM/PM), used
+  // as the tooltip rather than inline: at 15m a busy range like "9:15–11:00"
+  // does not fit next to the time and truncated to "9:15–11:…", which was worse
+  // than not showing it.
+  function busyLabel(d) {
+    const s = d.getTime();
+    const e = s + meetDur * 60000;
+    for (const b of busyList) {
+      const bs = new Date(b.start).getTime();
+      const be = new Date(b.end).getTime();
+      if (bs < e && be > s) return slotClock(new Date(b.start)) + "–" + slotClock(new Date(b.end));
+    }
+    return null;
+  }
+
+  const anyBusyOrPast = $derived(selectedCells.some((c) => cellBusy(c) || cellPast(c)));
+
+  // Slots that fit the 300px viewport are centred like a timepicker; longer
+  // lists stay left-aligned and scroll, because centring content that overflows
+  // looks accidental. The threshold mirrors the fit rule (300px / 34px = 8 rows,
+  // i.e. 16 slots across two columns) — deliberately NOT read from DOM
+  // measurement, which would need a second pass and make the columns jump.
+  const SLOTS_CENTRED_MAX = 16;
+
+  // The slot list is scrollable, and a scroll viewport inevitably cuts a row at
+  // its edge. Measured rather than assumed so a bottom fade is shown ONLY when
+  // there is genuinely more below — otherwise the fade would look like a
+  // rendering fault on the short durations.
+  let slotsEl = $state(null);
+  let slotsScrolls = $state(false);
+  $effect(() => {
+    // Depend on the things that change the content.
+    selectedCells;
+    meetDur;
+    busyList;
+    const el = slotsEl;
+    if (!el) return;
+    slotsScrolls = el.scrollHeight > el.clientHeight + 1;
+  });
   function fmtCellTime(d) {
     return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   }
   function fmtSlotRange(d) {
     return fmtCellTime(d) + " – " + fmtCellTime(slotEnd(d));
+  }
+  // Meridiem-free range for the cells' aria-labels ("9:00 – 9:30 AM").
+  function fmtSlotRangeShort(d) {
+    return slotClock(d) + " – " + slotClock(slotEnd(d)) + " " + groupMeridiem(d);
   }
 
   async function openMeet() {
@@ -1330,24 +1405,29 @@
               <p class="muted" style="color:var(--m3-error)">{busyMsg}</p>
             {/if}
 
-            <div class="mm-days">
+            <!-- Day picker: single-line pills. The old 3-line stacked chips ate
+                 ~72px of height and ~1/4 of the width to say "THU 17 Sep". -->
+            <div class="mm-days" role="tablist" aria-label="Day">
               {#each meetDays as d, i (d.getTime())}
+                {#if monthChanged(i)}<span class="mm-month">{d.toLocaleDateString([], { month: "short" })}</span>{/if}
                 <button
                   type="button"
+                  role="tab"
+                  aria-selected={i === meetIdx}
                   class="mm-day"
                   class:on={i === meetIdx}
                   onclick={() => { meetIdx = i; selStart = null; meetErr = ""; }}
                 >
                   <span class="mm-dw">{d.toLocaleDateString([], { weekday: "short" })}</span>
                   <span class="mm-dn">{d.getDate()}</span>
-                  <span class="mm-dm">{d.toLocaleDateString([], { month: "short" })}</span>
                 </button>
               {/each}
             </div>
 
-            <div class="mm-dur-row">
-              <span class="mm-lbl">Duration</span>
-              <div class="mm-seg" role="group">
+            <!-- Duration + slot count on one meta row. -->
+            <div class="mm-meta">
+              <span class="mm-meta-lbl">Duration</span>
+              <div class="mm-seg" role="group" aria-label="Meeting duration">
                 {#each [15, 30, 45, 60] as d (d)}
                   <button type="button" class:on={meetDur === d} onclick={() => setDuration(d)}>{d}m</button>
                 {/each}
@@ -1355,38 +1435,53 @@
               <span class="mm-count">{selectedCells.length} slots</span>
             </div>
 
-            <div class="mm-grid-wrap">
-              <div class="mm-grid">
-                {#each selectedCells as c (c.getTime())}
-                  {@const busy = cellBusy(c)}
-                  {@const past = cellPast(c)}
-                  {@const sel = !!(selStart && c.getTime() === selStart.getTime())}
-                  <button
-                    type="button"
-                    class="mm-cell"
-                    class:busy={busy}
-                    class:past={past}
-                    class:sel={sel}
-                    disabled={busy || past}
-                    onclick={() => clickCell(c)}
-                    title={busy ? "Busy" : past ? "In the past" : fmtSlotRange(c) + " (" + meetDur + " min)"}
-                  >
-                    <span class="mm-t">{fmtCellTime(c)}</span>
-                  </button>
+            <!-- Slots read as a timepicker list rather than a grid of boxes:
+                 text buttons in columns, each column showing its meridiem once.
+                 Short days are centred, long days scroll. -->
+            <div class="mm-slots-wrap">
+              <div class="mm-slots" class:sparse={selectedCells.length <= SLOTS_CENTRED_MAX} bind:this={slotsEl}>
+                {#each slotGroups as grp (grp.label)}
+                  <div class="mm-slot-col">
+                    <span class="mm-mer">{grp.label}</span>
+                    {#each grp.slots as c (c.getTime())}
+                      {@const busy = cellBusy(c)}
+                      {@const past = cellPast(c)}
+                      {@const sel = !!(selStart && c.getTime() === selStart.getTime())}
+                      <!-- aria-disabled rather than disabled: a disabled button gets
+                           no hover, so the tooltip naming the blocking meeting would
+                           never appear, and it drops out of the a11y tree. clickCell()
+                           refuses busy/past slots anyway. -->
+                      <button
+                        type="button"
+                        class="mm-slot"
+                        class:busy={busy}
+                        class:past={past}
+                        class:sel={sel}
+                        aria-disabled={busy || past ? "true" : undefined}
+                        onclick={() => clickCell(c)}
+                        aria-label={busy ? fmtSlotRangeShort(c) + " — busy" : past ? fmtSlotRangeShort(c) + " — in the past" : fmtSlotRangeShort(c)}
+                        title={busy ? "Busy " + (busyLabel(c) || "") : past ? "In the past" : fmtSlotRangeShort(c) + " (" + meetDur + " min)"}
+                      >
+                        <span class="mm-t">{slotClock(c)}</span>
+                      </button>
+                    {/each}
+                  </div>
                 {/each}
               </div>
-              <div class="mm-legend">
-                <span><i class="lg free"></i>Free</span>
-                <span><i class="lg busy"></i>Busy</span>
-                <span><i class="lg sel"></i>Selected</span>
-              </div>
+              {#if slotsScrolls}<div class="mm-fade" aria-hidden="true"></div>{/if}
             </div>
+
+            {#if anyBusyOrPast}
+              <div class="mm-legend">
+                <span class="mm-lg">line-through = already booked</span>
+              </div>
+            {/if}
 
             <p class="mm-chosen" class:picked={!!selStart}>
               {#if selStart}
                 {fmtDayLabel(selStart, true)} · <b>{fmtSlotRange(selStart)}</b> · {meetDur} min
               {:else}
-                Pick a start time — every slot below is {meetDur} minutes.
+                Pick a start time — every slot is {meetDur} minutes.
               {/if}
             </p>
           {/if}
@@ -2095,112 +2190,166 @@
 
   .mm-days {
     display: flex;
-    gap: 6px;
+    align-items: center;
+    gap: 4px;
     flex-wrap: wrap;
   }
 
+  /* Month shown once per run of dates ("Sep 17 18 19 …"), not under every date. */
+  .mm-month {
+    font: var(--m3-type-label-sm);
+    color: var(--m3-on-surface-variant);
+    text-transform: uppercase;
+    margin-right: 2px;
+  }
+
   .mm-day {
-    display: flex;
+    display: inline-flex;
     flex-direction: column;
     align-items: center;
-    gap: 2px;
-    min-width: 58px;
-    padding: 7px 8px;
+    justify-content: center;
+    gap: 0;
+    min-width: 42px;
+    padding: 5px 8px;
+    height: 46px;
     border-radius: var(--m3-shape-md);
     color: var(--m3-on-surface-variant);
     border: 1px solid transparent;
+    transition: background 0.12s ease, color 0.12s ease;
+  }
+
+  .mm-day:hover:not(.on) {
+    background: var(--m3-row-hover);
   }
 
   .mm-day.on {
     background: var(--m3-primary-container);
     color: var(--m3-on-primary-container);
-    font-weight: 600;
   }
 
   .mm-dw {
     font: var(--m3-type-label-sm);
     text-transform: uppercase;
+    line-height: 1.1;
   }
   .mm-dn {
-    font: var(--m3-type-title-lg);
+    font: var(--m3-type-title-md);
     font-weight: 700;
-  }
-  .mm-dm {
-    font: var(--m3-type-label-sm);
+    line-height: 1.15;
   }
 
-  .mm-grid {
-    display: grid;
-    /* Wide enough for a full "08:00 AM" label plus its padding. At 74px the
-       label is wider than the cell's content box, so it ate the padding and
-       touched the borders. */
-    grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
-    gap: 6px;
-    /* `start`, not the default `stretch`: without it the auto rows stretch to
-       fill min-height, so a 60-minute day (2 rows) rendered 79px-tall cells
-       while a 15-minute day (6 rows) rendered 39px ones. */
-    align-content: start;
-    /* Height is tuned to whole rows (34px cell + 6px gap = 40px) so a scroll
-       never stops mid-row — 200px shows exactly 5 rows in the 196px content
-       box. No min-height: the grid is content-sized, because reserving room for
-       rows that don't exist left a large blank block under the last row at 60m
-       (2 rows) that read as a rendering fault. The modal resizing between
-       durations is the lesser evil. */
-    max-height: 200px;
-    overflow-y: auto;
-    padding: 2px;
-  }
-
-  .mm-cell {
-    position: relative;
+  .mm-meta {
     display: flex;
     align-items: center;
+    gap: 8px;
+  }
+
+  .mm-meta-lbl {
+    font: var(--m3-type-label-md);
+    color: var(--m3-on-surface-variant);
+  }
+
+  /* ---------------------------------------------------------------------------
+     Slot list. Text buttons in columns rather than a grid of bordered boxes:
+     the thing being picked is a TIME, so the affordance is text. Each column
+     carries its meridiem once at the top instead of every button repeating it.
+     Free slots are tonally lighter than the dialog, which is the inversion the
+     old design got wrong — it outlined the available ones and greyed nothing.
+     --------------------------------------------------------------------------- */
+  .mm-slots-wrap {
+    position: relative;
+  }
+
+  /* Soft edge so a scroll shows as "more below" rather than a row cut in half by
+     a hard border. Only rendered when the list actually scrolls. */
+  .mm-fade {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 26px;
+    pointer-events: none;
+    background: linear-gradient(to bottom, transparent, var(--m3-surface-container-low));
+  }
+
+  .mm-slots {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    /* Tall enough for ~7 rows at 15m; the whole list scrolls beyond that. */
+    max-height: 300px;
+    overflow-y: auto;
+    scroll-padding-bottom: 26px;
+    padding-right: 2px;
+  }
+
+  /* Few enough slots to fit without scrolling: centre them like a timepicker. */
+  .mm-slots.sparse {
     justify-content: center;
-    gap: 4px;
-    /* Uniform height regardless of how many rows the duration produces. */
-    height: 34px;
-    border: 1px solid var(--m3-outline-variant);
-    border-radius: var(--m3-shape-sm);
-    padding: 0 6px;
-    background: var(--m3-surface-container-lowest);
-    color: var(--m3-on-surface);
+  }
+
+  .mm-slot-col {
+    flex: 1 0 92px;
+    max-width: 140px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .mm-mer {
+    align-self: stretch;
     font: var(--m3-type-label-sm);
-    cursor: pointer;
-    white-space: nowrap;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: var(--m3-on-surface-variant);
+    padding: 2px 10px 5px;
+  }
+
+  .mm-slot {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    width: 100%;
+    height: 33px;
+    padding: 0 10px;
+    border-radius: var(--m3-shape-sm);
+    background: var(--m3-surface-container);
+    color: var(--m3-on-surface);
+    font: var(--m3-type-label-md);
+    font-variant-numeric: tabular-nums;
+    text-align: left;
+    transition: background 0.1s ease;
+  }
+
+  /* Needs to outrank `.mm-slot.sel` (0,2,0) — otherwise hovering the chosen
+     slot repainted it and the white selected text became unreadable. */
+  .mm-slot:hover:not([aria-disabled="true"]):not(.sel) {
+    background: var(--m3-primary-container);
+    color: var(--m3-on-primary-container);
+  }
+
+  .mm-slot.sel,
+  .mm-slot.sel:hover {
+    background: var(--m3-primary);
+    color: var(--m3-on-primary);
+    font-weight: 600;
+  }
+
+  /* Booked/past: dimmed and struck through, on a faint recessed fill so it reads
+     as a deliberate state rather than unstyled text (the earlier transparent
+     fill made blocked rows look like a rendering fault). */
+  .mm-slot.busy,
+  .mm-slot.past {
+    background: var(--m3-surface-container-high);
+    color: var(--m3-on-surface-variant-2);
+    text-decoration: line-through;
+    cursor: not-allowed;
   }
 
   .mm-t {
     min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: nowrap;
   }
-
-  .mm-cell:hover:not(:disabled) {
-    background: var(--m3-primary-container);
-  }
-
-  .mm-cell.busy,
-  .mm-cell.past {
-    background: repeating-linear-gradient(-45deg, var(--m3-surface-container-high), var(--m3-surface-container-high) 5px, var(--m3-surface-container) 5px, var(--m3-surface-container) 10px);
-    color: var(--m3-on-surface-variant-2);
-    text-decoration: line-through;
-    cursor: not-allowed;
-    opacity: 0.7;
-  }
-
-  /* `.sel:hover` is required, not tidiness: `.mm-cell:hover:not(:disabled)` scores
-     0,3,0 and would otherwise beat `.mm-cell.sel` at 0,2,0 — so hovering the
-     chosen slot repainted it primary-container while keeping the white text,
-     i.e. the selected slot looked blank. */
-  .mm-cell.sel,
-  .mm-cell.sel:hover {
-    background: var(--m3-primary);
-    color: var(--m3-on-primary);
-    border-color: var(--m3-primary);
-  }
-
-  /* The chosen slot is a single cell now, so the primary fill is the state and
-     there is no second cell to mark with an outline. */
 
   .mm-count {
     margin-left: auto;
@@ -2219,53 +2368,8 @@
     color: var(--m3-on-surface);
   }
 
-  /* .mm-grid-wrap is a plain wrapper (no styles), so without this the legend
-     sat flush against the last row of slots. */
-  .mm-grid-wrap {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
-
   .mm-legend {
-    display: flex;
-    gap: 14px;
-    flex-wrap: wrap;
     font: var(--m3-type-label-sm);
-    color: var(--m3-on-surface-variant);
-  }
-
-  .mm-legend span {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-  }
-
-  .mm-legend i {
-    width: 11px;
-    height: 11px;
-    border-radius: 3px;
-    display: inline-block;
-  }
-  .lg.free {
-    background: var(--m3-surface-container-lowest);
-    border: 1px solid var(--m3-outline-variant);
-  }
-  .lg.busy {
-    background: var(--m3-surface-container-high);
-  }
-  .lg.sel {
-    background: var(--m3-primary);
-  }
-
-  .mm-dur-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .mm-lbl {
-    font: var(--m3-type-label-md);
     color: var(--m3-on-surface-variant);
   }
 
@@ -2289,6 +2393,7 @@
     background: var(--m3-primary);
     color: var(--m3-on-primary);
   }
+
 
   .mm-foot {
     display: flex;
