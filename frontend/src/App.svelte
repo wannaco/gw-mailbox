@@ -646,6 +646,20 @@
     }
   }
 
+  /* Narrow phones (360px and 344px are common Android widths).
+   *
+   * With the wordmark shown, line one needs 344px of a 344px bar at 360px —
+   * exactly zero slack — so the account chip wrapped onto a third row and the
+   * bar grew to 122px. Dropping the wordmark (the mark stays) frees ~62px and
+   * keeps the bar at two rows on every phone width, with room to spare for
+   * extra teammates in the presence pill. The brand is still recognisable by
+   * the mark, and the wordmark is chrome on a screen this narrow. */
+  @media (max-width: 420px) {
+    .brand-name {
+      display: none;
+    }
+  }
+
   .scrim {
     position: absolute;
     inset: 0;

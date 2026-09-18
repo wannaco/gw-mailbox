@@ -144,6 +144,26 @@
     color: var(--m3-on-surface-variant-2);
   }
 
+  /* Mobile: collapse to just the avatar stack + count.
+   *
+   * The pill measured 166px at 412px wide — dot (7) + "ONLINE" (65) + avatar
+   * (22) + "alone" (41) plus gaps — which is the single widest control in the
+   * top bar. That pushed the row past the viewport, so the notification bell
+   * wrapped onto its own line and the account chip onto a third. Removing the
+   * wordmark and the "alone" label frees ~106px, leaving every control on one
+   * line with room to spare. The full status is still one tap away in the
+   * popup, so nothing is actually lost. */
+  @media (max-width: 720px) {
+    .roster-label,
+    .alone {
+      display: none;
+    }
+    .roster-btn {
+      gap: 4px;
+      padding: 3px 6px;
+    }
+  }
+
   .pop {
     position: absolute;
     top: calc(100% + 6px);
