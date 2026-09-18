@@ -327,30 +327,66 @@ function addInternalNote(threadId, actor, bodyText, meta) {
 const PRESENCE_MAX_AGE_NS = 10 * 60 * 1e9;   // hard cap; cron sweeps at 2 min
 const PRESENCE_THROTTLE_NS = 4e9;            // don't re-broadcast identical heartbeats
 
+// A session that dies without releasing (tab closed, laptop shut, network drop)
+// leaves its row behind. Judging freshness by the 10-minute sweep cap meant
+// "X is drafting a reply" — and a locked composer — persisted for up to ten
+// minutes after X had gone. Locks and the presence list use this instead.
+//
+// 90s is chosen against the 6s heartbeat: browsers throttle timers in hidden
+// tabs to about one beat per minute, so a genuinely-open background tab stays
+// fresh, while a dead one drops out within a beat and a half.
+const PRESENCE_FRESH_NS = 90 * 1e9;
+
 function presenceCollection() {
   return $app.findCollectionByNameOrId("thread_presence");
 }
 
+// Newest-first, and self-healing: if more than one row exists for the pair
+// (created before the unique index in 1786000029, or by a race the index can't
+// cover) keep the newest and delete the rest. Without the sort this returned
+// an arbitrary row, so a stale one could be updated forever while the live one
+// sat untouched.
 function findPresence(threadId, userId) {
-  return safeFindFirstByFilter(
-    "thread_presence",
-    "thread = {:t} && user = {:u}",
-    { t: threadId, u: userId }
-  );
+  let rows = [];
+  try {
+    rows = $app.findRecordsByFilter(
+      "thread_presence",
+      "thread = {:t} && user = {:u}",
+      "-updated_at",
+      0,
+      0,
+      { t: threadId, u: userId }
+    ) || [];
+  } catch (_) {
+    return null;
+  }
+  if (!rows.length) return null;
+  for (let i = 1; i < rows.length; i++) {
+    try { $app.delete(rows[i]); } catch (_) { /* best effort */ }
+  }
+  return rows[0];
+}
+
+// Latest row per user for a thread. Used wherever presence is read, so a
+// leftover duplicate can't win over the live heartbeat.
+function presenceRowsForThread(threadId) {
+  const rows = $app.findRecordsByFilter("thread_presence", "thread = {:t}", "-updated_at", 0, 0, { t: threadId }) || [];
+  const byUser = {};
+  for (const r of rows) {
+    const u = r.getString("user");
+    if (byUser[u]) { try { $app.delete(r); } catch (_) {} continue; } // older dup
+    byUser[u] = r;
+  }
+  return Object.keys(byUser).map(function (k) { return byUser[k]; });
 }
 
 // Who else (not `userId`) is composing on this thread right now?
 function composingLock(threadId, excludeUserId) {
-  const rows = $app.findRecordsByFilter(
-    "thread_presence",
-    "thread = {:t} && status = {:s} && user != {:u}",
-    "-updated_at",
-    0,
-    0,
-    { t: threadId, s: "composing_reply", u: excludeUserId || "" }
-  );
+  const rows = presenceRowsForThread(threadId).filter(function (r) {
+    return r.getString("status") === "composing_reply" && r.getString("user") !== (excludeUserId || "");
+  });
   for (const row of rows || []) {
-    const fresh = nowDateTime().sub(row.getDateTime("updated_at")) < PRESENCE_MAX_AGE_NS;
+    const fresh = nowDateTime().sub(row.getDateTime("updated_at")) < PRESENCE_FRESH_NS;
     if (fresh) {
       const user = safeFindById("users", row.getString("user"));
       return {
@@ -375,9 +411,16 @@ function heartbeatPresence(threadId, userId, status) {
   let row = findPresence(threadId, userId);
 
   if (!row) {
-    row = new Record(coll, { thread: threadId, user: userId, status: status, updated_at: now });
-    $app.save(row);
-    return { ok: true, changed: true, lock: composingLock(threadId, userId) };
+    try {
+      row = new Record(coll, { thread: threadId, user: userId, status: status, updated_at: now });
+      $app.save(row);
+      return { ok: true, changed: true, lock: composingLock(threadId, userId) };
+    } catch (err) {
+      // Lost a race against a concurrent heartbeat for the same pair: the
+      // unique index rejected this insert, so re-read and update that row.
+      row = findPresence(threadId, userId);
+      if (!row) throw err;
+    }
   }
 
   // Throttle identical heartbeats — avoids SSE spam for a "viewing" state that
@@ -402,10 +445,10 @@ function releasePresence(threadId, userId) {
 
 // Snapshot of everyone currently on the thread (viewers + composers).
 function presenceSnapshot(threadId) {
-  const rows = $app.findRecordsByFilter("thread_presence", "thread = {:t}", "-updated_at", 0, 0, { t: threadId });
+  const rows = presenceRowsForThread(threadId);
   const out = [];
   for (const row of rows || []) {
-    if (nowDateTime().sub(row.getDateTime("updated_at")) > PRESENCE_MAX_AGE_NS) continue;
+    if (nowDateTime().sub(row.getDateTime("updated_at")) > PRESENCE_FRESH_NS) continue;
     const user = safeFindById("users", row.getString("user"));
     out.push({
       id: row.id,

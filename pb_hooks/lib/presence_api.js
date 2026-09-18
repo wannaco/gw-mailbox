@@ -46,10 +46,17 @@ function handlePresenceHeartbeat(e) {
   const access = h.requireThreadAccess(e, threadId, actor);
   if (!access) return;
 
-  // Superusers are observe-only: they are not agents (no `users` record exists
-  // for them), so no thread_presence row is persisted — but they still get the
-  // composing lock + snapshot so the draft banner works while the admin views.
-  if (actor.isAdmin) {
+  // BREAK-GLASS SUPERUSERS are observe-only: they have no `users` record, so
+  // there is nothing to persist a row against — but they still get the lock +
+  // snapshot so the draft banner works while an ops token is watching.
+  //
+  // This branch used to test `isAdmin`, which is ALSO true for app admins
+  // (users.role === 'admin'). Those are ordinary users with a real record, and
+  // being treated as observe-only meant an admin never published presence at
+  // all: nobody could see the admin on a thread, and the admin's own drafting
+  // never locked anyone else out. Gate on isSuperuser, which is the thing that
+  // actually has no users record.
+  if (actor.isSuperuser) {
     const lock = h.composingLock(threadId, "");
     return e.json(200, {
       ok: true,

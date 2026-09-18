@@ -144,6 +144,30 @@
     } catch { /* transient */ }
   }
 
+  // Beat the moment composing starts or stops, instead of waiting for the next
+  // 6s tick — otherwise the other agent's lock can lag by up to six seconds,
+  // which reads as "composing isn't blocked".
+  //
+  // Skips its first evaluation on purpose: the mount effect below already sends
+  // a join heartbeat, and firing both at once put two concurrent "create a
+  // presence row" requests in flight. Both would see no existing row and both
+  // would insert, leaving a duplicate that outlived every later heartbeat.
+  let beatPrimed = false;
+  let lastBeatState = null;
+  $effect(() => {
+    const tid = threadId;
+    if (!tid) return;
+    const composing = isComposing;
+    if (!beatPrimed) {
+      beatPrimed = true;
+      lastBeatState = composing;
+      return;
+    }
+    if (composing === lastBeatState) return;
+    lastBeatState = composing;
+    sendHeartbeat(composing ? "composing_reply" : "viewing");
+  });
+
   $effect(() => {
     const tid = threadId;
     if (!tid) return;

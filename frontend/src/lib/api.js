@@ -229,8 +229,41 @@ export async function loadDirectory() {
 
 // ---- presence / notes / moves / replies / meet -----------------------------
 
-export function heartbeat(threadId, status) {
-  return pbRequest("POST", `/mailbox/threads/${threadId}/presence`, { status });
+// Every heartbeat response carries the authoritative presence snapshot for that
+// thread. We apply it rather than relying on the realtime stream alone: SSE
+// frames can be missed around a reconnect, and applying the snapshot is what
+// makes a second viewer appear within one beat instead of waiting on an event.
+export async function heartbeat(threadId, status) {
+  const res = await pbRequest("POST", `/mailbox/threads/${threadId}/presence`, { status });
+  try {
+    applyPresenceSnapshot(threadId, res?.presence);
+  } catch (_) { /* non-fatal */ }
+  return res;
+}
+
+// Mirror a server presence snapshot into appState.presence, keyed the same way
+// the realtime handler keys it (`thread:user`) so the two sources can't drift.
+export function applyPresenceSnapshot(threadId, presence) {
+  if (!threadId || !Array.isArray(presence)) return;
+  const seen = {};
+  for (const p of presence) {
+    if (!p || !p.userId) continue;
+    const key = `${threadId}:${p.userId}`;
+    seen[key] = true;
+    const dir = appState.users[p.userId];
+    appState.presence[key] = {
+      thread: threadId,
+      user: p.userId,
+      status: p.status,
+      updatedAt: p.updatedAt,
+      agentName: p.agentName || dir?.name || ""
+    };
+  }
+  // Drop rows for this thread the server no longer reports, otherwise a
+  // departed agent lingers in the panel until the next full reload.
+  for (const k of Object.keys(appState.presence)) {
+    if (k.startsWith(threadId + ":") && !seen[k]) delete appState.presence[k];
+  }
 }
 
 export function releasePresence(threadId) {

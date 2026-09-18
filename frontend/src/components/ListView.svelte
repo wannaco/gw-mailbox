@@ -1,6 +1,7 @@
 <script>
   import { appState, statusMeta, threadUnread, threadUnreadNotes, slaOf, toast, STATUSES } from "../lib/appState.svelte.js";
   import { timeAgo, avatarColor } from "../lib/utils.js";
+  import ThreadPresence from "./ThreadPresence.svelte";
   import { agentInitials } from "../lib/appState.svelte.js";
   import * as api from "../lib/api.js";
 
@@ -361,6 +362,7 @@
 
           <span class="right">
             <span class="right-top">
+              <ThreadPresence threadId={t.id} />
               <span class="when">{timeAgo(t.last_message_at)}</span>
               <span class="status-pill" style="background:{statusMeta(t.status).dot}22;color:{statusMeta(t.status).dot}">
                 {statusMeta(t.status).label}

@@ -1,6 +1,7 @@
 <script>
   import { appState, agentInitials, slaOf, threadUnreadNotes } from "../lib/appState.svelte.js";
   import { timeAgo, avatarColor } from "../lib/utils.js";
+  import ThreadPresence from "./ThreadPresence.svelte";
 
   let { thread, open, selectable, selected, onToggleSelect, onDragStart, onDragEnd } = $props();
 
@@ -79,6 +80,7 @@
     {#if (thread.message_count || 0) > 0}
       <span class="mcount" title={`${thread.message_count} message${thread.message_count === 1 ? "" : "s"}`}>{thread.message_count}</span>
     {/if}
+    <ThreadPresence threadId={thread.id} max={3} />
     <span class="when">{timeAgo(thread.last_message_at)}</span>
   </div>
   <p class="snippet">{thread.snippet || ""}</p>
