@@ -38,7 +38,9 @@ function runSeed(app) {
       } catch (_) { /* not found */ }
       if (u) return u;
       u = new Record(usersColl, { email: email, name: name, verified: true });
-      u.setPassword("<<CREDENTIAL-REMOVED>>");
+      // Password comes from MAILBOX_DEMO_PASSWORD; there is deliberately no
+      // hardcoded default (this seeds real, working logins).
+      u.setPassword($os.getenv("MAILBOX_DEMO_PASSWORD") || $security.randomString(24));
       app.save(u);
       return u;
     }

@@ -39,8 +39,8 @@ On first boot the app automatically:
 * seeds demo data **only** if `MAILBOX_SEED_DEMO=1` *and* the data dir is empty.
 
 > ⚠️ Keep `MAILBOX_SEED_DEMO=0` for anything a client will see: the demo seed
-> creates working logins (`alice@demo.local` / `bob@demo.local` — `<<CREDENTIAL-REMOVED>>`)
-> plus fake conversations.
+> creates working logins (`alice@demo.local` / `bob@demo.local`, password from
+> `MAILBOX_DEMO_PASSWORD`) plus fake conversations.
 
 ---
 

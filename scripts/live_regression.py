@@ -2,11 +2,19 @@
 """Live regression: verify superuser/admin fixes deployed at mailbox.thinkcloud.dev.
 Covers: presence heartbeat, internal note, card move, availability (real error not 502),
 and that no 'agent auth required' gate remains for admin send path."""
-import json, sys, urllib.request, urllib.error
+import json, os, sys, urllib.request, urllib.error
 
-BASE = "https://mailbox.thinkcloud.dev"
-ADMIN_EMAIL = sys.argv[1] if len(sys.argv) > 1 else "jacobo@thinkcloud.dev"
-ADMIN_PASS = sys.argv[2] if len(sys.argv) > 2 else "<<CREDENTIAL-REMOVED>>"
+# Credentials are never hardcoded. Provide them via env (preferred) or argv:
+#   MAILBOX_TEST_EMAIL=... MAILBOX_TEST_PASSWORD=... python3 live_regression.py
+#   python3 live_regression.py <email> <password>
+BASE = os.environ.get("MAILBOX_TEST_URL", "https://mailbox.thinkcloud.dev")
+ADMIN_EMAIL = (sys.argv[1] if len(sys.argv) > 1
+               else os.environ.get("MAILBOX_TEST_EMAIL", ""))
+ADMIN_PASS = (sys.argv[2] if len(sys.argv) > 2
+              else os.environ.get("MAILBOX_TEST_PASSWORD", ""))
+
+if not ADMIN_EMAIL or not ADMIN_PASS:
+    sys.exit("ERROR: set MAILBOX_TEST_EMAIL and MAILBOX_TEST_PASSWORD (or pass them as arguments).")
 
 def req(method, path, body=None, token=None, raw=False):
     url = BASE + path
