@@ -198,6 +198,51 @@ RESULT: 22 passed, 0 failed
 
 ---
 
+## Accounts, sign-in and security
+
+### Two account systems (they are separate)
+
+| | `users` — agents | `_superusers` — admin |
+|---|---|---|
+| Sign in to | the app | the PocketBase dashboard `/_/` |
+| Created by | Settings → People, or the demo seed | `MAILBOX_ADMIN_*` on **first boot** |
+| Google SSO | **yes** | **no — not supported by PocketBase** |
+| Password | can be disabled | always on |
+
+They are independent records and often share an email address. **Changing a
+password on one does not change the other**, which is the most common source of
+confusion when rotating credentials.
+
+### Recommended setup
+
+1. Configure the Google OAuth client and enable the **Google** provider on the
+   `users` collection — see [docs/DEPLOY.md § 3b](docs/DEPLOY.md).
+2. Verify Google sign-in works, then **disable password auth on `users`**:
+   `/_/` → Collections → users → Auth methods → uncheck **Password**.
+3. Give each agent a Google Workspace account on your own domain (that address
+   maps to their user record).
+4. Put **Cloudflare Access or an IP allowlist in front of `/_/`** — the dashboard
+   cannot use SSO, so it is password-only and publicly reachable by default.
+5. Set a strong, unique superuser password, and keep `MAILBOX_ADMIN_PASSWORD`
+   in sync (it is **first-boot only** and will not reset an existing account).
+
+### Built-in guardrails in this codebase
+
+- Credentials are never committed: tests read `TEST_EMAIL` / `TEST_PASSWORD` from
+  the environment, and the demo seed takes its password from `MAILBOX_DEMO_PASSWORD`
+  (random if unset). There are no hardcoded defaults by design.
+- `pb_data/` (the database), `.env` and backups are gitignored.
+- **`frontend/` is not the web root** — the container serves the compiled SPA from
+  `pb_public`, so source files cannot be fetched over HTTP. (Projects that serve a
+  raw source directory publicly have shipped stray scripts and secrets this way.)
+- Collection API rules restrict anonymous reads; verify with an unauthenticated
+  request to `/api/collections/<name>/records` after any schema change.
+
+> ⚠️ Do not combine `MAILBOX_SEED_DEMO=1` with Google-only sign-in: the demo
+> accounts are password logins and will be unable to sign in at all.
+
+---
+
 ## Deployment
 
 See **[docs/DEPLOY.md](docs/DEPLOY.md)** for the full guide. Quick start on any
@@ -210,8 +255,17 @@ docker compose up -d --build
 
 The container is domain-agnostic: the SPA is same-origin and the public URL is
 read at runtime, so the same build runs on any host. On boot the app applies
-migrations, sets PocketBase's `appURL` from `MAILBOX_PUBLIC_URL`, seeds the first
-superuser from env, and (only if `MAILBOX_SEED_DEMO=1`) demo data.
+migrations, sets PocketBase's `appURL` from `MAILBOX_PUBLIC_URL`, creates the
+first **superuser** from `MAILBOX_ADMIN_*` **if one does not already exist**, and
+(only if `MAILBOX_SEED_DEMO=1`) demo data.
+
+Three things about that bootstrap are easy to get wrong:
+
+- **It is create-if-missing and runs once.** Editing `MAILBOX_ADMIN_PASSWORD`
+  later does not reset an existing superuser.
+- It creates a **superuser** (dashboard access), *not* an app agent.
+- Agents sign in separately, and should use **Google SSO** — see
+  [Accounts, sign-in and security](#accounts-sign-in-and-security).
 
 Feature overview: **[docs/FEATURES.md](docs/FEATURES.md)**.
 User guide (screenshots): **[docs/USER_GUIDE.md](docs/USER_GUIDE.md)**.

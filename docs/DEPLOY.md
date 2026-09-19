@@ -83,6 +83,59 @@ Then in the app: **PocketBase dashboard** (`https://<domain>/_/`) → **Collecti
 
 The login screen shows the Google button automatically once that's saved.
 
+### 3c. Recommended: Google-only sign-in
+
+**There are two separate account systems, and this is the single most confusing
+thing about the setup.** They are independent records that often share an email
+address but have their own password and their own auth methods:
+
+| | `users` — agents | `_superusers` — admin |
+|---|---|---|
+| Used for | signing in to the app | the PocketBase dashboard `/_/`, provisioning inboxes/agents |
+| Created by | Settings → People, or the demo seed | the `MAILBOX_ADMIN_*` env vars on **first boot**, or manually |
+| Google SSO | **yes** (once 3b is done) | **no — not supported by PocketBase** |
+| Password auth | can be disabled | always on (the only option) |
+
+Because `_superusers` cannot use OAuth2, "turn on Google login" only ever covers
+the agent side. The admin dashboard stays password-based.
+
+**Recommended configuration:**
+
+1. Complete 3b (Google OAuth client + provider on the `users` collection).
+2. Verify Google sign-in works for one real user before going further.
+3. **Disable password auth on `users`**: dashboard `/_/` → **Collections → users →
+   Auth methods → uncheck Password**. Agents then sign in with Google only.
+4. Give every agent a **Google Workspace account on your own domain** — that
+   address is what maps to their user record.
+5. Protect the dashboard (see below) and set a strong, unique superuser password.
+
+After step 3, `POST /api/collections/users/auth-with-password` returns **403** for
+everyone, including any account that still has a stored password. Those passwords
+become unusable rather than being deleted, so nothing is lost if you re-enable later.
+
+> ⚠️ **Do not enable the demo seed (`MAILBOX_SEED_DEMO=1`) together with
+> Google-only sign-in.** The demo accounts (`alice@demo.local`, `bob@demo.local`)
+> are password logins with no Google identity, so they can never sign in. Keep the
+> demo seed for password-auth or throwaway instances only.
+
+> ⚠️ **Rotating an agent's password does not touch the superuser, and vice versa.**
+> If (say) `admin@yourdomain.com` exists as both a `users` record and a
+> `_superusers` record, changing one leaves the other exactly as it was. Both must
+> be changed separately — see *Accounts and passwords* in Operations.
+
+### 3d. Protect the dashboard (`/_/`)
+
+The PocketBase dashboard is reachable on the public internet and — because it
+cannot use Google SSO — is guarded by a password alone. Put one of these in front
+of the `/_/` path:
+
+* **Cloudflare Access** (Zero Trust) with a policy limited to your team's Google
+  accounts. This is the least-effort option if your DNS is on Cloudflare.
+* **An IP allowlist** at your proxy/load balancer.
+* A **separate hostname** that is not publicly resolvable.
+
+Failing that: a long random superuser password, and never reuse it anywhere else.
+
 ---
 
 ## 4. Add mailboxes and start receiving mail
@@ -98,6 +151,45 @@ The login screen shows the Google button automatically once that's saved.
 ---
 
 ## 5. Operations
+
+### Accounts and passwords (rotation)
+
+Remember there are **two independent systems** (see 3c). Check both before
+assuming a rotation is complete:
+
+| System | How to change the credential |
+|---|---|
+| **Agent** (`users`) | Dashboard `/_/` → Collections → users → the record. Or the app's Settings → People. Irrelevant if password auth is disabled — agents then use Google. |
+| **Superuser** (`_superusers`) | Dashboard `/_/` → **Superusers** → edit → change password. Or the API (below). |
+
+Express check that a password is really dead — both layers, since a 200 means it
+still authenticates:
+
+```bash
+for coll in users _superusers; do
+  curl -s -o /dev/null -w "$coll -> %{http_code}\n" \
+    -X POST "https://<your-domain>/api/collections/$coll/auth-with-password" \
+    -H 'Content-Type: application/json' \
+    -d '{"identity":"you@example.com","password":"OLD-PASSWORD"}'
+done
+```
+
+`200` = still valid · `400` = wrong password · `403` = password auth disabled for
+that collection (expected on `users` in a Google-only setup).
+
+Changing a superuser password via the API (needs an existing superuser token):
+
+```bash
+curl -X PATCH "https://<your-domain>/api/collections/_superusers/records/<id>" \
+  -H "Authorization: Bearer <token>" -H 'Content-Type: application/json' \
+  -d '{"oldPassword":"<current>","password":"<new>","passwordConfirm":"<new>"}'
+```
+
+> ⚠️ **`MAILBOX_ADMIN_EMAIL` / `MAILBOX_ADMIN_PASSWORD` are first-boot only.** The
+> bootstrap is create-if-missing and runs once, so **editing them in `.env` does
+> nothing to an existing superuser** — it will not reset a password. If you have
+> rotated a superuser password, update the env value too, so that a future deploy
+> against a **fresh data volume** does not recreate the account with the old one.
 
 ### Backups (do this from day one)
 
@@ -198,5 +290,9 @@ vars as `.env.example`.
 | `redirect_uri_mismatch` | `https://<domain>/auth/callback` not registered exactly in the OAuth client |
 | Sync does nothing, logs mention 403/unauthorized | domain-wide delegation missing for that mailbox address, or wrong scopes |
 | Google button missing on login | users collection OAuth2 provider not configured (see 3b) |
+| Changed `MAILBOX_ADMIN_PASSWORD`, but the old admin password still works | expected — the bootstrap is first-boot only and never updates an existing superuser. Change it in the dashboard/API (see *Accounts and passwords*). |
+| Rotated the agent password but the admin login still works (or vice versa) | you changed the *other* account system — `users` and `_superusers` are separate records. Check both. |
+| `auth-with-password` returns 403 for every user | password auth is disabled on the `users` collection (correct for a Google-only setup) |
+| Demo accounts (`alice@demo.local`) cannot sign in | they are password logins; they cannot work when password auth is off |
 | Customer survey links point at the wrong host | `MAILBOX_PUBLIC_URL` not set (it drives `appURL` + link base) |
 | Deploy did nothing / old UI | asset cache (`max-age=14400`) — hard-refresh (Cmd/Ctrl+Shift+R) |
