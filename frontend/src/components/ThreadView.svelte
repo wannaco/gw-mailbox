@@ -176,6 +176,7 @@
     composerOpen = false;
     sigState = 0;
     if (editorEl) { editorEl.innerHTML = ""; }
+    draftHtml = "";
     replyText = "";
 
     // initial load + seed presence names
@@ -704,7 +705,27 @@
     if (lock) return;
     composerOpen = true;
     await tick();
-    if (editorEl) editorEl.focus();
+    if (editorEl) {
+      // Restore a stashed draft. Guarded on empty: never clobber content the
+      // editor already has (e.g. a signature inserted on mount).
+      if (draftHtml && !editorEl.innerHTML.trim()) editorEl.innerHTML = draftHtml;
+      editorEl.focus();
+      syncLiveSignature();
+    }
+  }
+
+  // Fold the editor away without discarding the draft.
+  //
+  // Collapsing unmounts the editor element (it is behind an {#if}), so the DOM
+  // is genuinely destroyed — `replyText` alone only holds the plain text and
+  // would not bring back formatting, links or line breaks. The HTML is stashed
+  // here first and put back on reopen. Sending is still the only thing that
+  // clears it.
+  let draftHtml = "";
+
+  function collapseComposer() {
+    if (editorEl) draftHtml = editorEl.innerHTML;
+    composerOpen = false;
   }
 
   async function sendReply() {
@@ -736,6 +757,7 @@
       });
       toast("success", hasAtt ? "Reply sent with " + attachments.length + " attachment" + (attachments.length > 1 ? "s" : "") : "Reply sent");
       if (editorEl) editorEl.innerHTML = "";
+      draftHtml = "";
       attachments = [];
       replyText = "";
       sigState = 0;
@@ -1616,6 +1638,14 @@
              open editor costs ~265px of the panel below the conversation. -->
         <div class="composer-bar">
           <span class="cb-to">Reply to <strong>{thread.customer_email || "—"}</strong></span>
+          <!-- Tell the user a draft is waiting, otherwise a collapsed composer
+               looks identical whether or not they had started typing. -->
+          {#if replyText.trim()}
+            <span class="cb-draft" title="Your reply is still here — click Reply to continue">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 17.25V21h3.75L17.8 9.94l-3.75-3.75L3 17.25zM20.7 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+              Draft kept
+            </span>
+          {/if}
           <span class="spacer"></span>
           <button class="send-btn" onclick={openComposer} disabled={!!lock}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z"/></svg>
@@ -1734,6 +1764,15 @@
           <div class="rich-footer">
             <span class="rf-to">To: {thread.customer_email || "—"}{#if replyMode === "replyAll" && ccList.length} · cc {ccList.length}{/if}</span>
             <span class="spacer"></span>
+            <!-- Previously the ONLY way out of the open editor was to send. Once
+                 you clicked Reply the editor held ~265px of the panel for the
+                 rest of the thread, so you could not get back to reading.
+                 Collapsing keeps whatever is in the editor (nothing is cleared),
+                 so reopening restores the draft. -->
+            <button class="md3-btn tonal small collapse-btn" type="button" onclick={collapseComposer} title="Collapse the reply and go back to reading — your text is kept">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+              Collapse
+            </button>
             <button class="send-btn" onclick={sendReply} disabled={busySend || lock || (attachments.length === 0 && !replyText.trim())}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z"/></svg>
               Send
@@ -2587,6 +2626,39 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /* "Draft kept" marker on the collapsed bar, in the tertiary violet already
+     used for drafting states elsewhere (list pencil, presence pen). */
+  .cb-draft {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex: 0 0 auto;
+    font: var(--m3-type-label-sm);
+    font-weight: 600;
+    color: var(--m3-on-tertiary-container);
+    background: var(--m3-tertiary-container);
+    border-radius: 999px;
+    padding: 2px 8px;
+  }
+
+  .collapse-btn {
+    flex: 0 0 auto;
+  }
+
+  /* Mobile: the footer already carries the recipient and Send, so the word
+     would crowd it — keep the icon and drop the label. */
+  @media (max-width: 720px) {
+    .collapse-btn {
+      padding: 0 10px;
+    }
+    .collapse-btn svg {
+      margin: 0;
+    }
+    .collapse-btn {
+      font-size: 0;
+    }
   }
   .cb-to strong {
     color: var(--m3-on-surface);
