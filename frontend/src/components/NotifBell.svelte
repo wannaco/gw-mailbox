@@ -8,7 +8,10 @@
   const items = $derived(appState.notifications || []);
 
   function kindLabel(k) {
-    return k === "mention" ? "mentioned you" : k === "assigned" ? "assigned" : "new note";
+    if (k === "mention") return "mentioned you";
+    if (k === "assigned") return "assigned you";
+    if (k === "reply") return "replied";
+    return "new note";
   }
 
   async function onOpen() {
@@ -64,7 +67,8 @@
                   <strong>{n.actor_name || "Someone"}</strong>
                   <span class="act">{kindLabel(n.kind)}</span>
                 </span>
-                {#if n.kind === "mention"}<span class="sub">@ you on “{n.thread_subject || "a thread"}”</span>
+                {#if n.kind === "reply"}<span class="sub">on “{n.thread_subject || "a thread"}”</span>
+                {:else if n.kind === "mention"}<span class="sub">@ you on “{n.thread_subject || "a thread"}”</span>
                 {:else}<span class="sub">“{n.thread_subject || "a thread"}”</span>{/if}
                 {#if n.body_snippet}<span class="snip">{n.body_snippet}</span>{/if}
                 <span class="when">{timeAgo(n.created_at)}</span>
@@ -200,6 +204,11 @@
   }
   .dot.k.assigned {
     background: var(--m3-secondary);
+  }
+  /* A customer reply on your ticket is the one arrival that needs you, so it
+     gets the primary colour rather than a neutral one. */
+  .dot.k.reply {
+    background: var(--m3-primary);
   }
   .dot.k.note {
     background: var(--m3-primary);

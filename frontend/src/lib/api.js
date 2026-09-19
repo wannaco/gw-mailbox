@@ -481,7 +481,11 @@ function upsertRecord(collection, data) {
     // notification (requires permission, requested on first mention).
     const rec = data.record || data;
     if (rec && rec.read === false && !document.hasFocus()) {
-      const kind = rec.kind === "mention" ? "mentioned you" : rec.kind === "assigned" ? "assigned a ticket" : "added a note";
+      const kind =
+        rec.kind === "mention" ? "mentioned you" :
+        rec.kind === "assigned" ? "assigned you a ticket" :
+        rec.kind === "reply" ? "replied" :
+        "added a note";
       const who = rec.actor_name || "Someone";
       const subj = rec.thread_subject || "a thread";
       const body = rec.body_snippet || "";

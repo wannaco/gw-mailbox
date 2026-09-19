@@ -432,6 +432,34 @@ function upsertThreadAndMessage(inboxRec, norm, opts) {
     }
     $app.save(thread);
     counters.threadsUpdated++;
+
+    // Tell the OWNER that their customer replied.
+    //
+    // Only on an existing thread (a brand-new thread has no owner yet) and only
+    // for live mail: a history pass re-reads old messages, and notifying on
+    // those would fire once per message for an entire mailbox import — the same
+    // mistake that put 734 imported threads in the queue.
+    //
+    // Notifying the assignee on a reply is the one arrival notification that is
+    // genuinely "needs YOU" and not "needs anyone": the queue already shows new
+    // mail, but nobody is watching their own ticket at 4pm.
+    try {
+      const owner = thread.getString("assigned_agent");
+      const fromAddr = (norm.from && norm.from.email) ? String(norm.from.email).toLowerCase() : "";
+      if (!history && owner && fromAddr && fromAddr !== uid.toLowerCase()) {
+        require(__hooks + "/lib/notifications_engine.js").notify(
+          owner,
+          "reply",
+          thread.id,
+          thread.getString("subject") || "(no subject)",
+          "",
+          fromAddr,
+          norm.snippet || ""
+        );
+      }
+    } catch (err) {
+      h.warn("reply notification failed", (err && err.message) || err);
+    }
   }
 
   const existingMsg = h.safeFindFirstByFilter("messages", "gmail_message_id = {:g}", { g: norm.gmail_message_id });

@@ -167,6 +167,8 @@ function handleMoveThread(e) {
       require(__hooks + "/lib/automations_engine.js").resetFollowups(thread);
     } catch (_) { /* non-fatal */ }
   }
+  // Remembered before the write so we can tell whether the owner CHANGED.
+  const prevAssignee = thread.getString("assigned_agent");
   if (body.assigned_agent !== undefined) {
     if (body.assigned_agent === "" || body.assigned_agent === null) thread.set("assigned_agent", "");
     else thread.set("assigned_agent", body.assigned_agent);
@@ -180,6 +182,28 @@ function handleMoveThread(e) {
   if (h.SLA_ACTIVE_STATUSES.indexOf(status) !== -1) h.ensureSlaDeadline(thread);
 
   $app.save(thread);
+
+  // Tell the agent a ticket was just handed to them.
+  //
+  // Fires only on a CHANGE of owner: re-saving the same assignee (which the UI
+  // does as part of other edits) must not re-notify, and assigning YOURSELF is
+  // never worth telling you about.
+  try {
+    const nowAssignee = thread.getString("assigned_agent");
+    if (nowAssignee && nowAssignee !== prevAssignee && nowAssignee !== actor.id) {
+      require(__hooks + "/lib/notifications_engine.js").notify(
+        nowAssignee,
+        "assigned",
+        thread.id,
+        thread.getString("subject") || "(no subject)",
+        "",
+        actor.name || "",
+        "Assigned to you by " + (actor.name || "a teammate")
+      );
+    }
+  } catch (err) {
+    h.warn("assign notification failed", (err && err.message) || err);
+  }
 
   // Closed card -> drop the agent's composer lock so nobody is left "drafting".
   if (status === "closed" && actor.id) h.releasePresence(threadId, actor.id);
