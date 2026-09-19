@@ -128,6 +128,27 @@
     overflow: hidden;
   }
 
+  /* Same anchor bug as the account menu, found by testing every popover rather
+     than just the one that was reported: `right: 0` pins this panel to the
+     bell, and the bell moves along the bar. At 320px the panel started 44px
+     off the LEFT edge and its content was unreachable.
+
+     Below 720px the panel is anchored to the top bar instead — `.notif` goes
+     static so .topbar's existing position:relative takes over — and spans the
+     viewport with an 8px gutter. Its position no longer depends on where the
+     bell happens to sit. */
+  @media (max-width: 720px) {
+    .notif {
+      position: static;
+    }
+    .pop {
+      top: 100%;
+      left: 8px;
+      right: 8px;
+      width: auto;
+    }
+  }
+
   .pop-head {
     display: flex;
     align-items: center;

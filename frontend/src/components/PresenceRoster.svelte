@@ -162,6 +162,45 @@
       gap: 4px;
       padding: 3px 6px;
     }
+
+    /* Same anchor bug the account menu had: the popup was pinned to the pill
+       with right:0, and the pill moves along the bar, so at 320px the roster
+       panel started 12px off the left edge. Anchored to the top bar below
+       720px instead (`.roster` goes static, letting .topbar's position:relative
+       take over) with an 8px gutter. */
+    .roster {
+      position: static;
+    }
+    .pop {
+      top: 100%;
+      left: 8px;
+      right: 8px;
+      min-width: 0;
+    }
+
+    /* CAP THE AVATAR STACK.
+     *
+     * The pill renders up to four teammate avatars, so it grows with the team:
+     * 1 other = 85px, 5 others = 163px. At 163px a 360px bar cannot fit the
+     * brand, gear, theme, pill, bell and account chip on one line — it wrapped
+     * to three rows again, which is exactly the original bug coming back via a
+     * different input. An unbounded element in a fixed-width bar has to be
+     * capped; that is the actual fix, not another breakpoint tweak.
+     *
+     * Child order inside .roster-btn is fixed, and display:none elements still
+     * count for nth-child, so the selectors are stable:
+     *   1 .live-dot  2 .roster-label  3 .me-avatar  4+ .o-avatar  last .count
+     */
+    .o-avatar:nth-child(n + 6) {
+      display: none; /* keep at most two teammate avatars */
+    }
+  }
+
+  @media (max-width: 380px) {
+    /* Narrowest phones: no teammate avatars at all, the count carries it. */
+    .o-avatar {
+      display: none;
+    }
   }
 
   .pop {

@@ -634,12 +634,30 @@
       height: 26px;
       font-size: 10px;
     }
+    /* MOBILE MENU IS ANCHORED TO THE BAR, NOT TO THE AVATAR.
+     *
+     * This was `left: 0`, i.e. the menu's left edge pinned to the avatar and
+     * extending right — correct only while the avatar happened to sit on the
+     * left. The moment the top bar was tightened so everything fitted on one
+     * line, the avatar moved to the far right and the menu ran 126px past the
+     * screen edge. Anchoring a popover to a trigger that MOVES is the actual
+     * bug; `right: 0` was broken the same way in the opposite direction.
+     *
+     * So the menu is positioned against the top bar instead: `.me` is made
+     * static, which lets the nearest positioned ancestor (.topbar, already
+     * position:relative) take over. The menu then spans the viewport with an
+     * 8px gutter and sits directly under the bar. It cannot leave the screen
+     * at any width, with any number of teammates, or at any font size —
+     * because nothing about its position depends on where the avatar lands. */
+    .me {
+      position: static;
+    }
     .me-menu {
-      /* anchor to the LEFT edge of the avatar so it can't clip off-screen */
-      right: auto;
-      left: 0;
-      min-width: 190px;
-      max-width: 88vw;
+      top: 100%;
+      left: 8px;
+      right: 8px;
+      min-width: 0;
+      max-width: none;
     }
     .topbar .md3-icon-btn[title="Sign out"] {
       display: none; /* sign out via profile later; saves space */
