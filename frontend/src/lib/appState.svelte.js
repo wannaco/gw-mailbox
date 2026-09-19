@@ -47,6 +47,10 @@ export const appState = $state({
   jumpToMessage: null, // message id to scroll/flash after opening a thread
   composerState: "idle", // idle | composing (this client)
   realtimeOn: false,
+  // "granted" | "denied" | "default" | "unsupported" - drives the one-time
+  // notification prompt. See notificationState() in api.js.
+  notifPerm: "default",
+  notifPromptDismissed: false,
   toasts: [] // { id, kind: info|error|success, message }
 });
 

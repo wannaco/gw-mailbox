@@ -493,17 +493,19 @@ function upsertRecord(collection, data) {
 
 // Native browser notification (graceful: request permission once, silently skip
 // if denied/unsupported). Clicking it focuses the app + opens the thread.
-let notifPermAsked = false;
+// Native browser notification.
+//
+// This never requests permission. A request raised from here is not tied to a
+// user gesture (it fires from a background SSE event), and browsers ignore
+// those: the prompt never appeared, permission stayed "default", and the old
+// code marked itself as already-asked and went permanently silent. Permission
+// is now requested only by askNotificationPermission(), which runs on a click.
 function notifyNative(title, body) {
   try {
-    if (!("Notification" in window)) return;
-    if (Notification.permission === "default" && !notifPermAsked) {
-      notifPermAsked = true;
-      Notification.requestPermission().then((p) => {
-        if (p === "granted") notifyNative(title, body);
-      });
-      return;
-    }
+    // Desktop only. Mobile rejects the constructor outright (Android forbids it
+    // without a service worker; iOS needs one too), so bail by platform rather
+    // than relying on the catch.
+    if (!notifSupported) return;
     if (Notification.permission !== "granted") return;
     const n = new Notification(title, { body, tag: "gwmb-" + title, icon: "/favicon.ico" });
     n.onclick = () => {
@@ -600,17 +602,40 @@ async function rtLoop() {
   }
 }
 
-// Ask for browser notification permission once (browsers need a prompt; we fire
-// it right after login so it's visible). Returns true when granted.
-export function ensureNotifications() {
+// Desktop browsers only. Android Chrome forbids `new Notification()` entirely,
+// so prompting there would grant a permission that can never be used.
+export const notifSupported =
+  typeof window !== "undefined" &&
+  "Notification" in window &&
+  !/Android|iPhone|iPad|iPod/i.test(navigator.userAgent || "");
+
+// "granted" | "denied" | "default" | "unsupported"
+export function notificationState() {
+  if (!notifSupported) return "unsupported";
+  try { return Notification.permission; } catch (_) { return "unsupported"; }
+}
+
+// Ask for permission. MUST be called from a user gesture (click / key press) -
+// browsers ignore prompts raised without one, which is why firing this on login
+// silently achieved nothing.
+export function askNotificationPermission() {
+  if (!notifSupported) return Promise.resolve(null);
+  if (Notification.permission === "granted") return Promise.resolve("granted");
+  if (Notification.permission === "denied") return Promise.resolve("denied");
   try {
-    if (!("Notification" in window)) return false;
-    if (Notification.permission === "granted") return true;
-    if (Notification.permission === "denied") return false;
-    // 'default' -> ask
-    Notification.requestPermission();
-    return false;
-  } catch (_) { return false; }
+    const r = Notification.requestPermission();
+    // Older Safari returns undefined instead of a promise.
+    if (!r || typeof r.then !== "function") return Promise.resolve(Notification.permission);
+    return r.catch(() => null);
+  } catch (_) { return Promise.resolve(null); }
+}
+
+// Called on session load to surface state to the UI. It never asks - the old
+// version asked (uselessly) and reported nothing, which is precisely why the
+// feature appeared to do nothing at all.
+export function ensureNotifications() {
+  appState.notifPerm = notificationState();
+  return appState.notifPerm === "granted";
 }
 
 // ---- app-wide presence loop (roster) --------------------------------------

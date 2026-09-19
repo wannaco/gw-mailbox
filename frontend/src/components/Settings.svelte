@@ -329,9 +329,24 @@
       : [...mentionAdminIds, id];
   }
 
-  function enableDesktopNotifs() {
-    const ok = api.ensureNotifications();
-    toast(ok ? "success" : "info", ok ? "Notifications enabled" : "Notification permission requested — allow it in your browser");
+  // A click, so the browser will actually show the permission prompt. It is
+  // this, not the call site, that makes the prompt appear at all.
+  async function enableDesktopNotifs() {
+    if (api.notificationState() === "unsupported") {
+      toast("info", "This browser can't show desktop notifications");
+      return;
+    }
+    const before = Notification.permission;
+    const res = await api.askNotificationPermission();
+    if (res === "granted") toast("success", "Notifications enabled");
+    else if (res === "denied") {
+      toast("error", before === "denied"
+        ? "Notifications are blocked for this site — allow them in the browser's site settings."
+        : "Notifications were blocked — allow them in the browser's site settings.");
+    } else {
+      toast("info", "No answer from the browser — try again, and allow notifications when asked.");
+    }
+    api.ensureNotifications();
   }
 
   async function saveAuto() {

@@ -19,6 +19,44 @@
   import { parsePath, buildPath, isPublicPath } from "./lib/router.js";
 
   let theme = $state("light");
+
+// One-time notification prompt. Dismissal is persisted so we never nag.
+const NOTIF_DISMISS_KEY = "gwmb.notifPromptDismissed";
+let notifPromptDismissed = $state(false);
+let notifPerm = $state("default");
+try { notifPromptDismissed = localStorage.getItem(NOTIF_DISMISS_KEY) === "1"; } catch (_) { /* private mode */ }
+
+// Only offer the prompt when asking could still change anything: not while one
+// is already granted, never once blocked (that needs a browser-level reset),
+// and not on mobile, where notifications need a service worker we do not have.
+const notifBanner = $derived(
+  !notifPromptDismissed && notifPerm === "default" && api.notifSupported
+);
+
+function dismissNotifBanner() {
+  notifPromptDismissed = true;
+  try { localStorage.setItem(NOTIF_DISMISS_KEY, "1"); } catch (_) { /* ignore */ }
+}
+
+async function enableNotifsBanner() {
+  const res = await api.askNotificationPermission();
+  notifPerm = api.notificationState();
+  if (res === "granted") {
+    notifPromptDismissed = true;
+    try { localStorage.setItem(NOTIF_DISMISS_KEY, "1"); } catch (_) { /* ignore */ }
+    toast("success", "Desktop notifications on");
+  } else if (res === "denied") {
+    notifPerm = "denied";
+    toast("error", "The browser blocked notifications — allow them in its site settings.");
+  } else {
+    toast("info", "No answer from the browser — try Enable again.");
+  }
+}
+
+// Keep the banner's state honest after any session load.
+$effect(() => {
+  if (appState.me) notifPerm = api.notificationState();
+});
   let booting = $state(true); // true until we know if a session exists
   let userMenuOpen = $state(false);
 
@@ -293,6 +331,25 @@
   <Login signIn={handleLogin} signInOAuth={handleOAuth} />
 {:else}
   <div class="shell">
+<!-- Notification permission, offered once as a real click.
+     A banner rather than a Settings button because (a) browsers only show the
+     permission prompt from a user gesture, and (b) Settings is admin-only, so
+     an ordinary agent had no route to this at all. Dismissal is remembered so
+     it only ever asks once. Shown only when a prompt would still do something:
+     "denied" cannot be undone from inside the page. -->
+{#if notifBanner}
+  <div class="notif-banner" role="region" aria-label="Enable notifications">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 22a2.5 2.5 0 0 0 2.45-2h-4.9A2.5 2.5 0 0 0 12 22zm7-5v-1l-1.6-1.6V10a5.4 5.4 0 0 0-4.4-5.3V4a1 1 0 0 0-2 0v.7A5.4 5.4 0 0 0 6.6 10v4.4L5 16v1z"/></svg>
+    <span class="nb-text">
+      <strong>Turn on desktop notifications</strong>
+      <span class="nb-sub">Get told when someone mentions you or assigns you a ticket, even on another tab.</span>
+    </span>
+    <button class="md3-btn primary small" type="button" onclick={enableNotifsBanner}>Enable</button>
+    <button class="nb-dismiss" type="button" title="Not now" aria-label="Dismiss" onclick={dismissNotifBanner}>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M18.3 5.7 12 12l6.3 6.3-1.4 1.4L10.6 13.4 4.3 19.7l-1.4-1.4L9.2 12 2.9 5.7l1.4-1.4 6.3 6.3 6.3-6.3z"/></svg>
+    </button>
+  </div>
+{/if}
     <header class="topbar">
       <div class="brand">
         <span class="brand-dot"></span>
@@ -402,6 +459,42 @@
     overflow: hidden;
     overscroll-behavior: none;
     background: var(--m3-surface);
+  }
+
+  .notif-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px;
+    background: var(--m3-primary-container);
+    color: var(--m3-on-primary-container);
+    border-bottom: 1px solid var(--m3-outline-variant);
+    flex: 0 0 auto;
+  }
+  .nb-text {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.25;
+    min-width: 0;
+    flex: 1;
+  }
+  .nb-sub {
+    font: var(--m3-type-body-sm);
+    opacity: 0.85;
+  }
+  .nb-dismiss {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    color: inherit;
+  }
+  .nb-dismiss:hover { background: rgb(0 0 0 / 0.08); }
+  @media (max-width: 560px) {
+    .nb-sub { display: none; }
   }
 
   .topbar {
