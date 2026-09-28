@@ -235,6 +235,13 @@ confusion when rotating credentials.
 - **`frontend/` is not the web root** — the container serves the compiled SPA from
   `pb_public`, so source files cannot be fetched over HTTP. (Projects that serve a
   raw source directory publicly have shipped stray scripts and secrets this way.)
+- **`users.role` is not self-assignable.** The app gates on it (`admin` sees
+every inbox and reaches Settings; `agent` sees only the inboxes they were
+granted), but `users.updateRule` is `@request.auth.id = id`, so any signed-in
+user can PATCH their own record — and a PocketBase rule cannot exclude a single
+field. `pb_hooks/role_guard.pb.js` therefore refuses any role change that is not
+made by an admin or a superuser. **Without it an agent could promote themselves**
+and read every inbox in the domain, in the same request that sets the field.
 - Collection API rules restrict anonymous reads; verify with an unauthenticated
   request to `/api/collections/<name>/records` after any schema change.
 
