@@ -2,7 +2,11 @@
 
 Single container: PocketBase (API + hooks + cron + admin dashboard) serving the
 Svelte SPA from `pb_public` on the same origin. No external database, no
-message queue, no CORS setup. Works on any x86-64 (or arm64, see below) VPS.
+message queue, no CORS setup. The published image is **linux/amd64** — on arm64
+see §6, which means building from source.
+
+Nothing needs to be compiled to deploy this. The image is published to GHCR and
+pulled at deploy time, so the host needs Docker and nothing else.
 
 ---
 
@@ -20,12 +24,28 @@ message queue, no CORS setup. Works on any x86-64 (or arm64, see below) VPS.
 
 ## 2. Quick start (5 minutes)
 
+You need three files on the host: `docker-compose.yml`, `Caddyfile` and
+`.env.example`. Fetch them without cloning anything:
+
 ```bash
-git clone <repo> gw-mailbox && cd gw-mailbox
+mkdir gw-mailbox && cd gw-mailbox
+BASE=https://raw.githubusercontent.com/wannaco/gw-mailbox/main
+curl -fsSLO $BASE/docker-compose.yml
+curl -fsSLO $BASE/Caddyfile
+curl -fsSLO $BASE/.env.example
+
 cp .env.example .env
 $EDITOR .env          # set DOMAIN, MAILBOX_PUBLIC_URL, MAILBOX_ADMIN_EMAIL/PASSWORD
-docker compose up -d --build
+docker compose up -d
 ```
+
+The app image (`ghcr.io/wannaco/gw-mailbox:latest`) is public — no registry login
+needed. `docker compose up -d` pulls it; there is no build step.
+
+> `docker compose pull && docker compose up -d` is the way to take an upgrade.
+> The compose file sets `pull_policy: always` — do not remove it. Without it,
+> Compose only pulls when the image is absent, so `up -d` reports success while
+the old container keeps running.
 
 Then open `https://<your-domain>` and sign in with the admin credentials from
 `.env` (use the **Admin** tab).
@@ -225,9 +245,12 @@ docker compose start app
 ### Upgrade
 
 ```bash
-git pull
-docker compose up -d --build     # migrations apply automatically on boot
+docker compose pull              # fetch the new :latest image
+docker compose up -d             # recreate; migrations apply on boot
 ```
+
+To pin instead of tracking `:latest`, set the `image:` in `docker-compose.yml` to
+a commit SHA tag — every build publishes `ghcr.io/wannaco/gw-mailbox:<sha>`.
 
 Changing `MAILBOX_PUBLIC_URL` later is fine — it's re-applied on every boot.
 Never change `PB_ENCRYPTION_KEY` after data exists.
@@ -243,18 +266,26 @@ curl -s https://<domain>/api/health
 
 ## 6. arm64 / other architectures
 
-The binary committed to the repo is **linux/amd64**. On an arm64 host (Hetzner
-Ampere, Oracle Ampere, Graviton, Raspberry Pi, Apple-silicon Docker) build with
-the matching PocketBase release instead:
+The published image is **linux/amd64 only**, because the PocketBase binary
+committed to the repo is linux/amd64. On an arm64 host (Hetzner Ampere, Oracle
+Ampere, Graviton, Raspberry Pi, Apple-silicon Docker) the published image will
+not run — build from source instead:
 
 ```bash
-docker compose build --build-arg \
+git clone https://github.com/wannaco/gw-mailbox.git && cd gw-mailbox
+cp .env.example .env && $EDITOR .env
+
+docker build --build-arg \
   PB_BINARY_URL=https://github.com/pocketbase/pocketbase/releases/download/v0.39.0/pocketbase_0.39.0_linux_arm64.zip \
-  app
-docker compose up -d
+  -t gw-mailbox:arm64 .
 ```
 
-(or uncomment the `args:` block in `docker-compose.yml`).
+Then point the compose file at your local build by replacing the `image:` line
+with `build: { context: . }` (the `pull_policy` line can stay).
+
+Publishing a multi-arch image would need one CI job per architecture —
+`build-push-action` takes a single `build-args` value for all platforms, so the
+per-arch `PB_BINARY_URL` has to be a separate job rather than a matrix.
 
 ---
 

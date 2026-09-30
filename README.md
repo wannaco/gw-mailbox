@@ -257,14 +257,15 @@ VPS with Docker:
 
 ```bash
 cp .env.example .env      # set DOMAIN, MAILBOX_PUBLIC_URL, MAILBOX_ADMIN_*
-docker compose up -d --build
+docker compose up -d      # pulls the published image; no build step
 ```
 
-The container is domain-agnostic: the SPA is same-origin and the public URL is
-read at runtime, so the same build runs on any host. On boot the app applies
-migrations, sets PocketBase's `appURL` from `MAILBOX_PUBLIC_URL`, creates the
-first **superuser** from `MAILBOX_ADMIN_*` **if one does not already exist**, and
-(only if `MAILBOX_SEED_DEMO=1`) demo data.
+The image is public (`ghcr.io/wannaco/gw-mailbox`), so no registry login is
+needed. The container is domain-agnostic: the SPA is same-origin and the public
+URL is read at runtime, so the same image runs on any host. On boot the app
+applies migrations, sets PocketBase's `appURL` from `MAILBOX_PUBLIC_URL`, creates
+the first **superuser** from `MAILBOX_ADMIN_*` **if one does not already exist**,
+and (only if `MAILBOX_SEED_DEMO=1`) demo data.
 
 Three things about that bootstrap are easy to get wrong:
 
