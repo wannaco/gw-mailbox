@@ -2,21 +2,25 @@
 # gw-mailbox — single-VPS deployment (app + automatic HTTPS)
 #
 #   cp .env.example .env      # then edit DOMAIN + MAILBOX_PUBLIC_URL
-#   docker compose up -d --build
+#   docker compose up -d
 #
-# Caddy obtains and renews a Let's Encrypt certificate for $DOMAIN and proxies
-# to PocketBase. The app container itself needs no TLS config and the image is
-# domain-agnostic (the SPA is same-origin; the public URL is read at runtime
-# from MAILBOX_PUBLIC_URL), so the same build runs on any host.
+# Pulls the published image — no toolchain, no build step. Caddy obtains and
+# renews a Let's Encrypt certificate for $DOMAIN and proxies to PocketBase. The
+# app container needs no TLS config and the image is domain-agnostic (the SPA is
+# same-origin; the public URL is read at runtime from MAILBOX_PUBLIC_URL), so the
+# same image runs on any host.
+#
+# To build from source instead, see docs/DEPLOY.md.
 # =============================================================================
 
 services:
   app:
-    build:
-      context: .
-      # arm64 host? uncomment and point at the matching PocketBase release:
-      # args:
-      #   PB_BINARY_URL: https://github.com/pocketbase/pocketbase/releases/download/v0.39.0/pocketbase_0.39.0_linux_arm64.zip
+    image: ghcr.io/wannaco/gw-mailbox:latest
+    # MANDATORY. Compose defaults to pull_policy: missing, which only pulls when
+    # the image is absent locally. With a moving tag like :latest that means a
+    # `docker compose up -d` reports success in ~1s while the old container keeps
+    # running — silent no-op upgrades. Do not remove this line.
+    pull_policy: always
     restart: unless-stopped
     env_file:
       - .env
