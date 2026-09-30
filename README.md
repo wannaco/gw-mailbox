@@ -298,4 +298,6 @@ kept in the repo — the Dockerfile bakes them into the image at
 **Settings**.
 
 If you redistribute this app (an image, an archive, a mirror), keep those files
-with it. Note that **the app's own source is not open source** — see `LICENSE`.
+with it. Note that the app's own source is **source-available under the PolyForm
+Internal Use License** — see `LICENSE`. Running it internally is free and
+permitted; distributing it, or hosting it for others, is not.
