@@ -310,11 +310,116 @@ function handleArchiveImportedHistory(e) {
   }
 }
 
+
+// ---------------------------------------------------------------------------
+// One-off repair: remove Gmail DRAFTS that were ingested before drafts were
+// filtered (see `is_draft` in gmail_engine.js). Until that guard existed, a
+// half-written reply was stored as if it had been sent — and because Gmail
+// issues a fresh message id each time a draft is saved, a long compose session
+// left a run of bogus messages in the thread, plus bogus threads for drafts
+// whose thread sat in the inbox.
+//
+// A draft is always authored by the mailbox itself, so only messages whose
+// sender IS the inbox address are inspected — sent replies and drafts, not
+// customer mail. That keeps the API calls proportional to the small set rather
+// than to the whole mailbox.
+//
+// Gmail is the source of truth: a message is only deleted locally if Gmail says
+// it currently carries the DRAFT label. A message that cannot be fetched (404 —
+// draft discarded, or mail deleted) is left alone rather than guessed at.
+//
+//   POST /api/mailbox/admin/cleanup-drafts[?dryRun=1][&max=300]
+function runCleanupDrafts(dryRun, max) {
+  const cap = max || 300;
+  const inboxes = $app.findRecordsByFilter("inboxes", "is_active = true", "name", 0, 0) || [];
+  const perInbox = [];
+  let scanned = 0, drafts = 0, deleted = 0, threadsDeleted = 0, unchecked = 0;
+
+  for (const inbox of inboxes) {
+    const uid = inbox.getString("email_address");
+    if (!uid) continue;
+    const authored = $app.findRecordsByFilter("messages", "sender_email = {:e}", "", 0, 0, { e: uid }) || [];
+
+    // thread id -> draft message records found in it
+    const hits = {};
+    for (const m of authored) {
+      if (scanned >= cap) { unchecked++; continue; }
+      const gid = m.getString("gmail_message_id");
+      if (!gid) continue;
+      scanned++;
+      let labels = [];
+      try {
+        const res = h.googleRequest({
+          url: h.GMAIL_BASE + "/users/" + encodeURIComponent(uid) + "/messages/" + encodeURIComponent(gid) + "?format=minimal",
+          scopes: [h.GMAIL_SCOPE],
+          subject: uid
+        });
+        labels = (res && res.labelIds) || [];
+      } catch (_) {
+        continue; // gone from Gmail, or unreadable — never delete on a guess
+      }
+      if (labels.indexOf("DRAFT") === -1) continue;
+      drafts++;
+      const tid = m.getString("thread");
+      if (!hits[tid]) hits[tid] = [];
+      hits[tid].push(m);
+    }
+
+    let inboxDeleted = 0, inboxThreadsGone = 0;
+    for (const tid of Object.keys(hits)) {
+      const inThread = $app.findRecordsByFilter("messages", "thread = {:t}", "", 0, 0, { t: tid }) || [];
+      const doomed = hits[tid].length;
+      const emptyAfter = inThread.length - doomed;
+      if (!dryRun) {
+        for (const m of hits[tid]) {
+          try { $app.delete(m); inboxDeleted++; } catch (_) { /* leave it */ }
+        }
+        // A thread that existed only because of the draft has nothing left.
+        if (emptyAfter <= 0) {
+          try {
+            const t = h.safeFindById("threads", tid);
+            if (t) { $app.delete(t); inboxThreadsGone++; }
+          } catch (_) { /* leave it */ }
+        }
+      } else {
+        inboxDeleted += doomed;
+        if (emptyAfter <= 0) inboxThreadsGone++;
+      }
+    }
+    deleted += inboxDeleted;
+    threadsDeleted += inboxThreadsGone;
+    perInbox.push({ inbox: inbox.getString("name") || uid, authored: authored.length, drafts: Object.keys(hits).reduce((n, k) => n + hits[k].length, 0), deleted: inboxDeleted, threadsDeleted: inboxThreadsGone });
+  }
+  return { dryRun: !!dryRun, scanned: scanned, drafts: drafts, deleted: deleted, threadsDeleted: threadsDeleted, unchecked: unchecked, perInbox: perInbox };
+}
+
+// POST /api/mailbox/admin/cleanup-drafts[?dryRun=1][&max=N]
+function handleCleanupDrafts(e) {
+  if (h.addCorsHeaders(e, "POST, OPTIONS")) return;
+  const actor = h.actorFromEvent(e);
+  if (!actor || !actor.isAdmin) return h.fail(e, 403, "forbidden", "Admins only");
+  let dryRun = false, max = 300;
+  try {
+    const q = e.request.url.query();
+    dryRun = (q.get("dryRun") || "") === "1";
+    const m = parseInt(q.get("max") || "", 10);
+    if (m > 0) max = m;
+  } catch (_) { /* defaults */ }
+  try {
+    const r = runCleanupDrafts(dryRun, max);
+    e.json(200, { ok: true, ...r });
+  } catch (err) {
+    h.fail(e, 500, "cleanup_drafts_failed", (err && err.message) || String(err));
+  }
+}
+
 module.exports = {
   runSlaMonitor,
   handleRunSlaMonitor,
   runArchiveImportedHistory,
   handleArchiveImportedHistory,
+  runCleanupDrafts,
+  handleCleanupDrafts,
   runPresenceSweeper,
   runMailPollSync,
   runBackfillStepper

@@ -174,10 +174,17 @@ function normalizeMessage(msg, inboxEmail) {
     }
   }
 
+  // Gmail returns DRAFT as a normal message inside its thread, so labelIds is
+  // the only signal that it is unfinished work rather than mail. Read here and
+  // acted on in upsertThreadAndMessage (the single choke point all three ingest
+  // paths pass through).
+  const labels = msg.labelIds || [];
+
   return {
     gmail_message_id: msg.id,
     gmail_thread_id: msg.threadId,
     gmail_msgid_header: msgIdHdr,
+    is_draft: labels.indexOf("DRAFT") !== -1,
     subject: subject || "(no subject)",
     snippet: msg.snippet || "",
     from: from,
@@ -335,6 +342,24 @@ function slaAnchorFromPb(pbDate) {
 function upsertThreadAndMessage(inboxRec, norm, opts) {
   const counters = { threadsCreated: 0, threadsUpdated: 0, messagesAdded: 0, skipped: 0 };
   const history = !!(opts && opts.history);
+
+  // A Gmail DRAFT is not mail. Gmail returns drafts as ordinary messages inside
+  // their thread, so `threads/{id}?format=full` hands them to us next to real
+  // mail, and we were upserting them as though they had been sent.
+  //
+  // Worse, Gmail issues a NEW message id every time a draft is saved, so a long
+  // compose session produced a run of separate bogus messages in the thread —
+  // and a draft whose thread sits in the inbox produced bogus threads. Nothing
+  // about a half-written reply belongs in the customer's conversation until it
+  // is actually sent; at that point it arrives as a SENT message and is
+  // ingested normally.
+  //
+  // Placed before any thread lookup so a brand-new draft thread is never
+  // created in the first place.
+  if (norm && norm.is_draft) {
+    counters.skipped++;
+    return counters;
+  }
   const uid = inboxUserEmail(inboxRec);
   // Download attachment bytes for this message once; used for both new rows
   // and healing legacy rows (never saved with files). Safe no-op when none.

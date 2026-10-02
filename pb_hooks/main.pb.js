@@ -91,6 +91,11 @@ routerAdd("POST", "/api/mailbox/admin/archive-imported-history", (e) => {
   require(__hooks + "/lib/cron_engine.js").handleArchiveImportedHistory(e);
 });
 
+// One-off repair: drop Gmail drafts ingested before drafts were filtered.
+routerAdd("POST", "/api/mailbox/admin/cleanup-drafts", (e) => {
+  require(__hooks + "/lib/cron_engine.js").handleCleanupDrafts(e);
+});
+
 routerAdd("POST", "/api/mailbox/admin/run-sla-monitor", (e) => {
   require(__hooks + "/lib/cron_engine.js").handleRunSlaMonitor(e);
 }, $apis.requireAuth());
