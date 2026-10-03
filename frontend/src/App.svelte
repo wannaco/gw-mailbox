@@ -784,7 +784,30 @@ $effect(() => {
     top: 0;
     right: 0;
     bottom: 0;
-    width: min(620px, 96vw);
+    /* Responsive rather than a fixed 620px.
+     *
+     * 620px was fine when the drawer only had to show a conversation, but it is
+     * also where you WRITE a reply — and at 1440px that left 43% of the screen
+     * to the drawer while the reading area got 452px of height and the editor
+     * 587x108. At 1920px it was worse: a third of the screen for the thread,
+     * two thirds of empty list beside it.
+     *
+     * Heights are vh-based as well as widths, because the discomfort is mostly
+     * vertical — a short laptop (768-900px tall) is the worst case, and this is
+     * where the extra width actually helps: wider text wraps to fewer lines, so
+     * the same paragraph occupies less height and the editor gets more of it.
+     *
+     * The 96vw cap stays so the drag-to-edge case on narrow windows cannot put
+     * the panel off-screen; 92vw on small screens keeps a tap-strip of the list
+     * visible to close it deliberately. */
+    /* Leave the LIST a usable minimum rather than taking a percentage.
+     *
+     * 72vw was the wrong basis: it happens to be fine at 1920 (920px, 48%) but
+     * at 900px wide it becomes 84% and the list is effectively gone. Anchoring
+     * to the list instead means the drawer takes whatever is left after a
+     * sensible list column, capped so it never becomes absurdly wide on a big
+     * monitor. */
+    width: min(920px, calc(100vw - 460px));
     background: var(--m3-surface-container-low);
     box-shadow: var(--m3-elev-4);
     border-left: 1px solid var(--m3-outline-variant);
@@ -793,6 +816,14 @@ $effect(() => {
        viewport instead of being clipped at the topbar. */
     z-index: 35;
     animation: slideIn 0.22s cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  /* Below ~860px the calc above would leave the list too thin to read, so the
+     drawer takes a fixed share and keeps a dismissible strip of list on screen. */
+  @media (max-width: 860px) {
+    .drawer {
+      width: 92vw;
+    }
   }
 
   @keyframes slideIn {

@@ -2934,9 +2934,36 @@
     color: var(--m3-on-surface-variant);
   }
 
+  /* The cap was the single biggest cause of the cramped composer.
+   *
+   * min-height 108 keeps a short reply comfortable, but max-height 260 meant the
+   * editor stopped growing even on a 1080px-tall screen with the drawer half
+   * empty below it. Raised to a viewport share, so the editor grows with the
+   * window and scrolls internally rather than being pinned to a fixed ceiling. */
+  /* The writing area is sized by the WINDOW, not by a fixed 108px.
+   *
+   * 108px was the real complaint: on a 1080px-tall screen you got a strip for
+   * writing email while the drawer below it was empty. Raising max-height did
+   * nothing visible, because a normal reply never reaches the cap — the default
+   * was simply too small.
+   *
+   * Now the editor takes a share of the viewport by default and shrinks only if
+   * the thread needs the room, so a short reply still has somewhere to breathe
+   * without clicking anything. */
+  /* Small when you click Reply, grows as you write.
+   *
+   * min-height is deliberately modest — the point of opening the composer is to
+   * start a reply, not to consume the panel. 38vh on open was far too big: the
+   * conversation dropped to 354px and you could not read what you were replying
+   * to.
+   *
+   * max-height is what actually grants the space. It used to be a fixed 260px,
+   * which meant a long reply hit a wall and scrolled inside a small box no
+   * matter how tall the window was. A viewport share lets it grow with the
+   * content up to a sane ceiling. */
   .rich-body {
-    min-height: 108px;
-    max-height: 260px;
+    min-height: 96px;
+    max-height: min(52vh, 560px);
     overflow-y: auto;
     padding: 10px 12px;
     outline: none;
@@ -3294,6 +3321,15 @@
     }
     .rich-toolbar .hint {
       display: none;
+    }
+    /* On a phone the thread and the composer are competing for a much shorter
+       viewport. Left to the desktop rule the editor grew to 342px and the
+       conversation was squeezed to 117px — you could no longer read what you
+       were replying to. Capped harder here so the thread always keeps the
+       majority of the screen. */
+    .rich-body {
+      min-height: 84px;
+      max-height: 26vh;
     }
     .rich-toolbar button {
       min-width: 26px;
