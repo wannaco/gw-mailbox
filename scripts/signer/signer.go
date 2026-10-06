@@ -1,5 +1,7 @@
 // RS256 JWT Signer sidecar for PocketBase 0.39 (vendored from repo tooling)
-// Listens on localhost:9999, signs JWTs with RSA private keys.
+// Listens on 127.0.0.1:9999 (loopback only — the /sign endpoint accepts an
+// arbitrary private key, so it must never bind 0.0.0.0). Signs JWTs with RSA
+// private keys. Override the listener with the SIGNER_ADDR env var.
 //
 //   go run ./scripts/signer   (or: go build -o bin/signer ./scripts/signer)
 //
@@ -21,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 )
 
@@ -122,8 +125,16 @@ func main() {
 		w.Write([]byte(`{"ok":true}`))
 	})
 
-	fmt.Println("RS256 JWT Signer listening on :9999")
-	if err := http.ListenAndServe(":9999", nil); err != nil {
+	// Loopback by default: /sign accepts an arbitrary private key, so this must
+	// never be reachable from the network. Override with SIGNER_ADDR (e.g.
+	// "127.0.0.1:9999" or "unix:/tmp/signer.sock") only if you know why.
+	addr := os.Getenv("SIGNER_ADDR")
+	if addr == "" {
+		addr = "127.0.0.1:9999"
+	}
+
+	fmt.Println("RS256 JWT Signer listening on", addr)
+	if err := http.ListenAndServe(addr, nil); err != nil {
 		fmt.Printf("Server error: %v\n", err)
 	}
 }
