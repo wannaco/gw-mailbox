@@ -280,8 +280,8 @@
   }
   .stat-num { font: var(--m3-type-headline); font-weight: 700; }
   .stat-label { font: var(--m3-type-label-md); color: var(--m3-on-surface-variant); }
-  .stat.warn .stat-num { color: #ba1a1a; }
-  .stat.good .stat-num { color: #188038; }
+  .stat.warn .stat-num { color: var(--m3-danger); }
+  .stat.good .stat-num { color: var(--m3-success); }
 
   .panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
   .card {

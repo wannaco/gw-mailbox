@@ -2158,11 +2158,11 @@
     color: var(--m3-on-secondary-container);
     font: var(--m3-type-body-md);
   }
-  .csat-strip > svg { flex: 0 0 auto; margin-top: 2px; color: #f9ab00; }
+  .csat-strip > svg { flex: 0 0 auto; margin-top: 2px; color: var(--m3-warning); }
   .csat-items { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
   .csat-item { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
   .csat-stars { color: var(--m3-outline); letter-spacing: 2px; }
-  .csat-stars span.lit { color: #f9ab00; }
+  .csat-stars span.lit { color: var(--m3-warning); }
   .csat-comment-txt { font-style: italic; font-size: 0.9rem; }
   .csat-item .link-btn {
     color: var(--m3-primary);

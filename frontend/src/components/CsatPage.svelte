@@ -163,7 +163,7 @@
     padding: 2px;
     transition: transform 0.1s ease, color 0.1s ease;
   }
-  .star.on { color: #f9ab00; }
+  .star.on { color: var(--m3-warning); }
   .star:hover { transform: scale(1.12); }
   .csat-label { font-weight: 600; color: var(--m3-on-surface, #1a1a1a); min-height: 1.2em; margin: 6px 0 10px; }
   .csat-comment {
@@ -178,7 +178,7 @@
     background: var(--m3-surface-container-lowest, #fff);
     color: inherit;
   }
-  .csat-err { color: #ba1a1a; font-size: 0.85rem; margin: 8px 0 0; }
+  .csat-err { color: var(--m3-danger); font-size: 0.85rem; margin: 8px 0 0; }
   .csat-submit {
     margin-top: 14px;
     width: 100%;
@@ -193,8 +193,4 @@
     cursor: pointer;
   }
   .csat-submit:disabled { opacity: 0.55; cursor: default; }
-  @media (prefers-color-scheme: dark) {
-    .csat-card { background: #1e1e1e; border-color: #3a3a3a; color: #e6e6e6; }
-    .csat-comment { background: #262626; border-color: #3a3a3a; }
-  }
 </style>

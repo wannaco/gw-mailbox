@@ -610,12 +610,12 @@
   }
   .bulkbar .md3-btn { padding: 4px 12px; }
   .bulkbar .md3-btn.danger.solid {
-    background: #ba1a1a;
+    background: var(--m3-danger);
     color: #fff;
   }
   .bulkbar .md3-btn.danger:not(.solid) {
-    border: 1px solid #ba1a1a;
-    color: #ba1a1a;
+    border: 1px solid var(--m3-danger);
+    color: var(--m3-danger);
   }
 
   /* The rows sit on their own surface, lifted off the page with the same

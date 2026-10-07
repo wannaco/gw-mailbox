@@ -846,7 +846,7 @@
   }
 
   .ok {
-    color: #188038;
+    color: var(--m3-success);
     font-weight: 600;
   }
 
@@ -903,7 +903,7 @@
     gap: 12px;
   }
   .sla-now { color: var(--m3-primary); font-weight: 600; }
-  .sla-red { color: #ba1a1a; font-weight: 700; }
+  .sla-red { color: var(--m3-danger); font-weight: 700; }
 
   .switch-row > span {
     display: flex;

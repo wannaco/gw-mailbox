@@ -307,8 +307,8 @@
     cursor: pointer;
   }
   .bulkbar .md3-btn { padding: 4px 12px; }
-  .bulkbar .md3-btn.danger.solid { background: #ba1a1a; color: #fff; }
-  .bulkbar .md3-btn.danger:not(.solid) { border: 1px solid #ba1a1a; color: #ba1a1a; }
+  .bulkbar .md3-btn.danger.solid { background: var(--m3-danger); color: var(--m3-on-danger); }
+  .bulkbar .md3-btn.danger:not(.solid) { border: 1px solid var(--m3-danger); color: var(--m3-danger); }
 
   .board {
     flex: 1;

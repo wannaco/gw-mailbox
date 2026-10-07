@@ -86,7 +86,7 @@
     width: 7px;
     height: 7px;
     border-radius: 50%;
-    background: #22c55e;
+    background: var(--m3-success);
   }
 
   .roster-label {
@@ -118,7 +118,7 @@
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: #22c55e;
+    background: var(--m3-success);
     border: 2px solid var(--m3-surface-container);
   }
 

@@ -28,6 +28,15 @@
   --m3-error-container: #fce8e6;
   --m3-on-error-container: #8c1d18;
 
+  /* Semantic roles M3 does not define. Before these existed the components
+     hardcoded the values (a second red, three different greens, two ambers),
+     so nothing could be retinted centrally and dark mode drifted. Values in
+     light are exactly what the components used, so this is a no-op visually. */
+  --m3-danger: #ba1a1a;
+  --m3-on-danger: #ffffff;
+  --m3-success: #188038;
+  --m3-warning: #f9ab00;
+
   /* surfaces — near-white, Gmail-like */
   --m3-surface: #f8fafd;
   --m3-on-surface: #1f1f1f;
@@ -101,6 +110,14 @@
   --m3-on-error: #601410;
   --m3-error-container: #8c1d18;
   --m3-on-error-container: #fce8e6;
+
+  /* --m3-error above is a TEXT role in dark (light pink on a dark page). Danger
+     here is used as a filled button background, so it needs its own pair —
+     white-on-#ba1a1a would have stayed, and was invisible against dark. */
+  --m3-danger: #ffb4ab;
+  --m3-on-danger: #690005;
+  --m3-success: #6dd58c;
+  --m3-warning: #fdd663;
 
   --m3-surface: #1f1f1f;
   --m3-on-surface: #e4e4e4;

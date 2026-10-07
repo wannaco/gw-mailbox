@@ -152,7 +152,7 @@
   }
 
   .card.overdue {
-    border-left-color: #ba1a1a;
+    border-left-color: var(--m3-danger);
   }
 
   .card.selmode {

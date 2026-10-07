@@ -130,9 +130,10 @@ Frontend consumption notes (Phase 3):
 
 1. **Phase 1 — Schema & rules** ✅ `pb_migrations/…` + `docs/schema.md`
 2. **Phase 2 — Gmail webhook + Calendar hooks** ✅ `gmail.pb.js`, `calendar.pb.js`
-3. **Phase 3 — M3 frontend** ⏳ SvelteKit/React + Material 3 (nav rail, kanban
-   DnD, thread viewer w/ notes tab) — consumes the REST + SSE contract above.
-4. **Phase 4 — SSE bindings** ✅ backend already emits; Phase 3 wires clients.
+3. **Phase 3 — M3 frontend** ✅ Svelte 5 + Vite (built as the plain SPA below, not
+   SvelteKit/React — see the Frontend section for why).
+4. **Phase 4 — SSE bindings** ✅ presence, thread and message streams are wired in
+   `frontend/src/lib/api.js` (fetch-based reader; `EventSource` can't send the auth header).
 
 ## Frontend — Svelte 5 + Material 3 (Phase 3 slice)
 
@@ -144,11 +145,27 @@ npm run dev            # http://localhost:5173  (/api proxied to PB :8090)
 ```
 
 Zero-framework-weight build: Svelte 5 + Vite only, **no meta-framework, no state
-lib, no component library** — Material 3 via generated design tokens
-(`src/m3.css`, light+dark) and ~15 hand-rolled components. Dev preview proxies
-`/api` → PocketBase, so no CORS config. Production: `npm run build` (dist ≈ 26 KB
-JS + 4 KB CSS gzip) and serve `dist/` behind the same host as PB (or set
-`MAILBOX_ALLOWED_ORIGIN` and `VITE_PB_URL`).
+lib, no component library**. The Material 3 *design language* is applied by hand:
+`src/m3.css` is a hand-written set of CSS custom properties (`--m3-*`) using M3's
+role names, with light and dark values, plus ~15 hand-rolled components.
+
+Be aware of what this is **not**: there is no generation step and no upstream
+token file — these are hand-picked values, and `--m3-*` is our own naming, not
+M3's canonical `--md-sys-*`. Anything M3 defines beyond colour roles, typescale,
+shape and elevation (component behaviour, state layers, ripples, motion) is not
+here. If you need a component we have not built, the official
+[`@material/web`](https://github.com/material-components/material-web)
+(Apache-2.0, Lit-based web components) can sit alongside this. Dev preview proxies
+`/api` → PocketBase, so no CORS config. Production: `npm run build` and serve
+`dist/` behind the same host as PB (or set `MAILBOX_ALLOWED_ORIGIN` and
+`VITE_PB_URL`). Sizes quoted in older revisions ("26 KB JS + 4 KB CSS gzip")
+are stale — that was the Phase 3 slice. Measure it, don't trust a number in a
+README:
+
+```bash
+cd frontend && npm run build
+cd dist/assets && for f in index-*.js index-*.css; do echo "$f $(gzip -c $f | wc -c)"; done
+```
 
 Includes: M3 nav rail with inbox switcher, Kanban board (native drag between
 status columns → optimistic `/move`, revert+snackbar on failure), filter chips
@@ -159,7 +176,8 @@ notes, reply composer (`/reply`), and 1-click Meet slot booking
 (`src/lib/api.js`), auto-reconnect, subscribed to `threads`/`messages`/
 `thread_presence`.
 
-Phase 3 slice verified: `npm run build` clean (26 KB JS + 4 KB CSS gzip);
+Phase 3 slice verified: `npm run build` clean (sizes at the time — see the note
+above, they have grown since);
 dev server + proxy serves the app and completes agent login → `/mailbox/me`.
 
 ## Verified end-to-end (PocketBase 0.39 binary, `scripts/e2e.py`)
