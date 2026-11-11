@@ -1118,13 +1118,6 @@
     return out;
   });
 
-  // True when the previous day chip was a different month, so the month is
-  // labelled once per run rather than under every date.
-  function monthChanged(i) {
-    if (i === 0) return true;
-    return meetDays[i].getMonth() !== meetDays[i - 1].getMonth();
-  }
-
   // Bare-time label for a blocked slot (the column already states AM/PM), used
   // as the tooltip rather than inline: at 15m a busy range like "9:15–11:00"
   // does not fit next to the time and truncated to "9:15–11:…", which was worse
@@ -1142,28 +1135,40 @@
 
   const anyBusyOrPast = $derived(selectedCells.some((c) => cellBusy(c) || cellPast(c)));
 
-  // Slots that fit the 300px viewport are centred like a timepicker; longer
-  // lists stay left-aligned and scroll, because centring content that overflows
-  // looks accidental. The threshold mirrors the fit rule (300px / 34px = 8 rows,
-  // i.e. 16 slots across two columns) — deliberately NOT read from DOM
-  // measurement, which would need a second pass and make the columns jump.
-  const SLOTS_CENTRED_MAX = 16;
 
-  // The slot list is scrollable, and a scroll viewport inevitably cuts a row at
-  // its edge. Measured rather than assumed so a bottom fade is shown ONLY when
-  // there is genuinely more below — otherwise the fade would look like a
-  // rendering fault on the short durations.
+  // The backend throws config-shaped errors — literally "GOOGLE_SA_JSON /
+  // GOOGLE_SA_FILE not configured" — and they were rendered straight into the
+  // dialog. Nobody can act on an env var name, so map the known ones to human
+  // text and never let a raw config string reach the UI.
+  function humanCalendarError(msg) {
+    const m = String(msg || "");
+    if (/GOOGLE_SA_JSON|GOOGLE_SA_FILE|service.?account|credential/i.test(m)) {
+      return "Calendar isn't connected yet. An admin needs to connect Google Workspace in Settings, then try again.";
+    }
+    if (/unauthorized_client|insufficient|PERMISSION_DENIED|403/i.test(m)) {
+      return "Google refused the calendar request. The Workspace delegation may be missing the calendar scope, or the change is still propagating.";
+    }
+    if (/not.?found|404/i.test(m)) {
+      return "That calendar could not be found for this mailbox.";
+    }
+    return m.length > 160 ? "Could not check availability. Try again in a moment." : m;
+  }
+
+  // The slot area scrolls at short durations (44 slots at 15m). Measured, not
+  // assumed, so the "more below" fade only renders when there is genuinely more
+  // — an always-on fade looked like a rendering fault at 60m.
   let slotsEl = $state(null);
   let slotsScrolls = $state(false);
   $effect(() => {
-    // Depend on the things that change the content.
     selectedCells;
     meetDur;
     busyList;
     const el = slotsEl;
     if (!el) return;
-    slotsScrolls = el.scrollHeight > el.clientHeight + 1;
+    const over = el.scrollHeight > el.clientHeight + 1;
+    if (over !== slotsScrolls) slotsScrolls = over;
   });
+
   function fmtCellTime(d) {
     return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   }
@@ -1448,14 +1453,18 @@
             <p class="muted center">Checking availability…</p>
           {:else}
             {#if busyMsg}
-              <p class="muted" style="color:var(--m3-error)">{busyMsg}</p>
+              <p class="mm-alert">{humanCalendarError(busyMsg)}</p>
             {/if}
 
             <!-- Day picker: single-line pills. The old 3-line stacked chips ate
                  ~72px of height and ~1/4 of the width to say "THU 17 Sep". -->
+            <!-- Month/date shown once as a heading. It used to sit inline in the
+                 chip strip, where "NOV" read as a broken, unclickable chip. -->
+            <p class="mm-daytitle">
+              {selectedDay ? selectedDay.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" }) : ""}
+            </p>
             <div class="mm-days" role="tablist" aria-label="Day">
               {#each meetDays as d, i (d.getTime())}
-                {#if monthChanged(i)}<span class="mm-month">{d.toLocaleDateString([], { month: "short" })}</span>{/if}
                 <button
                   type="button"
                   role="tab"
@@ -1484,11 +1493,12 @@
             <!-- Slots read as a timepicker list rather than a grid of boxes:
                  text buttons in columns, each column showing its meridiem once.
                  Short days are centred, long days scroll. -->
-            <div class="mm-slots-wrap">
-              <div class="mm-slots" class:sparse={selectedCells.length <= SLOTS_CENTRED_MAX} bind:this={slotsEl}>
+              <div class="mm-slots-wrap">
+                <div class="mm-slots" bind:this={slotsEl}>
                 {#each slotGroups as grp (grp.label)}
-                  <div class="mm-slot-col">
+                  <div class="mm-slot-sec">
                     <span class="mm-mer">{grp.label}</span>
+                    <div class="mm-slot-grid">
                     {#each grp.slots as c (c.getTime())}
                       {@const busy = cellBusy(c)}
                       {@const past = cellPast(c)}
@@ -1511,15 +1521,17 @@
                         <span class="mm-t">{slotClock(c)}</span>
                       </button>
                     {/each}
+                    </div>
                   </div>
                 {/each}
+                </div>
               </div>
-              {#if slotsScrolls}<div class="mm-fade" aria-hidden="true"></div>{/if}
-            </div>
 
             {#if anyBusyOrPast}
+              <!-- Was "line-through = already booked" — that describes CSS, not
+                   meaning. Show a swatch and the word instead. -->
               <div class="mm-legend">
-                <span class="mm-lg">line-through = already booked</span>
+                <span class="mm-lg"><i class="mm-lg-sw"></i>Already booked</span>
               </div>
             {/if}
 
@@ -1535,8 +1547,14 @@
 
         <footer class="mm-foot">
           <div class="mm-fields">
-            <input type="text" class="mm-summary" bind:value={meetSummary} placeholder="Summary (subject)" />
-            <input type="text" class="mm-note" bind:value={meetNote} placeholder="Description / agenda (optional)" />
+            <label class="mm-field">
+              <span>Meeting title</span>
+              <input type="text" class="mm-summary" bind:value={meetSummary} placeholder="What this meeting is about" />
+            </label>
+            <label class="mm-field">
+              <span>Notes <em>optional</em></span>
+              <input type="text" class="mm-note" bind:value={meetNote} placeholder="Agenda, or anything to send with the invite" />
+            </label>
           </div>
           {#if meetErr}<p class="mm-err">{meetErr}</p>{/if}
           <div class="mm-actions">
@@ -2258,27 +2276,31 @@
     flex-wrap: wrap;
   }
 
-  /* Month shown once per run of dates ("Sep 17 18 19 …"), not under every date. */
-  .mm-month {
-    font: var(--m3-type-label-sm);
-    color: var(--m3-on-surface-variant);
-    text-transform: uppercase;
-    margin-right: 2px;
+  /* Full date for the selected day. Replaces the inline "NOV" span that used to
+     sit inside the chip strip and read as a broken chip. */
+  .mm-daytitle {
+    font: var(--m3-type-title-sm);
+    color: var(--m3-on-surface);
+    margin: 0;
   }
 
+  /* Every chip carries a surface, selected or not. Previously the selected one
+     had a background and the rest were bare text, so only one looked clickable. */
   .mm-day {
     display: inline-flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     gap: 0;
-    min-width: 42px;
-    padding: 5px 8px;
-    height: 46px;
+    flex: 1 1 0;
+    min-width: 44px;
+    padding: 5px 6px;
+    height: 48px;
     border-radius: var(--m3-shape-md);
+    background: var(--m3-surface-container);
     color: var(--m3-on-surface-variant);
     border: 1px solid transparent;
-    transition: background 0.12s ease, color 0.12s ease;
+    transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
   }
 
   .mm-day:hover:not(.on) {
@@ -2288,6 +2310,7 @@
   .mm-day.on {
     background: var(--m3-primary-container);
     color: var(--m3-on-primary-container);
+    border-color: var(--m3-primary);
   }
 
   .mm-dw {
@@ -2323,44 +2346,51 @@
     position: relative;
   }
 
-  /* Soft edge so a scroll shows as "more below" rather than a row cut in half by
-     a hard border. Only rendered when the list actually scrolls. */
-  .mm-fade {
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    height: 26px;
-    pointer-events: none;
-    background: linear-gradient(to bottom, transparent, var(--m3-surface-container-low));
-  }
 
+  /* The slot area used to be a fixed 300px scroll box with two ~140px columns,
+     which (a) cut the last row in half mid-height and (b) left ~340px of the
+     680px dialog empty. It is now a wrapping grid that fills the width and
+     grows to its content, so nothing clips and nothing is wasted. */
+  /* Six whole rows visible, then it scrolls. Height is derived from the row
+     metric rather than hardcoded so a row is never sliced in half, and
+     scroll-snap means a scroll always lands on a row boundary. */
+  /* 278px is deliberate, not round. Probed live across candidate heights: at 15m
+     (44 slots, the only duration that scrolls) 274-280px is the band where the
+     viewport lands in the gap between rows and no slot is sliced; 284px and above
+     cuts six. 30/45/60 all fit with no scrolling at 278 (content: 270/190/190), so
+     30m — the default — shows no scrollbar at all.
+     A grey fade gradient over the bottom was tried and removed: it sat on top of
+     the last row, so available 30m slots looked greyed-out/disabled. */
   .mm-slots {
     display: flex;
+    flex-direction: column;
     gap: 10px;
-    align-items: flex-start;
-    /* Tall enough for ~7 rows at 15m; the whole list scrolls beyond that. */
-    max-height: 300px;
+    max-height: 278px;
     overflow-y: auto;
-    scroll-padding-bottom: 26px;
-    padding-right: 2px;
+    scroll-snap-type: y proximity;
+    scrollbar-gutter: stable;
+    padding-right: 4px;
   }
 
-  /* Few enough slots to fit without scrolling: centre them like a timepicker. */
-  .mm-slots.sparse {
-    justify-content: center;
+  .mm-slots-wrap {
+    position: relative;
   }
 
-  .mm-slot-col {
-    flex: 1 0 92px;
-    max-width: 140px;
+
+  .mm-slot-sec {
     display: flex;
     flex-direction: column;
-    gap: 1px;
+    gap: 6px;
+  }
+
+  .mm-slot-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+    gap: 6px;
   }
 
   .mm-mer {
-    align-self: stretch;
+    align-self: flex-start;
     font: var(--m3-type-label-sm);
     font-weight: 700;
     letter-spacing: 0.05em;
@@ -2370,18 +2400,20 @@
 
   .mm-slot {
     display: flex;
-    align-items: baseline;
+    align-items: center;
+    justify-content: center;
     gap: 6px;
     width: 100%;
-    height: 33px;
-    padding: 0 10px;
+    height: 34px;
+    padding: 0 6px;
     border-radius: var(--m3-shape-sm);
     background: var(--m3-surface-container);
     color: var(--m3-on-surface);
     font: var(--m3-type-label-md);
     font-variant-numeric: tabular-nums;
-    text-align: left;
-    transition: background 0.1s ease;
+    text-align: center;
+    scroll-snap-align: start;
+    transition: background 0.1s ease, color 0.1s ease;
   }
 
   /* Needs to outrank `.mm-slot.sel` (0,2,0) — otherwise hovering the chosen
@@ -2431,9 +2463,35 @@
     color: var(--m3-on-surface);
   }
 
+  .mm-alert {
+    font: var(--m3-type-body-sm);
+    color: var(--m3-on-error-container);
+    background: var(--m3-error-container);
+    border: 1px solid color-mix(in srgb, var(--m3-error) 35%, transparent);
+    border-radius: var(--m3-shape-sm);
+    padding: 8px 10px;
+    margin: 0;
+  }
+
   .mm-legend {
     font: var(--m3-type-label-sm);
     color: var(--m3-on-surface-variant);
+  }
+
+  .mm-lg {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  /* A 12px swatch matching a booked cell, so the key is the thing itself. */
+  .mm-lg-sw {
+    width: 18px;
+    height: 12px;
+    border-radius: 3px;
+    background: var(--m3-surface-container-high);
+    border: 1px solid var(--m3-outline-variant);
+    display: inline-block;
   }
 
   .mm-seg {
@@ -2470,7 +2528,26 @@
   .mm-fields {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 8px;
+  }
+
+  /* Real labels, not placeholder-only. Once you typed, nothing said which field
+     was which — and "Summary (subject)" was internal jargon. */
+  .mm-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .mm-field > span {
+    font: var(--m3-type-label-sm);
+    font-weight: 600;
+    color: var(--m3-on-surface-variant);
+  }
+
+  .mm-field > span em {
+    font-style: normal;
+    font-weight: 400;
   }
 
   .mm-summary,
