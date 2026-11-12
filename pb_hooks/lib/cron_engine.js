@@ -413,6 +413,145 @@ function handleCleanupDrafts(e) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// One-off repair: threads whose "customer" is the mailbox itself.
+//
+// Before Reply-To was parsed, a message arriving through a Google Group or alias
+// had its From rewritten to the group address for DMARC. From == the mailbox and
+// To == the group address too, so customer detection found nothing and the thread
+// kept pointing at ourselves — replies were addressed to us. The ingest fix only
+// helps NEW mail; this repairs what is already stored, applying the same rule:
+// Reply-To first when From is the mailbox, else the To/Cc scan.
+//
+// Gmail is the source of truth: reply_to is not stored on messages, so each
+// candidate's headers are re-read. Anything unreadable is left untouched.
+// ---------------------------------------------------------------------------
+
+function repairParseAddr(raw) {
+  raw = String(raw || "").trim();
+  if (!raw) return { name: "", email: "" };
+  const m = raw.match(/^([^<]*)\s*<([^>]+)>/);
+  if (m) return { name: m[1].trim(), email: m[2].trim().toLowerCase() };
+  return { name: "", email: raw.toLowerCase() };
+}
+
+function repairHdr(headers, name) {
+  const want = name.toLowerCase();
+  for (const hd of headers || []) {
+    if (String(hd.name || "").toLowerCase() === want) return hd.value || "";
+  }
+  return "";
+}
+
+// Same decision as normalizeMessage: who to reply to for this message, or null.
+function repairCustomerForMessage(msg, uid) {
+  const headers = (msg && msg.payload && msg.payload.headers) || [];
+  const inboxLc = String(uid).toLowerCase();
+
+  const from = repairParseAddr(repairHdr(headers, "From"));
+  if (from.email && from.email !== inboxLc) return from;
+
+  const replyTo = repairParseAddr(repairHdr(headers, "Reply-To"));
+  if (replyTo.email && replyTo.email !== inboxLc) return replyTo;
+
+  const to = String(repairHdr(headers, "To") || "") + "," + String(repairHdr(headers, "Cc") || "");
+  for (const part of to.split(",")) {
+    const a = repairParseAddr(part);
+    if (a.email && a.email !== inboxLc) return a;
+  }
+  return null;
+}
+
+function runRepairCustomers(dryRun, max) {
+  const cap = max || 400;
+  const inboxes = $app.findRecordsByFilter("inboxes", "is_active = true", "name", 0, 0) || [];
+  const perInbox = [];
+  let scanned = 0, candidates = 0, repaired = 0, unresolved = 0, unchecked = 0;
+
+  for (const inbox of inboxes) {
+    const uid = inbox.getString("email_address");
+    if (!uid) continue;
+    const inboxLc = uid.toLowerCase();
+
+    const all = $app.findRecordsByFilter("threads", "inbox = {:i}", "-last_message_at", 0, 0, { i: inbox.id }) || [];
+    const bad = [];
+    for (const t of all) {
+      if (String(t.getString("customer_email") || "").toLowerCase() === inboxLc) bad.push(t);
+    }
+
+    let inboxRepaired = 0, inboxUnresolved = 0;
+    for (const t of bad) {
+      if (scanned >= cap) { unchecked++; continue; }
+      scanned++;
+      candidates++;
+
+      const msgs = $app.findRecordsByFilter("messages", "thread = {:t} && is_internal_note = false", "-msg_date", 0, 0, { t: t.id }) || [];
+      if (!msgs.length) { inboxUnresolved++; unresolved++; continue; }
+
+      // Newest first: the latest message decides who we are talking to.
+      let resolved = null;
+      for (const m of msgs) {
+        const gid = m.getString("gmail_message_id");
+        if (!gid) continue;
+        try {
+          const res = h.googleRequest({
+            url: h.GMAIL_BASE + "/users/" + encodeURIComponent(uid) + "/messages/" + encodeURIComponent(gid) +
+                 "?format=metadata&metadataHeaders=From&metadataHeaders=Reply-To&metadataHeaders=To&metadataHeaders=Cc",
+            scopes: [h.GMAIL_SCOPE],
+            subject: uid
+          });
+          const c = repairCustomerForMessage(res, uid);
+          if (c) { resolved = c; break; }
+        } catch (_) { /* unreadable: try the next message, never guess */ }
+      }
+
+      if (!resolved) { inboxUnresolved++; unresolved++; continue; }
+
+      if (!dryRun) {
+        try {
+          t.set("customer_email", resolved.email);
+          if (resolved.name) t.set("customer_name", resolved.name);
+          $app.save(t);
+          inboxRepaired++; repaired++;
+        } catch (_) { inboxUnresolved++; unresolved++; }
+      } else {
+        inboxRepaired++; repaired++;
+      }
+    }
+
+    perInbox.push({
+      inbox: inbox.getString("name") || uid,
+      email: uid,
+      threads: all.length,
+      matched_inbox_address: bad.length,
+      repaired: inboxRepaired,
+      unresolved: inboxUnresolved
+    });
+  }
+
+  return { dryRun: !!dryRun, scanned, candidates, repaired, unresolved, unchecked, perInbox };
+}
+
+// POST /api/mailbox/admin/repair-customers[?dryRun=1][&max=N]
+function handleRepairCustomers(e) {
+  if (h.addCorsHeaders(e, "POST, OPTIONS")) return;
+  const actor = h.actorFromEvent(e);
+  if (!actor || !actor.isAdmin) return h.fail(e, 403, "forbidden", "Admins only");
+  let dryRun = false, max = 400;
+  try {
+    const q = e.request.url.query();
+    dryRun = (q.get("dryRun") || "") === "1";
+    const m = parseInt(q.get("max") || "", 10);
+    if (m > 0) max = m;
+  } catch (_) { /* defaults */ }
+  try {
+    const r = runRepairCustomers(dryRun, max);
+    e.json(200, { ok: true, ...r });
+  } catch (err) {
+    h.fail(e, 500, "repair_customers_failed", (err && err.message) || String(err));
+  }
+}
+
 module.exports = {
   runSlaMonitor,
   handleRunSlaMonitor,
@@ -420,6 +559,8 @@ module.exports = {
   handleArchiveImportedHistory,
   runCleanupDrafts,
   handleCleanupDrafts,
+  runRepairCustomers,
+  handleRepairCustomers,
   runPresenceSweeper,
   runMailPollSync,
   runBackfillStepper

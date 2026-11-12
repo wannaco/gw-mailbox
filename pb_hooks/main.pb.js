@@ -96,6 +96,13 @@ routerAdd("POST", "/api/mailbox/admin/cleanup-drafts", (e) => {
   require(__hooks + "/lib/cron_engine.js").handleCleanupDrafts(e);
 });
 
+// One-off repair: threads whose "customer" is the mailbox itself, because a
+// group/alias rewrite moved the real sender into Reply-To, which was never
+// parsed. Applies the same rule as ingest; dry run first.
+routerAdd("POST", "/api/mailbox/admin/repair-customers", (e) => {
+  require(__hooks + "/lib/cron_engine.js").handleRepairCustomers(e);
+});
+
 routerAdd("POST", "/api/mailbox/admin/run-sla-monitor", (e) => {
   require(__hooks + "/lib/cron_engine.js").handleRunSlaMonitor(e);
 }, $apis.requireAuth());

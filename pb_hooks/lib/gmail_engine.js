@@ -153,6 +153,11 @@ function normalizeMessage(msg, inboxEmail) {
   // clean. Literal UTF-8/ASCII pass through untouched.
   const subject = h.decodeHeaderWords(headerValue(headers, "Subject"));
   const from = parseAddress(h.decodeHeaderWords(headerValue(headers, "From")));
+  // Reply-To carries the ORIGINAL sender when a message arrives through a group or
+  // alias: Google rewrites From to the group address for DMARC compliance and moves
+  // the real sender here. This header was never read, so those threads resolved
+  // their customer to the mailbox itself and replies were sent to ourselves.
+  const replyTo = parseAddress(h.decodeHeaderWords(headerValue(headers, "Reply-To")));
   const toList = collectAddresses(headerValue(headers, "To"));
   const ccList = collectAddresses(headerValue(headers, "Cc"));
   const to = toList.concat(ccList); // merged view (customer detection + legacy field)
@@ -162,14 +167,25 @@ function normalizeMessage(msg, inboxEmail) {
   const iso = internalDate ? new Date(internalDate).toISOString() : "";
   const attachmentParts = collectAttachmentParts(msg.payload, [], bodies.html);
 
+  const inboxLc = String(inboxEmail).toLowerCase();
   let customer = null;
-  if (from.email && from.email.toLowerCase() !== String(inboxEmail).toLowerCase()) {
+  if (from.email && from.email.toLowerCase() !== inboxLc) {
     customer = from;
   } else {
-    for (const addr of to) {
-      if (addr.toLowerCase() !== String(inboxEmail).toLowerCase()) {
-        customer = { name: "", email: addr };
-        break;
+    // From IS the mailbox. Two different situations look identical at this point:
+    //   (a) mail genuinely sent by us -> the counterpart is in To/Cc
+    //   (b) group/alias forwarding    -> From was rewritten to the group address and
+    //       the real sender is in Reply-To. To is the group address too, so the To
+    //       scan below finds nothing and the thread ends up pointing at ourselves.
+    // Prefer Reply-To, then fall back to the existing To logic.
+    if (replyTo.email && replyTo.email.toLowerCase() !== inboxLc) {
+      customer = replyTo;
+    } else {
+      for (const addr of to) {
+        if (addr.toLowerCase() !== inboxLc) {
+          customer = { name: "", email: addr };
+          break;
+        }
       }
     }
   }
@@ -188,6 +204,7 @@ function normalizeMessage(msg, inboxEmail) {
     subject: subject || "(no subject)",
     snippet: msg.snippet || "",
     from: from,
+    reply_to: replyTo,
     to: to,
     to_list: toList,
     cc_list: ccList,
