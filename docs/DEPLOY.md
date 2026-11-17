@@ -87,6 +87,17 @@ On first boot the app automatically:
 
 ### 3a. Service account (this is what actually reads/sends the mail)
 
+#### Option A — Automated via Google Cloud Shell (recommended)
+
+1. **[Open the setup tutorial in Google Cloud Shell ↗](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/wannaco/gw-mailbox.git&cloudshell_tutorial=tutorial.md&cloudshell_workspace=.)**
+2. Run `bash setup.sh` — it creates the GCP project, enables `gmail.googleapis.com` and `calendar-json.googleapis.com`, creates `gw-mailbox-sa`, enables domain-wide delegation, downloads the `.json` key file to your computer, and prints your **Client ID** and **OAuth scopes**.
+3. Open Google **Admin console** → **Security → Access and data control → API controls → Domain-wide delegation → Add new** and paste the Client ID and scopes printed by `setup.sh`.
+4. Upload the `.json` key in **Settings → Connection** (or set `GOOGLE_SA_JSON` / `GOOGLE_SA_FILE`).
+
+You can also run `./verify.sh <project-id>` to verify the GCP setup or `./cleanup.sh` to remove it later.
+
+#### Option B — Manual setup
+
 1. Google Cloud Console → create/choose a project → **IAM & Admin → Service Accounts → Create**.
 2. Create a **JSON key** for it and download it.
 3. Copy the service-account `client_email` (e.g. `svc@project.iam.gserviceaccount.com`).

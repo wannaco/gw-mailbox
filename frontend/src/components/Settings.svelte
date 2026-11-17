@@ -438,6 +438,14 @@
       {:else}
         <p class="muted">No service-account key stored yet. Paste the JSON below (or upload the .json file).</p>
       {/if}
+      <p class="muted">
+        Don’t have a GCP project yet?
+        <a
+          href="https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/wannaco/gw-mailbox.git&cloudshell_tutorial=tutorial.md&cloudshell_workspace=."
+          target="_blank"
+          rel="noopener"
+        >Open setup tutorial in Cloud Shell ↗</a>
+      </p>
       <textarea class="sa-input" rows="6" bind:value={saJson} placeholder="Paste the full service-account JSON here"></textarea>
       <div class="row-btns">
         <button class="md3-btn primary" onclick={saveKey} disabled={busySave || !saJson.trim()}>
