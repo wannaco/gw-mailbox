@@ -1067,4 +1067,38 @@
     color: var(--m3-on-surface-variant-2);
     font: var(--m3-type-body-sm);
   }
+
+  @media (max-width: 640px) {
+    .settings-wrap,
+    .wrap {
+      padding: 12px 10px 28px;
+    }
+    .tabs {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+    .tabs::-webkit-scrollbar {
+      display: none;
+    }
+    .tabs button {
+      flex: 0 0 auto;
+      white-space: nowrap;
+    }
+    .card {
+      padding: 12px;
+    }
+    .field-row {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 4px;
+    }
+    .field-row input,
+    .field-row select,
+    .add-inbox input {
+      max-width: none !important;
+      width: 100%;
+    }
+  }
 </style>

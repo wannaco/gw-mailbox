@@ -354,6 +354,7 @@ $effect(() => {
       <div class="brand">
         <span class="brand-dot"></span>
         <span class="brand-name">Mailbox</span>
+        <span class="mobile-inbox">{appState.inboxes.find((i) => i.id === appState.activeInboxId)?.name || ""}</span>
       </div>
       <div class="spacer"></div>
       <div class="md3-seg" role="tablist" aria-label="View">
@@ -400,6 +401,10 @@ $effect(() => {
             <button class="mm-item" role="menuitem" onclick={() => { userMenuOpen = false; goScreen("mail"); }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/></svg>
               Inbox
+            </button>
+            <button class="mm-item mobile-only" role="menuitem" onclick={() => { userMenuOpen = false; appState.view = appState.view === "list" ? "board" : "list"; goScreen("mail"); }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 5v14h8V5H3zm10 0v9h8V5h-8z"/></svg>
+              {appState.view === "list" ? "Switch to Board view" : "Switch to List view"}
             </button>
             <button class="mm-item" role="menuitem" onclick={() => { userMenuOpen = false; goScreen("settings"); }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96a7.02 7.02 0 0 0-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84a.48.48 0 0 0-.48.41l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.48-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/></svg>
@@ -701,14 +706,23 @@ $effect(() => {
       flex: 0 0 auto;
     }
     .topbar .md3-seg {
-      order: 10;
-      flex-basis: 100%;
-      justify-content: flex-start;
-      margin-top: 2px;
+      display: none; /* keep mobile topbar single-row; view toggle lives in account menu */
     }
-    .topbar .md3-seg button {
-      font-size: 0.78rem;
-      padding: 3px 10px;
+    .mobile-inbox {
+      display: inline-block;
+      font: var(--m3-type-label-md);
+      font-weight: 600;
+      color: var(--m3-on-surface-variant);
+      background: var(--m3-surface-container-high);
+      border-radius: 999px;
+      padding: 2px 9px;
+      max-width: 140px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .mobile-inbox:empty {
+      display: none;
     }
     .topbar .md3-chip.is-active {
       display: none; /* inbox name — too wide on mobile */
@@ -818,11 +832,30 @@ $effect(() => {
     animation: slideIn 0.22s cubic-bezier(0.2, 0, 0, 1);
   }
 
+  .mobile-inbox,
+  .mobile-only {
+    display: none;
+  }
+
+  @media (max-width: 720px) {
+    .mobile-only {
+      display: flex;
+    }
+  }
+
   /* Below ~860px the calc above would leave the list too thin to read, so the
      drawer takes a fixed share and keeps a dismissible strip of list on screen. */
   @media (max-width: 860px) {
     .drawer {
       width: 92vw;
+    }
+  }
+
+  /* On phones, open threads full-screen like Gmail rather than leaving an 8% sliver. */
+  @media (max-width: 720px) {
+    .drawer {
+      width: 100vw;
+      border-left: 0;
     }
   }
 

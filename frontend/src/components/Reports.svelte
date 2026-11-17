@@ -182,14 +182,16 @@
       <div class="card">
         <h3>Agents</h3>
         {#if data.agents.length}
-          <table class="rep-table">
-            <thead><tr><th>Agent</th><th>Open</th><th>Closed</th><th>Total</th><th>1st replies</th></tr></thead>
-            <tbody>
-              {#each data.agents as a (a.id)}
-                <tr><td>{a.name}</td><td>{a.open}</td><td>{a.closed}</td><td>{a.total}</td><td>{a.first_responses || 0}</td></tr>
-              {/each}
-            </tbody>
-          </table>
+          <div class="table-wrap">
+            <table class="rep-table">
+              <thead><tr><th>Agent</th><th>Open</th><th>Closed</th><th>Total</th><th>1st replies</th></tr></thead>
+              <tbody>
+                {#each data.agents as a (a.id)}
+                  <tr><td>{a.name}</td><td>{a.open}</td><td>{a.closed}</td><td>{a.total}</td><td>{a.first_responses || 0}</td></tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
           <p class="muted hint">Avg 1st response = first agent reply − ticket arrival. Avg resolution = close − ticket arrival. Both fill in automatically as agents reply to and close tickets.</p>
         {:else}
           <p class="muted">No assigned tickets yet — assign tickets to agents to see per-agent volume here. ({data.byAssignee.unassignedOpen || 0} open unassigned)</p>
@@ -299,7 +301,15 @@
   .bar-fill { height: 100%; border-radius: 999px; transition: width 0.3s ease; }
   .bar-num { width: 34px; text-align: right; font: var(--m3-type-label-md); color: var(--m3-on-surface-variant); }
 
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .rep-table { width: 100%; border-collapse: collapse; font: var(--m3-type-body-sm); }
   .rep-table th, .rep-table td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--m3-outline-variant); }
   .rep-table th { color: var(--m3-on-surface-variant); font-weight: 600; }
+
+  @media (max-width: 640px) {
+    .rep { padding: 14px 10px 28px; }
+    .panels { grid-template-columns: 1fr; }
+    .card { padding: 12px; }
+    .bar-name { width: 90px; }
+  }
 </style>
