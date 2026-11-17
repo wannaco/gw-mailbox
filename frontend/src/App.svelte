@@ -503,12 +503,11 @@ $effect(() => {
   }
 
   .topbar {
-    /* Above page content: the toolbar inside <main> sets z-index 20 (for its
-       Columns menu), and the account/roster dropdowns live in THIS stacking
-       context — so the topbar must outrank the toolbar or the page paints
-       over the menus (dropdowns appeared under the search box on mobile). */
+    /* Above page content AND the thread drawer (z-index 35): the account,
+       notifications, and active-user dropdowns live in this stacking context,
+       so .topbar must outrank .drawer or those menus render behind it. */
     position: relative;
-    z-index: 30;
+    z-index: 40;
     display: flex;
     align-items: center;
     gap: 8px;

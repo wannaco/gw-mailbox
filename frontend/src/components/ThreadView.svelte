@@ -1280,21 +1280,12 @@
   <div class="tv-root">
   <header class="tv-head">
     <div class="tv-title-row">
-      <button class="md3-icon-btn close" onclick={() => (appState.openThreadId = "")} title="Close">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M18.3 5.7 12 12l6.3 6.3-1.4 1.4L10.6 13.4 4.3 19.7l-1.4-1.4L9.2 12 2.9 5.7l1.4-1.4 6.3 6.3 6.3-6.3z"/></svg>
+      <button class="md3-icon-btn close" onclick={() => (appState.openThreadId = "")} title="Back / Close">
+        <svg class="icon-close-desktop" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M18.3 5.7 12 12l6.3 6.3-1.4 1.4L10.6 13.4 4.3 19.7l-1.4-1.4L9.2 12 2.9 5.7l1.4-1.4 6.3 6.3 6.3-6.3z"/></svg>
+        <svg class="icon-back-mobile" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
       </button>
       <div class="tv-title">
         <h3>{thread.subject || "(no subject)"}</h3>
-        <span class="cust">
-          {thread.customer_name ? thread.customer_name + " · " : ""}{thread.customer_email || "no customer"}
-          {#if thread.last_message_at} · {timeAgo(thread.last_message_at)}{/if}
-          {#if thread.customer_email}
-            <button type="button" class="contact-btn" onclick={() => (contactOpen = true)} title="View / edit contact">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
-              Contact
-            </button>
-          {/if}
-        </span>
       </div>
       <select class="status-select" value={thread.status} onchange={setStatus}
         style="--sc:{statusMeta(thread.status).dot}">
@@ -1304,10 +1295,26 @@
       </select>
     </div>
 
-    <!-- Only two rows by default: the title block above, and this bar. The
-         secondary controls (assignee, labels, meeting, previous tickets) fold
-         behind "Details" so the message body gets the vertical space — the
-         header used to take ~187px, over a fifth of the drawer. -->
+    <div class="tv-meta-row">
+      <span class="cust">
+        {thread.customer_name ? thread.customer_name + " · " : ""}{thread.customer_email || "no customer"}
+        {#if thread.last_message_at} · {timeAgo(thread.last_message_at)}{/if}
+      </span>
+      {#if thread.customer_email}
+        <button type="button" class="contact-btn" onclick={() => (contactOpen = true)} title="View / edit contact">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+          Contact
+        </button>
+      {/if}
+      <div class="spacer"></div>
+      <select class="assignee-sel" value={thread.assigned_agent || ""} onchange={(e) => setAssignee(e.target.value)} disabled={busyAssign} title="Assignee">
+        <option value="">Unassigned</option>
+        {#each assigneeOptions as u (u.id)}
+          <option value={u.id}>{u.name || u.email}</option>
+        {/each}
+      </select>
+    </div>
+
     <div class="tv-actions">
       <button class="md3-chip" class:is-active={tab === "conversation"} onclick={() => (tab = "conversation")}>
         Conversation ({msgsVisible.length})
@@ -1317,12 +1324,6 @@
         Internal notes{#if unreadNotes > 0}<span class="tab-badge">{unreadNotes}</span>{/if}
       </button>
       <div class="spacer"></div>
-      <select class="assignee-sel" value={thread.assigned_agent || ""} onchange={(e) => setAssignee(e.target.value)} disabled={busyAssign} title="Assignee">
-        <option value="">Unassigned</option>
-        {#each assigneeOptions as u (u.id)}
-          <option value={u.id}>{u.name || u.email}</option>
-        {/each}
-      </select>
       <button type="button" class="detail-toggle" onclick={() => (detailsOpen = !detailsOpen)} aria-expanded={detailsOpen}
         title="Labels, meeting, previous tickets">
         <svg class="chev" class:open={detailsOpen} width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
@@ -1888,8 +1889,30 @@
 
   .tv-title-row {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     gap: 10px;
+  }
+
+  .icon-back-mobile {
+    display: none;
+  }
+
+  .tv-meta-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px 8px;
+    margin-top: 6px;
+    padding-left: 2px;
+  }
+
+  @media (max-width: 720px) {
+    .icon-close-desktop {
+      display: none;
+    }
+    .icon-back-mobile {
+      display: block;
+    }
   }
 
   .tv-title {
