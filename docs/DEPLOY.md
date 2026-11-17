@@ -24,6 +24,25 @@ pulled at deploy time, so the host needs Docker and nothing else.
 
 ## 2. Quick start (5 minutes)
 
+### Option A — Interactive deployment wizard (recommended)
+
+Run on any Linux VPS or local machine (installs Docker / Compose if missing,
+downloads the right compose file, generates `PB_ENCRYPTION_KEY`, writes `.env`,
+and starts the stack):
+
+```bash
+mkdir -p gw-mailbox && cd gw-mailbox
+curl -fsSL https://raw.githubusercontent.com/wannaco/gw-mailbox/main/deploy.sh -o deploy.sh
+bash deploy.sh
+```
+
+It supports three modes:
+1. **Production server (VPS)** — `docker-compose.yml` + `Caddyfile` (bundled Caddy with automatic HTTPS)
+2. **Behind existing reverse proxy** — `docker-compose.traefik.yml` (Traefik, Coolify, Dokploy, Nginx)
+3. **Local machine only** — `docker-compose.dev.yml` (`http://127.0.0.1:8090`, no TLS)
+
+### Option B — Manual setup
+
 You need three files on the host: `docker-compose.yml`, `Caddyfile` and
 `.env.example`. Fetch them without cloning anything:
 

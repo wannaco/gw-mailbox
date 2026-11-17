@@ -271,7 +271,15 @@ and read every inbox in the domain, in the same request that sets the field.
 ## Deployment
 
 See **[docs/DEPLOY.md](docs/DEPLOY.md)** for the full guide. Quick start on any
-VPS with Docker:
+VPS with Docker using the interactive deployment wizard:
+
+```bash
+mkdir -p gw-mailbox && cd gw-mailbox
+curl -fsSL https://raw.githubusercontent.com/wannaco/gw-mailbox/main/deploy.sh -o deploy.sh
+bash deploy.sh
+```
+
+Or manually with Docker Compose:
 
 ```bash
 cp .env.example .env      # set DOMAIN, MAILBOX_PUBLIC_URL, MAILBOX_ADMIN_*

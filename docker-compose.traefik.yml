@@ -1,0 +1,51 @@
+# =============================================================================
+# gw-mailbox — compose for a platform that ALREADY terminates TLS
+#
+# Use this when something else owns ports 80/443 and routes to your container by
+# name — Traefik, Coolify, Kubernetes ingress, an existing nginx, Dokploy, etc.
+#
+#   docker-compose.yml          standalone server: bundled Caddy, needs DOMAIN
+#   docker-compose.traefik.yml  THIS FILE: something else terminates TLS
+#   docker-compose.dev.yml      local machine: no TLS, 127.0.0.1
+#
+# Do NOT use docker-compose.yml here. It runs its own Caddy on 80/443, which
+# collides with the platform's proxy.
+#
+# The app is not published on a host port. The platform routes to the `app`
+# service on 8090 over the shared network.
+# =============================================================================
+
+services:
+  app:
+    image: ${MAILBOX_IMAGE:-ghcr.io/wannaco/gw-mailbox:latest}
+    # MANDATORY. Compose defaults to pull_policy: missing, which only pulls when
+    # the image is absent locally. With a moving tag like :latest that means a
+    # `docker compose up -d` reports success in ~1s while the old container keeps
+    # running — silent no-op upgrades. Do not remove this line.
+    pull_policy: always
+    restart: unless-stopped
+    expose:
+      - "8090"
+    volumes:
+      - pb_data:/app/pb_data
+    environment:
+      MAILBOX_PUBLIC_URL: ${MAILBOX_PUBLIC_URL:-}
+      PB_ENCRYPTION_KEY: ${PB_ENCRYPTION_KEY:-}
+      MAILBOX_ADMIN_EMAIL: ${MAILBOX_ADMIN_EMAIL:-}
+      MAILBOX_ADMIN_PASSWORD: ${MAILBOX_ADMIN_PASSWORD:-}
+      MAILBOX_SEED_DEMO: ${MAILBOX_SEED_DEMO:-0}
+      MAILBOX_POLL_SYNC: ${MAILBOX_POLL_SYNC:-1}
+      MAILBOX_TIMEZONE: ${MAILBOX_TIMEZONE:-UTC}
+      MAILBOX_ALLOWED_ORIGIN: ${MAILBOX_ALLOWED_ORIGIN:-}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8090/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  # Named so the database survives redeploys. On an existing deployment, make sure
+  # the platform attaches the volume holding the current data rather than this
+  # fresh one, or the app comes up empty.
+  pb_data:

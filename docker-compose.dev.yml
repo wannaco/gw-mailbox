@@ -1,0 +1,42 @@
+# =============================================================================
+# gw-mailbox — local development / evaluation
+#
+#   docker compose -f docker-compose.dev.yml up -d
+#   open http://127.0.0.1:8090
+#
+# This file is INTENTIONALLY separate from docker-compose.yml rather than a
+# profile, so there is no flag to remember and no chance of the production file
+# being started with the proxy disabled.
+#
+# It differs from production in two ways:
+#   * no TLS — PocketBase is served directly
+#   * the port is published on 127.0.0.1 ONLY, so it is reachable from this
+#     machine and from nothing else on the network
+# =============================================================================
+
+services:
+  app:
+    image: ${MAILBOX_IMAGE:-ghcr.io/wannaco/gw-mailbox:latest}
+    restart: unless-stopped
+    # LOOPBACK ONLY. Not "8090:8090" — that binds every interface.
+    ports:
+      - "127.0.0.1:8090:8090"
+    volumes:
+      - pb_data:/app/pb_data
+    environment:
+      MAILBOX_PUBLIC_URL: ${MAILBOX_PUBLIC_URL:-http://127.0.0.1:8090}
+      PB_ENCRYPTION_KEY: ${PB_ENCRYPTION_KEY:-}
+      MAILBOX_ADMIN_EMAIL: ${MAILBOX_ADMIN_EMAIL:-}
+      MAILBOX_ADMIN_PASSWORD: ${MAILBOX_ADMIN_PASSWORD:-}
+      MAILBOX_SEED_DEMO: ${MAILBOX_SEED_DEMO:-0}
+      MAILBOX_POLL_SYNC: ${MAILBOX_POLL_SYNC:-1}
+      MAILBOX_TIMEZONE: ${MAILBOX_TIMEZONE:-UTC}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8090/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  pb_data:
