@@ -408,10 +408,37 @@
       mailboxes = mb.inboxes || [];
     } catch (_) {}
   }
+
+  // Settings tabs follow the WAI-ARIA tabs pattern: one tab stop for the
+  // strip, arrows/Home/End move between tabs (selection follows focus).
+  const SETTINGS_TABS = [
+    { id: "connection", label: "Connection" },
+    { id: "mailboxes", label: "Mailboxes" },
+    { id: "content", label: "Content" },
+    { id: "automation", label: "Automation" },
+    { id: "people", label: "People" }
+  ];
+  function onTabKey(e) {
+    const ids = SETTINGS_TABS.map((t) => t.id);
+    let i = ids.indexOf(tab);
+    if (e.key === "ArrowRight") i = (i + 1) % ids.length;
+    else if (e.key === "ArrowLeft") i = (i - 1 + ids.length) % ids.length;
+    else if (e.key === "Home") i = 0;
+    else if (e.key === "End") i = ids.length - 1;
+    else return;
+    e.preventDefault();
+    tab = ids[i];
+    requestAnimationFrame(() => document.getElementById("stab-" + ids[i])?.focus());
+  }
 </script>
 
-<div class="settings">
-  <h2>Settings</h2>
+<div class="settings form-ui">
+  <header class="page-head">
+    <div>
+      <h1 class="page-title">Settings</h1>
+      <p class="page-sub">Workspace connection, mailboxes, content, automation and people.</p>
+    </div>
+  </header>
   {#if !loaded}
     <p class="muted">Loading…</p>
   {:else if !isAdmin}
@@ -421,17 +448,27 @@
     </div>
   {:else}
     <div class="tabs" role="tablist" aria-label="Settings sections">
-      <button type="button" role="tab" aria-selected={tab === "connection"} class:on={tab === "connection"} onclick={() => (tab = "connection")}>Connection</button>
-      <button type="button" role="tab" aria-selected={tab === "mailboxes"} class:on={tab === "mailboxes"} onclick={() => (tab = "mailboxes")}>Mailboxes</button>
-      <button type="button" role="tab" aria-selected={tab === "content"} class:on={tab === "content"} onclick={() => (tab = "content")}>Content</button>
-      <button type="button" role="tab" aria-selected={tab === "automation"} class:on={tab === "automation"} onclick={() => (tab = "automation")}>Automation</button>
-      <button type="button" role="tab" aria-selected={tab === "people"} class:on={tab === "people"} onclick={() => (tab = "people")}>People</button>
+      {#each SETTINGS_TABS as st (st.id)}
+        <button
+          type="button"
+          role="tab"
+          id="stab-{st.id}"
+          aria-controls="settings-panel"
+          aria-selected={tab === st.id}
+          tabindex={tab === st.id ? 0 : -1}
+          class:on={tab === st.id}
+          onclick={() => (tab = st.id)}
+          onkeydown={onTabKey}
+        >{st.label}</button>
+      {/each}
     </div>
+
+    <div class="tab-panel" role="tabpanel" id="settings-panel" aria-labelledby="stab-{tab}">
 
     {#if tab === "connection"}
     <!-- Google connection -->
     <section class="card">
-      <h3>Google Workspace connection</h3>
+      <h2>Google Workspace connection</h2>
       {#if saEmail}
         <p class="ok">Connected as <strong>{saEmail}</strong></p>
         <button class="md3-btn outlined" onclick={removeKey}>Remove key</button>
@@ -460,7 +497,7 @@
 
     <!-- Connection test -->
     <section class="card">
-      <h3>Test connection</h3>
+      <h2>Test connection</h2>
       <label class="field-row">
         <span>Mailbox to impersonate</span>
         <input type="email" bind:value={testSubject} placeholder="team@thinkcloud.dev" />
@@ -477,7 +514,7 @@
 
     <!-- Sync mode -->
     <section class="card">
-      <h3>Sync</h3>
+      <h2>Sync</h2>
       <label class="switch-row">
         <span>
           <strong>Poll every minute</strong>
@@ -490,7 +527,7 @@
 
     {#if tab === "mailboxes"}
     <section class="card">
-      <h3>Mailboxes</h3>
+      <h2>Mailboxes</h2>
       <p class="muted">Add the Google Workspace mailboxes you want this team to use. After adding, grant the service account’s domain-wide delegation for each (see Google Admin → API controls). New mail syncs when Poll or Watch is on.</p>
       <p class="muted">New mailboxes only receive <strong>new</strong> incoming mail by default. Tick "Import existing mail on setup" below to also pull the mail already sitting in the Gmail inbox when you add it.</p>
 
@@ -565,7 +602,7 @@
 
     <!-- Labels / categories -->
     <section class="card">
-      <h3>Labels & categories</h3>
+      <h2>Labels & categories</h2>
       <p class="muted">Extra categories you can tag onto tickets (besides the kanban statuses). Applied per-ticket from the thread panel.</p>
       <ul class="inbox-list">
         {#each labels as lb (lb.id)}
@@ -587,7 +624,7 @@
 
     <!-- Canned responses -->
     <section class="card">
-      <h3>Canned responses</h3>
+      <h2>Canned responses</h2>
       <p class="muted">Quick replies inserted with “/” in the reply editor. Type e.g. <code>/hours</code> in a reply to use one.</p>
       <ul class="inbox-list">
         {#each canned as c (c.id)}
@@ -616,7 +653,7 @@
 
     <!-- Ticket automations -->
     <section class="card">
-      <h3>Ticket automations</h3>
+      <h2>Ticket automations</h2>
       <p class="muted">When a ticket sits in <b>Waiting on customer</b>, auto-send follow-up nudges and optionally auto-close if the customer never replies.</p>
 
       <label class="switch-row" style="margin:10px 0">
@@ -666,7 +703,7 @@
 
     <!-- SLA & escalation -->
     <section class="card">
-      <h3>SLA &amp; escalation</h3>
+      <h2>SLA &amp; escalation</h2>
       <p class="muted">Every <b>new</b> or <b>in-progress</b> ticket gets a first-response deadline (<span class="sla-now">now + {slaHours}h</span>). Tickets past their deadline surface <b class="sla-red">SLA overdue</b> in red on the list and board — and the hourly monitor escalates them (status → <i>Escalated</i>, internal note + webhook).</p>
 
       <label class="switch-row" style="margin:10px 0">
@@ -693,7 +730,7 @@
 
     <!-- Agents & signatures -->
     <section class="card">
-      <h3>Agents &amp; signatures</h3>
+      <h2>Agents &amp; signatures</h2>
       <p class="muted">Set an agent's email signature on their behalf (they can also edit their own from the avatar menu → My profile). The signature auto-appends to that agent's replies when they enable it.</p>
       <div style="display:grid;gap:14px;margin-top:8px">
         {#each agentOptions as u (u.id)}
@@ -720,7 +757,7 @@
 
     <!-- Mentions & notifications -->
     <section class="card">
-      <h3>Mentions &amp; notifications</h3>
+      <h2>Mentions &amp; notifications</h2>
       <p class="muted">Admins aren't in the agents directory, so agents can't @-mention them by default. Tick the admins below who should be mentionable (and notified) in internal notes.</p>
 
       <div style="margin:8px 0">
@@ -742,7 +779,7 @@
 
     <!-- Customer satisfaction (CSAT) -->
     <section class="card">
-      <h3>Customer satisfaction (CSAT)</h3>
+      <h2>Customer satisfaction (CSAT)</h2>
       <p class="muted">When a ticket is <b>closed</b>, email the customer a 1–5 star survey link they can answer without signing in. Results appear in the thread. <b>Disabled by default</b> — no survey is ever sent until you turn this on.</p>
 
       <label class="switch-row" style="margin:10px 0">
@@ -756,6 +793,7 @@
       </div>
     </section>
     {/if}
+    </div>
   {/if}
 
   <p class="legal">
@@ -780,7 +818,7 @@
   }
 
   .settings {
-    max-width: 680px;
+    max-width: 760px;
     margin: 0 auto;
     padding: 24px 20px 60px;
     height: 100%;
@@ -789,15 +827,13 @@
     box-sizing: border-box;
   }
 
-  h2 {
-    font: var(--m3-type-headline);
-    margin-bottom: 16px;
-  }
-
   .tabs {
     display: flex;
     gap: 2px;
-    flex-wrap: wrap;
+    /* One scrolling row; wrapping cut "Automation" off on phones. */
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
     margin-bottom: 22px;
     border-bottom: 1px solid var(--m3-outline-variant);
     width: 100%;
@@ -835,15 +871,12 @@
     background: var(--m3-primary);
   }
 
+  /* Card surface comes from .form-ui .card (m3.css); only spacing here. */
   .card {
-    background: var(--m3-surface-container-low);
-    border: 1px solid var(--m3-outline-variant);
-    border-radius: var(--m3-shape-md);
-    padding: 16px;
     margin-bottom: 16px;
   }
 
-  h3 {
+  h2 {
     font: var(--m3-type-title-md);
     margin-bottom: 10px;
   }

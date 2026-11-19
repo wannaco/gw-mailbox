@@ -130,7 +130,7 @@
             {#each threads as t (t.id)}
               <button class="rel-item" onclick={() => { appState.openThreadId = t.id; onClose?.(); }}>
                 <span class="rel-subj">{t.subject || "(no subject)"}</span>
-                <span class="rel-status" style="color:{statusMeta(t.status).dot}">{statusMeta(t.status).label}</span>
+                <span class="rel-status" style="color:{statusMeta(t.status).ink}">{statusMeta(t.status).label}</span>
                 <span class="rel-when muted">{timeAgo(t.last_message_at)}</span>
               </button>
             {/each}

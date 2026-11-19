@@ -93,7 +93,8 @@
     font: var(--m3-type-label-sm);
     font-weight: 700;
     letter-spacing: 0.06em;
-    color: var(--m3-primary);
+    /* Pure primary failed 4.5:1 at this tiny size on its tinted pill. */
+    color: color-mix(in srgb, var(--m3-primary) 72%, var(--m3-on-surface));
   }
 
   .me-avatar,

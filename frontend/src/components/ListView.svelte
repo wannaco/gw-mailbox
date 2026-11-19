@@ -60,14 +60,49 @@
     try {
       const r = await api.listLabels();
       labelCatalog = (r.items || []).map((l) => ({ name: l.name, color: l.color || "" }));
+      appState.labels = labelCatalog;
     } catch { /* non-fatal */ }
   }
   $effect(() => { loadCatalog(); });
 
   function labelColor(name) {
     const hit = labelCatalog.find((l) => l.name === name);
-    return hit ? hit.color : "#888";
+    return (hit && hit.color) || "#9aa0a6";
   }
+
+  // Phones get a different row layout (sender/time first, then subject,
+  // snippet, and a chip line), not the desktop row squeezed. Driven from JS
+  // because the two layouts group the same fields differently, which CSS
+  // alone can't reorder cleanly. Breakpoint matches the App's mobile shell.
+  const MQ = "(max-width: 620px)";
+  let compact = $state(typeof window !== "undefined" && window.matchMedia(MQ).matches);
+  $effect(() => {
+    const mq = window.matchMedia(MQ);
+    const h = () => (compact = mq.matches);
+    mq.addEventListener("change", h);
+    return () => mq.removeEventListener("change", h);
+  });
+
+  // Label filter menu is position:fixed because the chip row scrolls
+  // horizontally on mobile, and an overflow container clips absolute children.
+  let lblPos = $state({ left: 0, top: 0 });
+  function toggleLblFilter(el) {
+    if (!lblFilterOpen && el) {
+      const r = el.getBoundingClientRect();
+      lblPos = { left: Math.max(8, Math.min(r.left, window.innerWidth - 220)), top: r.bottom + 6 };
+    }
+    lblFilterOpen = !lblFilterOpen;
+  }
+  $effect(() => {
+    if (!lblFilterOpen) return;
+    const h = (e) => {
+      if (!(e.target && e.target.closest && e.target.closest(".lblf-wrap, .lblf-menu"))) lblFilterOpen = false;
+    };
+    document.addEventListener("click", h);
+    return () => document.removeEventListener("click", h);
+  });
+
+  const tagsOf = (t) => (Array.isArray(t.tags) ? t.tags : []);
 
   // All threads in this inbox that pass the non-status filters (search, mine,
   // label) — used for counts AND as the pool for select-all.
@@ -236,145 +271,228 @@
   }
 </script>
 
+{#snippet badges(t)}
+  {#if msgCount(t) > 1}
+    <span class="mcount" class:unread={isUnread(t)} title={`${msgCount(t)} messages`}>{msgCount(t)}</span>
+  {/if}
+  {#if unreadNotes(t) > 0}
+    <span
+      class="ncount"
+      title={`${unreadNotes(t)} unread internal note${unreadNotes(t) === 1 ? "" : "s"}`}
+      aria-label={`${unreadNotes(t)} unread internal notes`}
+    >
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zm-3 11H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
+      {unreadNotes(t)}
+    </span>
+  {/if}
+  {#if composingOf(t.id)}
+    {@const comp = composingOf(t.id)}
+    <span class="pencil" title={`${comp.agentName || "Someone"} is drafting a reply`}>
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 17.25V21h3.75L17.8 9.94l-3.75-3.75L3 17.25zM20.7 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+    </span>
+  {/if}
+{/snippet}
+
+{#snippet tagList(t, max)}
+  {#each tagsOf(t).slice(0, max) as tag (tag)}
+    <span class="tag" style="--tag:{labelColor(tag)}"><span class="tdot"></span><span class="tname">{tag}</span></span>
+  {/each}
+  {#if tagsOf(t).length > max}
+    <span class="tag more" title={tagsOf(t).slice(max).join(", ")}>+{tagsOf(t).length - max}</span>
+  {/if}
+{/snippet}
+
+{#snippet statusPill(t)}
+  <span class="status-pill" style="--c:{statusMeta(t.status).dot};--ci:{statusMeta(t.status).ink}"><span class="sdot"></span>{statusMeta(t.status).label}</span>
+{/snippet}
+
+{#snippet slaChip(sla)}
+  <span class="sla-chip" class:breached={sla.kind === "breached"} style="--c:{sla.color};--ci:{sla.ink}" title={sla.title}>
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 10.4V7h-2v6.2l4.6 2.8 1-1.7-3.6-1.9z"/></svg>
+    {sla.text}
+  </span>
+{/snippet}
+
+{#snippet assignee(t)}
+  {#if assignedName(t)}
+    <span class="assignee" class:mine={t.assigned_agent === appState.me?.id} title={`Assigned to ${assignedName(t)}`}>
+      <span class="ap-ava" style="background:{avatarColor(t.assigned_agent)}">{agentInitials(assignedName(t))}</span>
+      <span class="ap-name">{t.assigned_agent === appState.me?.id ? "You" : assignedName(t)}</span>
+    </span>
+  {/if}
+{/snippet}
+
 <div class="list-wrap">
   <div class="toolbar">
     <div class="search">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M9.5 3a6.5 6.5 0 1 0 4.05 11.55l4.95 4.95 1.5-1.5-4.95-4.95A6.5 6.5 0 0 0 9.5 3zm0 2a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9z"/></svg>
-      <input bind:value={appState.search} placeholder="Search threads… (select all matching below)" />
-    </div>
-    <span
-      class="count"
-      title={hasMore ? "More conversations available — scroll or use Load more" : ""}
-    >{rows.length}{hasMore ? "+" : ""} conversation{rows.length === 1 ? "" : "s"}</span>
-    <button class="md3-chip" class:is-active={appState.onlyMine} onclick={() => (appState.onlyMine = !appState.onlyMine)}>My tickets</button>
-    {#each STATUSES as st (st.value)}
-      {#if (counts[st.value] || 0) > 0}
-        <button class="mini-chip" class:is-active={statusFilter === st.value} onclick={() => (statusFilter = statusFilter === st.value ? "" : st.value)}
-          style="--dot:{st.dot}">
-          <span class="dot"></span>{st.label} {counts[st.value]}
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9.5 3a6.5 6.5 0 1 0 4.05 11.55l4.95 4.95 1.5-1.5-4.95-4.95A6.5 6.5 0 0 0 9.5 3zm0 2a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9z"/></svg>
+      <input bind:value={appState.search} placeholder="Search conversations" aria-label="Search conversations" />
+      {#if appState.search}
+        <button class="search-clear" aria-label="Clear search" onclick={() => (appState.search = "")}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.4 17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12z"/></svg>
         </button>
       {/if}
-    {/each}
-    {#if labelCatalog.length}
-      <div class="lblf-wrap">
-        <button class="md3-chip" class:is-active={!!labelFilter} onclick={() => (lblFilterOpen = !lblFilterOpen)}>Label{#if labelFilter}: {labelFilter}{/if}</button>
-        {#if lblFilterOpen}
-          <div class="lblf-menu">
-            <button class:sel={!labelFilter} onclick={() => { labelFilter = ""; lblFilterOpen = false; }}>All labels</button>
-            {#each labelCatalog as lb (lb.name)}
-              <button class:sel={labelFilter === lb.name} onclick={() => { labelFilter = labelFilter === lb.name ? "" : lb.name; lblFilterOpen = false; }}>
-                <span class="dot" style="background:{lb.color || '#888'}"></span>{lb.name}
-              </button>
-            {/each}
-          </div>
+    </div>
+
+    <div class="filters" role="toolbar" aria-label="Filters">
+      <button class="fchip" class:is-active={appState.onlyMine} aria-pressed={appState.onlyMine} onclick={() => (appState.onlyMine = !appState.onlyMine)}>
+        {#if appState.onlyMine}
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>
         {/if}
-      </div>
-    {/if}
+        My tickets
+      </button>
+      {#each STATUSES as st (st.value)}
+        {#if (counts[st.value] || 0) > 0}
+          <button
+            class="fchip"
+            class:is-active={statusFilter === st.value}
+            aria-pressed={statusFilter === st.value}
+            onclick={() => (statusFilter = statusFilter === st.value ? "" : st.value)}
+            style="--dot:{st.dot}"
+          >
+            <span class="dot"></span>{st.label}<span class="fcount">{counts[st.value]}</span>
+          </button>
+        {/if}
+      {/each}
+      {#if labelCatalog.length}
+        <span class="lblf-wrap">
+          <button class="fchip" class:is-active={!!labelFilter} aria-expanded={lblFilterOpen} onclick={(e) => toggleLblFilter(e.currentTarget)}>
+            {#if labelFilter}<span class="dot" style="--dot:{labelColor(labelFilter)}"></span>{/if}
+            {labelFilter || "Label"}
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 10l5 5 5-5z"/></svg>
+          </button>
+        </span>
+      {/if}
+    </div>
+
+    <span class="count" title={hasMore ? "More conversations available — scroll or use Load more" : ""}>
+      {rows.length}{hasMore ? "+" : ""} conversation{rows.length === 1 ? "" : "s"}
+    </span>
   </div>
+
+  {#if lblFilterOpen}
+    <div class="lblf-menu" style="left:{lblPos.left}px;top:{lblPos.top}px">
+      <button class:sel={!labelFilter} onclick={() => { labelFilter = ""; lblFilterOpen = false; }}>All labels</button>
+      {#each labelCatalog as lb (lb.name)}
+        <button class:sel={labelFilter === lb.name} onclick={() => { labelFilter = labelFilter === lb.name ? "" : lb.name; lblFilterOpen = false; }}>
+          <span class="dot" style="background:{lb.color || '#9aa0a6'}"></span>{lb.name}
+        </button>
+      {/each}
+    </div>
+  {/if}
 
   {#if selIds.length > 0}
     <div class="bulkbar">
       <label class="ck-all" title="Select all matching">
-        <input type="checkbox" checked={allSelected} onchange={toggleSelectAll} />
+        <input class="ck" type="checkbox" checked={allSelected} indeterminate={!allSelected} onchange={toggleSelectAll} aria-label="Select all" />
       </label>
       <span class="bb-count"><b>{selIds.length}</b> selected</span>
       {#if !allSelected && rows.length > selIds.length}
-        <button class="bb-selectall" onclick={toggleSelectAll}>Select all {rows.length} matching</button>
+        <button class="bb-selectall" onclick={toggleSelectAll}>Select all {rows.length}</button>
       {/if}
       <span class="bb-spacer"></span>
-      <button class="md3-btn small" onclick={() => runBulk("closed")} disabled={selIds.length === 0}>Close</button>
-      <button class="md3-btn small" onclick={() => runBulk("archived")} disabled={selIds.length === 0}>Archive</button>
-      {#if selHasSpam}
-        <button class="md3-btn small" onclick={() => runBulk("new")} disabled={selIds.length === 0}>Not spam</button>
-      {/if}
-      <button class="md3-btn small danger" onclick={() => runBulk("spam")} disabled={selIds.length === 0}>Mark spam</button>
-      {#if appState.me?.isAdmin}
-        <button class="md3-btn small danger solid" onclick={() => runBulk("delete")} disabled={selIds.length === 0}>Delete</button>
-      {/if}
-      <button class="md3-btn small tonal" onclick={clearSel}>Clear</button>
+      <div class="bb-actions">
+        <button class="bb-btn" onclick={() => runBulk("closed")}>Close</button>
+        <button class="bb-btn" onclick={() => runBulk("archived")}>Archive</button>
+        {#if selHasSpam}
+          <button class="bb-btn" onclick={() => runBulk("new")}>Not spam</button>
+        {/if}
+        <button class="bb-btn danger" onclick={() => runBulk("spam")}>Spam</button>
+        {#if appState.me?.isAdmin}
+          <button class="bb-btn danger solid" onclick={() => runBulk("delete")}>Delete</button>
+        {/if}
+      </div>
+      <button class="bb-x" onclick={clearSel} aria-label="Clear selection" title="Clear selection">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.4 17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12z"/></svg>
+      </button>
     </div>
   {/if}
 
-  <div class="list">
+  <div class="list" class:compact>
     {#if !rows.length}
       <div class="empty">
-        <p>No conversations{appState.search ? " match your search" : ""}.</p>
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm0 12h-4a3 3 0 0 1-6 0H5V5h14v10z"/></svg>
+        <p>{appState.search || labelFilter || statusFilter || appState.onlyMine ? "No conversations match these filters" : "No conversations yet"}</p>
       </div>
     {/if}
 
     {#each rows as t (t.id)}
-      {@const comp = composingOf(t.id)}
       {@const sla = slaOf(t)}
-      <div class="rowline" class:sel={selSet.has(t.id)}>
-        <label class="rowck" title="Select" onclick={(e) => e.stopPropagation()}>
-          <input type="checkbox" checked={selSet.has(t.id)} onchange={() => toggleSel(t.id)} />
-        </label>
+      {@const selected = selSet.has(t.id)}
+      <div class="rowline" class:sel={selected} class:unread={isUnread(t) || isHot(t)}>
+        {#if isUnread(t)}<span class="udot" title="New messages"></span>{/if}
+        {#if !compact}
+          <label class="rowck" title="Select">
+            <input class="ck" type="checkbox" checked={selected} onchange={() => toggleSel(t.id)} aria-label={`Select ${t.subject || "conversation"}`} />
+          </label>
+        {/if}
+        <!-- Avatar doubles as the selection toggle (essential on mobile, where
+             there is no checkbox column). -->
         <button
-          class="row"
-          class:hot={isHot(t)}
-          class:unread={isUnread(t)}
-          onclick={() => open(t.id)}
-          aria-label={t.subject || "Thread"}
+          class="avatar"
+          class:on={selected && compact}
+          style="--ava:{avatarColor(t.customer_email || t.customer_name)}"
+          aria-pressed={selected}
+          onclick={() => toggleSel(t.id)}
         >
-          <span class="avatar" style="background:{avatarColor(t.customer_email || t.customer_name)}">
-            {agentInitials(t.customer_name || t.customer_email)}
-          </span>
+          {#if selected && compact}
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>
+          {:else}
+            <span aria-hidden="true">{agentInitials(t.customer_name || t.customer_email)}</span>
+          {/if}
+          <span class="sr-only">Select conversation from {t.customer_name || t.customer_email || "customer"}</span>
+        </button>
 
-          <span class="mid">
-            <span class="top">
-              {#if isUnread(t)}
-                <span class="unread-dot" title="New messages"></span>
-              {/if}
-              <span class="subject">{t.subject || "(no subject)"}</span>
-              {#if msgCount(t) > 0}
-                <span class="mcount" class:unread={isUnread(t)} title={`${msgCount(t)} message${msgCount(t) === 1 ? "" : "s"}`}>{msgCount(t)}</span>
-              {/if}
-              {#if unreadNotes(t) > 0}
-                <span
-                  class="ncount"
-                  title={`${unreadNotes(t)} unread internal note${unreadNotes(t) === 1 ? "" : "s"}`}
-                  aria-label={`${unreadNotes(t)} unread internal notes`}
-                >
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 4h16v2H4zm0 4h10v2H4zm0 4h10v2H4zm12-2h4v10a1 1 0 0 1-1 1h-3v-2h2v-7h-2z"/></svg>
-                  {unreadNotes(t)}
-                </span>
-              {/if}
-              {#each (Array.isArray(t.tags) ? t.tags : []).slice(0, 3) as tag (tag)}
-                <span class="tag">{tag}</span>
-              {/each}
-              {#if comp}
-                <span class="pencil" title={`${comp.agentName || "Someone"} is drafting a reply`}>
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.8 9.94l-3.75-3.75L3 17.25zM20.7 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
-                </span>
-              {/if}
-            </span>
-            <span class="snip">
+        <!-- No aria-label: the row's own text (subject, sender, snippet, status)
+             is the accessible name, so speech and screen readers match what is
+             on screen. -->
+        <button class="row" onclick={() => open(t.id)}>
+          {#if compact}
+            <span class="m-l1">
               <span class="from">{t.customer_name || t.customer_email || "—"}</span>
-              <span class="snippet-text">{t.snippet || ""}</span>
-              {#if assignedName(t)}
-                <span class="assignee-pill" class:mine={t.assigned_agent === appState.me?.id} title={`Assigned to ${assignedName(t)}`}>
-                  <span class="ap-ava" style="background:{avatarColor(t.assigned_agent)}">{agentInitials(assignedName(t))}</span>
-                  <span class="ap-name">{assignedName(t)}</span>
-                </span>
-              {/if}
-            </span>
-          </span>
-
-          <span class="right">
-            <span class="right-top">
+              {@render badges(t)}
+              <span class="m-spacer"></span>
               <ThreadPresence threadId={t.id} />
               <span class="when">{timeAgo(t.last_message_at)}</span>
-              <span class="status-pill" style="background:{statusMeta(t.status).dot}22;color:{statusMeta(t.status).dot}">
-                {statusMeta(t.status).label}
+            </span>
+            <span class="subject">{t.subject || "(no subject)"}</span>
+            {#if t.snippet}<span class="snippet-text">{t.snippet}</span>{/if}
+            <span class="m-meta">
+              {@render statusPill(t)}
+              {#if sla}{@render slaChip(sla)}{/if}
+              {@render assignee(t)}
+              {#if tagsOf(t).length}
+                <span class="tagdots" title={tagsOf(t).join(", ")} aria-label={`Labels: ${tagsOf(t).join(", ")}`}>
+                  {#each tagsOf(t).slice(0, 3) as tag (tag)}<span class="tdot" style="--tag:{labelColor(tag)}"></span>{/each}
+                </span>
+              {/if}
+            </span>
+          {:else}
+            <span class="mid">
+              <span class="top">
+                <span class="subject">{t.subject || "(no subject)"}</span>
+                {@render badges(t)}
+                {@render tagList(t, 3)}
+              </span>
+              <span class="snip">
+                <span class="from">{t.customer_name || t.customer_email || "—"}</span>
+                {#if t.snippet}<span class="snippet-text">{t.snippet}</span>{/if}
               </span>
             </span>
-            {#if sla}
-              <span class="sla-chip" class:breached={sla.kind === "breached"} style="background:{sla.color}18;color:{sla.color}" title={sla.title}>
-                {sla.text}
+            <span class="asg-col">{@render assignee(t)}</span>
+            <span class="right">
+              <span class="right-top">
+                <ThreadPresence threadId={t.id} />
+                <span class="when">{timeAgo(t.last_message_at)}</span>
               </span>
-            {/if}
-          </span>
+              <span class="right-bot">
+                {#if sla}{@render slaChip(sla)}{/if}
+                {@render statusPill(t)}
+              </span>
+            </span>
+          {/if}
         </button>
+
         <span class="qa-anchor" class:open={qaMenu === t.id}>
           <button
             class="qa-dots"
@@ -383,7 +501,7 @@
             aria-expanded={qaMenu === t.id}
             onclick={(e) => { e.stopPropagation(); openQa(t.id, e.currentTarget); }}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></svg>
           </button>
           {#if qaMenu === t.id}
             <div class="qa-pop" style="left:{qaPos.left}px;top:{qaPos.top}px">
@@ -421,10 +539,10 @@
                   <button
                     type="button"
                     class="qa-lbl"
-                    class:on={(Array.isArray(t.tags) ? t.tags : []).includes(lb.name)}
+                    class:on={tagsOf(t).includes(lb.name)}
                     onclick={(e) => { e.stopPropagation(); qaToggleLabel(t, lb.name); }}
                   >
-                    <span class="dot" style="background:{lb.color || '#888'}"></span>
+                    <span class="dot" style="background:{lb.color || '#9aa0a6'}"></span>
                     {lb.name}
                   </button>
                 {/each}
@@ -458,40 +576,40 @@
     height: 100%;
     display: flex;
     flex-direction: column;
-    /* Content stops growing past a comfortable reading width and centres in
-       what's left. On a wide desktop the rows were stretching to 1400px+,
-       which is what made the layout feel loose rather than crisp. */
+    /* Rows stop growing past a comfortable reading width; on a wide desktop
+       1400px+ rows made the layout feel loose rather than crisp. */
     width: 100%;
     max-width: 1180px;
     margin: 0 auto;
   }
 
+  /* ---------------------------------------------------------------- toolbar */
   .toolbar {
     display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 12px 20px 10px;
     flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 12px;
+    padding: 14px 20px 12px;
+    min-width: 0;
   }
 
   .search {
-    flex: 1;
+    flex: 0 1 340px;
     min-width: 200px;
-    max-width: 420px;
     display: flex;
     align-items: center;
     gap: 8px;
-    height: 38px;
-    padding: 0 12px;
-    background: var(--m3-surface-container-lowest);
+    height: 36px;
+    padding: 0 6px 0 12px;
+    background: var(--m3-surface-raised);
     border: 1px solid var(--m3-outline-variant);
-    border-radius: var(--m3-shape-sm);
-    color: var(--m3-on-surface-variant);
+    border-radius: var(--m3-shape-full);
+    color: var(--m3-on-surface-variant-2);
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
   }
   .search:focus-within {
     border-color: var(--m3-primary);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--m3-primary) 18%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--m3-primary) 16%, transparent);
   }
   .search input {
     flex: 1;
@@ -499,13 +617,175 @@
     border: 0;
     outline: none;
     min-width: 0;
-    font-size: 0.9rem;
+    font: var(--m3-type-body-md);
+    color: var(--m3-on-surface);
+  }
+  .search input::placeholder { color: var(--m3-on-surface-variant-2); }
+  .search-clear {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    color: var(--m3-on-surface-variant-2);
+  }
+  .search-clear:hover { background: var(--m3-row-hover); }
+
+  /* Chips get their own full-width row under the search. Sharing a line
+     with the search made them wrap, orphaning the last chip. */
+  .filters {
+    order: 3;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1 1 100%;
+    min-width: 0;
+    flex-wrap: wrap;
   }
 
+  /* Filter chip styles (.fchip, .dot, .fcount) are shared — see m3.css. */
   .count {
-    font: var(--m3-type-label-lg);
+    margin-left: auto;
+    flex: 0 0 auto;
+    font: var(--m3-type-label-md);
     color: var(--m3-on-surface-variant-2);
-    margin-right: 4px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .lblf-wrap { display: inline-flex; flex: 0 0 auto; }
+  .lblf-menu {
+    position: fixed;
+    z-index: 80;
+    min-width: 190px;
+    max-height: min(360px, 60vh);
+    overflow-y: auto;
+    background: var(--m3-surface-raised);
+    border: 1px solid var(--m3-outline-variant);
+    border-radius: var(--m3-shape-md);
+    box-shadow: var(--m3-elev-3);
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .lblf-menu button {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    text-align: left;
+    padding: 7px 10px;
+    border-radius: var(--m3-shape-sm);
+    font: var(--m3-type-body-md);
+    color: var(--m3-on-surface);
+  }
+  .lblf-menu button:hover { background: var(--m3-row-hover); }
+  .lblf-menu button.sel { background: var(--m3-primary-container); color: var(--m3-on-primary-container); }
+  .lblf-menu .dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
+
+  /* --------------------------------------------------------------- checkbox */
+  .ck {
+    appearance: none;
+    -webkit-appearance: none;
+    margin: 0;
+    width: 16px;
+    height: 16px;
+    border: 1.5px solid var(--m3-outline);
+    border-radius: 4px;
+    background: var(--m3-surface-raised);
+    display: inline-grid;
+    place-content: center;
+    cursor: pointer;
+    transition: background 0.1s ease, border-color 0.1s ease;
+  }
+  .ck::after {
+    content: "";
+    width: 8px;
+    height: 4px;
+    border: 2px solid var(--m3-on-primary);
+    border-top: 0;
+    border-right: 0;
+    transform: translateY(-1px) rotate(-45deg);
+    opacity: 0;
+  }
+  .ck:checked, .ck:indeterminate {
+    background: var(--m3-primary);
+    border-color: var(--m3-primary);
+  }
+  .ck:checked::after { opacity: 1; }
+  .ck:indeterminate::after {
+    opacity: 1;
+    width: 8px;
+    height: 0;
+    border-left: 0;
+    border-bottom: 2px solid var(--m3-on-primary);
+    transform: none;
+  }
+  .ck:focus-visible { outline: 2px solid var(--m3-primary); outline-offset: 2px; }
+
+  /* ---------------------------------------------------------------- bulkbar */
+  .bulkbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 46px;
+    padding: 6px 8px 6px 14px;
+    margin: 0 20px 10px;
+    background: var(--m3-surface-raised);
+    color: var(--m3-on-surface);
+    border: 1px solid color-mix(in srgb, var(--m3-primary) 35%, var(--m3-outline-variant));
+    border-radius: var(--m3-shape-md);
+    box-shadow: var(--m3-elev-2);
+  }
+  .ck-all { display: inline-flex; align-items: center; }
+  .bb-count { font: var(--m3-type-label-lg); color: var(--m3-on-surface-variant); white-space: nowrap; }
+  .bb-count b { font-weight: 700; color: var(--m3-on-surface); }
+  .bb-selectall {
+    font: var(--m3-type-label-md);
+    color: var(--m3-primary);
+    padding: 4px 6px;
+    border-radius: 6px;
+    white-space: nowrap;
+  }
+  .bb-selectall:hover { background: var(--m3-row-hover); }
+  .bb-spacer { flex: 1; }
+  .bb-actions { display: flex; align-items: center; gap: 6px; }
+  .bb-btn {
+    height: 32px;
+    padding: 0 14px;
+    border-radius: var(--m3-shape-full);
+    font: var(--m3-type-label-lg);
+    color: var(--m3-on-surface);
+    border: 1px solid var(--m3-outline-variant);
+    background: var(--m3-surface-raised);
+    white-space: nowrap;
+  }
+  .bb-btn:hover { background: var(--m3-row-hover); }
+  .bb-btn.danger { color: var(--m3-danger); border-color: color-mix(in srgb, var(--m3-danger) 45%, transparent); }
+  .bb-btn.danger.solid { background: var(--m3-danger); color: var(--m3-on-danger); border-color: transparent; }
+  .bb-x {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    color: var(--m3-on-surface-variant);
+    flex: 0 0 auto;
+  }
+  .bb-x:hover { background: var(--m3-row-hover); }
+
+  /* ------------------------------------------------------------------- list */
+  .list {
+    flex: 1;
+    overflow-y: auto;
+    margin: 0 20px 20px;
+    padding: 4px 0;
+    background: var(--m3-surface-raised);
+    border: 1px solid color-mix(in srgb, var(--m3-outline-variant) 70%, transparent);
+    border-radius: var(--m3-shape-lg);
+    box-shadow: 0 1px 2px rgb(15 40 80 / 0.06);
   }
 
   .more {
@@ -515,315 +795,98 @@
     gap: 8px;
     padding: 22px 0 12px;
   }
-  .more-hint {
+  .more-hint, .more-end {
     font: var(--m3-type-body-sm);
     color: var(--m3-on-surface-variant-2);
   }
-  .more-end {
-    margin: 0;
-    padding: 20px 0 8px;
-    text-align: center;
-    font: var(--m3-type-body-sm);
-    color: var(--m3-on-surface-variant-2);
-  }
+  .more-end { margin: 0; padding: 18px 0 10px; text-align: center; }
   .sentinel { height: 1px; }
 
-  .mini-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    font: var(--m3-type-label-sm);
-    color: var(--m3-on-surface-variant);
-  }
-
-  .mini-chip .dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--dot, #888);
-    display: inline-block;
-  }
-  button.mini-chip {
-    cursor: pointer;
-    border-radius: 999px;
-    padding: 3px 8px;
-  }
-  button.mini-chip.is-active {
-    background: var(--m3-surface-container-high);
-    outline: 1px solid var(--m3-outline-variant);
-  }
-
-  .lblf-wrap { position: relative; }
-  .lblf-menu {
-    position: absolute;
-    top: calc(100% + 4px);
-    left: 0;
-    z-index: 60;
-    min-width: 170px;
-    background: var(--m3-surface-container-high);
-    border: 1px solid var(--m3-outline-variant);
-    border-radius: var(--m3-shape-sm);
-    box-shadow: var(--m3-elev-3);
-    padding: 5px;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-  .lblf-menu button {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    text-align: left;
-    padding: 5px 8px;
-    border-radius: 7px;
-    font: var(--m3-type-body-sm);
-    color: var(--m3-on-surface);
-  }
-  .lblf-menu button:hover { background: var(--m3-row-hover); }
-  .lblf-menu button.sel { background: var(--m3-primary-container); }
-  .lblf-menu .dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
-
-  /* Bulk action bar */
-  .bulkbar {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 12px;
-    background: var(--m3-surface-container-lowest);
-    color: var(--m3-on-surface);
-    border: 1px solid var(--m3-outline-variant);
-    border-radius: var(--m3-shape-sm);
-    box-shadow: var(--m3-elev-2);
-    margin: 0 20px 10px;
-    flex-wrap: wrap;
-  }
-  .bb-count { color: var(--m3-on-surface-variant); }
-  .ck-all { display: inline-flex; align-items: center; }
-  .bb-count { font: var(--m3-type-label-lg); }
-  .bb-count b { font-weight: 700; }
-  .bb-spacer { flex: 1; }
-  button.bb-selectall {
-    font: var(--m3-type-label-md);
-    text-decoration: underline;
-    color: inherit;
-    cursor: pointer;
-  }
-  .bulkbar .md3-btn { padding: 4px 12px; }
-  .bulkbar .md3-btn.danger.solid {
-    background: var(--m3-danger);
-    color: #fff;
-  }
-  .bulkbar .md3-btn.danger:not(.solid) {
-    border: 1px solid var(--m3-danger);
-    color: var(--m3-danger);
-  }
-
-  /* The rows sit on their own surface, lifted off the page with the same
-     tinted shadow family the login card uses. Same idea as the login: a panel
-     separated from the background reads as designed; rows floating directly on
-     a flat background read as a table. */
-  .list {
-    flex: 1;
-    overflow-y: auto;
-    margin: 0 20px 20px;
-    padding: 4px 0;
-    background: var(--m3-surface-raised);
-    border: 1px solid color-mix(in srgb, var(--m3-outline-variant) 70%, transparent);
-    border-radius: var(--m3-shape-lg);
-    /* A crisp 1px edge rather than an ambient lift. The larger shadow looked
-       soft against a hairline-bordered card and read as blur. */
-    box-shadow: 0 1px 2px rgb(15 40 80 / 0.06);
-  }
-
-  /* Rows are separated by a hairline inset from the right, not a full-bleed
-     rule: the line stops short of the edge so the list reads as a stack of
-     items rather than a table with gridlines. */
-  /* Margin, not padding: the border-bottom is drawn at the box edge, so a
-     margin is what insets the separator from the card's rounded sides. */
-  /* Separator as border-TOP on every row but the first, rather than
-     border-bottom on all: the bottom version also drew a line under the last
-     row, which read as an unfinished list. */
+  /* Separator as border-top on every row but the first, inset from the card's
+     rounded sides, so the last row has no dangling rule. */
   .rowline {
+    position: relative;
     display: flex;
     align-items: center;
-    margin: 0 10px;
+    margin: 0 8px;
+    padding-left: 14px; /* gutter for the unread dot */
+    border-radius: var(--m3-shape-sm);
     transition: background 0.1s ease;
   }
-  .rowline + .rowline {
-    border-top: 1px solid color-mix(in srgb, var(--m3-outline-variant) 60%, transparent);
+  .rowline + .rowline::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 14px;
+    right: 0;
+    border-top: 1px solid color-mix(in srgb, var(--m3-outline-variant) 65%, transparent);
   }
-  /* Gated on hover-capable pointers: on touch, :hover sticks after a tap, so
-     the row the user last touched stayed highlighted as if it were selected. */
+  /* Hide the rule next to a highlighted row so the tint reads as one shape. */
+  .rowline.sel::before, .rowline.sel + .rowline::before { opacity: 0; }
   @media (hover: hover) {
-    .rowline:hover {
-      background: var(--m3-row-hover);
-    }
-    .rowline:hover .when { color: var(--m3-on-surface-variant); }
+    .rowline:hover { background: var(--m3-row-hover); }
+    .rowline:hover::before, .rowline:hover + .rowline::before { opacity: 0; }
   }
-  .rowline.sel {
-    background: var(--m3-primary-container);
+  .rowline.sel { background: var(--m3-row-active); }
+
+  /* Unread: a dot in its own gutter, so subjects stay left-aligned whether a
+     row is read or not (an inline dot shifted the subject by 15px). */
+  .udot {
+    position: absolute;
+    left: 5px;
+    top: 50%;
+    width: 7px;
+    height: 7px;
+    margin-top: -3.5px;
+    border-radius: 50%;
+    background: var(--m3-primary);
   }
+
   .rowck {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 34px;
+    width: 30px;
     flex: 0 0 auto;
-    cursor: pointer;
     align-self: stretch;
-  }
-  .rowck input {
-    width: 16px;
-    height: 16px;
-    accent-color: var(--m3-primary);
     cursor: pointer;
   }
+
+  .avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    margin-left: 6px;
+    border-radius: 50%;
+    background: var(--ava);
+    color: #fff;
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    flex: 0 0 auto;
+    transition: background 0.12s ease, transform 0.12s ease;
+  }
+  .avatar.on { background: var(--m3-primary); color: var(--m3-on-primary); }
+  .avatar:active { transform: scale(0.94); }
 
   .row {
     flex: 1;
     min-width: 0;
     display: flex;
     align-items: center;
-    gap: 13px;
+    gap: 16px;
     text-align: left;
-    /* Extra left padding is where the unread accent bar sits, so it reads as
-       belonging to the row rather than as a rule at the card's edge. */
-    padding: 13px 14px 13px 14px;
+    padding: 12px 6px 12px 14px;
     border: 0;
     background: none;
     cursor: pointer;
-    position: relative;
   }
   .row:focus-visible {
     outline: 2px solid var(--m3-primary);
     outline-offset: -2px;
-  }
-
-  /* ---- per-row quick actions (⋯) ---- */
-  .qa-anchor {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    padding: 0 8px 0 2px;
-    flex: 0 0 auto;
-    align-self: stretch;
-  }
-  .qa-dots {
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--m3-on-surface-variant);
-    cursor: pointer;
-    opacity: 0;
-    transition: opacity 0.1s ease;
-  }
-  .qa-dots:hover { background: var(--m3-surface-container-highest); }
-  .rowline:hover .qa-dots,
-  .qa-anchor.open .qa-dots,
-  .qa-dots:focus-visible { opacity: 1; }
-  .qa-anchor.open .qa-dots { background: var(--m3-surface-container-highest); color: var(--m3-primary); }
-
-  /* Touch / coarse-pointer: there is no hover to reveal the ⋯, so keep the
-     quick-action dots always visible (Gmail-style). */
-  @media (hover: none), (pointer: coarse) {
-    .qa-dots { opacity: 1; }
-    .qa-dots:hover { background: transparent; }
-    .rowline:hover .qa-dots { opacity: 1; }
-  }
-
-  .qa-pop {
-    position: fixed;
-    z-index: 90;
-    width: 264px;
-    max-height: min(400px, 70vh);
-    overflow-y: auto;
-    background: var(--m3-surface-container-high);
-    border: 1px solid var(--m3-outline-variant);
     border-radius: var(--m3-shape-sm);
-    box-shadow: var(--m3-elev-4);
-    padding: 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-  .qa-title {
-    font: var(--m3-type-label-sm);
-    font-weight: 700;
-    letter-spacing: 0.03em;
-    text-transform: uppercase;
-    color: var(--m3-on-surface-variant);
-    margin: 6px 2px 2px;
-  }
-  .qa-optlist {
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-  }
-  .qa-opt {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    width: 100%;
-    text-align: left;
-    padding: 6px 8px;
-    border-radius: 7px;
-    font: var(--m3-type-body-sm);
-    color: var(--m3-on-surface);
-    cursor: pointer;
-    min-height: 30px;
-  }
-  .qa-opt:hover { background: var(--m3-row-hover); }
-  .qa-opt.on { background: var(--m3-primary-container); }
-  .qa-ava {
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    color: #fff;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 9px;
-    font-weight: 700;
-    flex: 0 0 auto;
-  }
-  .qa-name {
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .qa-check { color: var(--m3-primary); font-weight: 700; flex: 0 0 auto; }
-  .qa-wrap { flex-direction: row; flex-wrap: wrap; gap: 4px; }
-  .qa-lbl {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    font: var(--m3-type-label-md);
-    color: var(--m3-on-surface-variant);
-    border: 1px solid var(--m3-outline-variant);
-    border-radius: 999px;
-    padding: 2px 9px;
-    cursor: pointer;
-  }
-  .qa-lbl .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-  .qa-lbl.on { background: var(--m3-secondary-container); color: var(--m3-on-secondary-container); border-color: transparent; }
-  .qa-none { font-size: 0.8rem; padding: 2px 8px; }
-
-  .avatar {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 34px;
-    height: 34px;
-    border-radius: 50%;
-    color: #fff;
-    font-size: 12px;
-    font-weight: 600;
-    flex: 0 0 auto;
-    letter-spacing: 0.02em;
   }
 
   .mid {
@@ -831,128 +894,43 @@
     min-width: 0;
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: 4px;
   }
-
-  .top {
+  .top, .snip {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     min-width: 0;
-    /* The subject takes the slack and ellipsises; badges keep their size. */
-    flex-wrap: nowrap;
   }
+  .snip { gap: 8px; }
 
   .subject {
     font: var(--m3-type-body-md);
     font-size: 0.9375rem;
     line-height: 1.35;
-    font-weight: 400;
-    color: var(--m3-on-surface-variant);
+    color: var(--m3-on-surface);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     min-width: 0;
     flex: 0 1 auto;
+    margin-right: 2px;
   }
-
-  /* Unread reads as the primary thing on the row; read mail recedes. */
-  .row.hot .subject,
-  .row.unread .subject {
-    font-weight: 600;
-    color: var(--m3-on-surface);
-  }
-
-  /* No accent bar here. I added one and removed it: sitting between the
-     checkbox and the avatar it read as a stray divider, and the row already
-     carries two unread cues (the dot and the heavier subject). The bar was
-     redundant AND confusing, which is worse than neither.
-
-     The row background is deliberately left untouched by unread state so the
-     hover and selected tints stay legible underneath. */
-
-  .unread-dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--m3-primary);
-    flex: 0 0 auto;
-  }
-
-  .mcount {
-    font: var(--m3-type-label-sm);
-    color: var(--m3-on-surface-variant-2);
-    border: 1px solid var(--m3-outline-variant);
-    border-radius: 10px;
-    padding: 0 6px;
-    line-height: 16px;
-    flex: 0 0 auto;
-    white-space: nowrap;
-  }
-
-  .mcount.unread {
-    color: var(--m3-primary);
-    border-color: var(--m3-primary);
-    font-weight: 600;
-  }
-
-  /* Unread internal notes — a filled round badge, deliberately NOT the outlined
-     pill the message count uses, and in the tertiary (internal/drafting) violet
-     rather than the primary blue. Two similar blue badges side by side would be
-     ambiguous; these must read as different things at a glance. */
-  .ncount {
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    font: var(--m3-type-label-sm);
-    font-weight: 700;
-    color: var(--m3-on-tertiary);
-    background: var(--m3-tertiary);
-    border-radius: 999px;
-    padding: 1px 7px;
-    line-height: 16px;
-    flex: 0 0 auto;
-    white-space: nowrap;
-  }
-
-  .tag {
-    background: var(--m3-surface-container-high);
-    color: var(--m3-on-surface-variant);
-    border-radius: 4px;
-    padding: 1px 7px;
-    font: var(--m3-type-label-sm);
-    white-space: nowrap;
-  }
-
-  .pencil {
-    color: var(--m3-tertiary);
-    display: inline-flex;
-  }
-
-  /* Second line: who wrote, what they said, and (if any) the assignee. The
-     assignee used to sit on its OWN third row, which made every assigned row
-     ~30px taller than the rest — the main reason the list looked uneven. */
-  .snip {
-    display: flex;
-    gap: 8px;
-    min-width: 0;
-    align-items: center;
-  }
+  .rowline.unread .subject { font-weight: 600; }
 
   .from {
     font: var(--m3-type-body-sm);
     font-size: 0.8125rem;
-    font-weight: 600;
-    color: var(--m3-on-surface-variant-2);
+    font-weight: 500;
+    color: var(--m3-on-surface-variant);
     white-space: nowrap;
-    flex: 0 0 auto;
-    max-width: 30%;
     overflow: hidden;
     text-overflow: ellipsis;
+    flex: 0 0 auto;
+    max-width: 34%;
   }
+  .rowline.unread .from { color: var(--m3-on-surface); font-weight: 600; }
 
-  /* flex:1 so it absorbs the remaining width and ellipsises, letting the
-     assignee sit hard right instead of being pushed off the row. */
   .snippet-text {
     font: var(--m3-type-body-sm);
     font-size: 0.8125rem;
@@ -964,165 +942,378 @@
     min-width: 0;
   }
 
-  .row.hot .from {
-    color: var(--m3-on-surface);
-  }
-
-  .assignee-pill {
+  /* Badges: tonal, same height, so they read as a quiet group after the
+     subject instead of competing with it. */
+  .mcount, .ncount, .tag {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    margin-left: auto;
-    flex: 0 0 auto;
-    background: var(--m3-surface-container-high);
-    color: var(--m3-on-surface-variant);
-    border-radius: 999px;
-    padding: 2px 8px 2px 3px;
+    height: 18px;
+    border-radius: var(--m3-shape-full);
     font: var(--m3-type-label-sm);
-    font-weight: 500;
-    max-width: 34%;
-    overflow: hidden;
+    white-space: nowrap;
+    flex: 0 0 auto;
   }
-  .assignee-pill.mine {
-    background: var(--m3-primary-container);
-    color: var(--m3-on-primary-container);
+  .mcount {
+    padding: 0 6px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--m3-on-surface-variant-2);
+    background: var(--m3-surface-container);
   }
+  .mcount.unread { color: var(--m3-on-primary-container); background: var(--m3-primary-container); }
+  /* Internal notes: tertiary (violet), with a speech icon, so it can't be
+     confused with the message count beside it. */
+  .ncount {
+    gap: 3px;
+    padding: 0 7px 0 5px;
+    font-weight: 700;
+    color: var(--m3-on-tertiary-container);
+    background: var(--m3-tertiary-container);
+  }
+  .tag {
+    gap: 5px;
+    padding: 0 7px 0 6px;
+    color: var(--m3-on-surface-variant);
+    border: 1px solid var(--m3-outline-variant);
+  }
+  .tname { overflow: hidden; text-overflow: ellipsis; }
+  .tdot { flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; background: var(--tag); }
+  .tag.more { padding: 0 6px; color: var(--m3-on-surface-variant-2); }
+  .pencil { color: var(--m3-tertiary); display: inline-flex; flex: 0 0 auto; }
 
-
+  /* Assignee gets a fixed column so it lines up down the list. */
+  .asg-col {
+    flex: 0 0 132px;
+    min-width: 0;
+    display: flex;
+    justify-content: flex-start;
+  }
+  .assignee {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    max-width: 100%;
+    font: var(--m3-type-label-md);
+    color: var(--m3-on-surface-variant);
+  }
+  .assignee.mine .ap-name { color: var(--m3-primary); font-weight: 600; }
   .ap-ava {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 15px;
-    height: 15px;
+    width: 20px;
+    height: 20px;
     border-radius: 50%;
     color: #fff;
-    font-size: 8px;
+    font-size: 8.5px;
     font-weight: 700;
     flex: 0 0 auto;
   }
+  .ap-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-  .ap-name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  /* Two rows, not three: time and status share a line, the SLA chip sits
-     under them. Three stacked items made the right column the tallest thing in
-     the row and drove the row height. */
+  /* Right column: time on top, status (and SLA) under it, right-aligned at a
+     fixed width so every row's edge lines up. */
   .right {
+    flex: 0 0 auto;
+    min-width: 108px;
     display: flex;
     flex-direction: column;
     align-items: flex-end;
-    gap: 4px;
-    flex: 0 0 auto;
+    gap: 5px;
   }
-
-  .right-top {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-  }
-
+  .right-top, .right-bot { display: flex; align-items: center; gap: 6px; }
   .when {
-    font: var(--m3-type-label-sm);
+    font: var(--m3-type-label-md);
     font-variant-numeric: tabular-nums;
     color: var(--m3-on-surface-variant-2);
     white-space: nowrap;
   }
+  .rowline.unread .when { color: var(--m3-on-surface); font-weight: 600; }
 
-  .status-pill {
+  /* Status and SLA tint from one hue. The text colour is mixed toward
+     on-surface so the same hue stays legible on light and dark. */
+  .status-pill, .sla-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 20px;
+    padding: 0 8px;
+    border-radius: var(--m3-shape-full);
     font: var(--m3-type-label-sm);
     font-weight: 600;
-    border-radius: 999px;
-    padding: 2px 8px;
     white-space: nowrap;
+    color: var(--ci);
+    background: color-mix(in srgb, var(--c) 14%, transparent);
   }
-
-  .sla-chip {
-    font: var(--m3-type-label-sm);
-    font-weight: 600;
-    border-radius: 999px;
-    padding: 2px 8px;
-    white-space: nowrap;
-    font-variant-numeric: tabular-nums;
-  }
-  .sla-chip.breached {
-    animation: sla-pulse 1.8s ease-in-out infinite;
-  }
+  .sdot { width: 6px; height: 6px; border-radius: 50%; background: var(--c); }
+  .sla-chip { gap: 4px; padding: 0 7px 0 6px; font-variant-numeric: tabular-nums; }
+  .sla-chip.breached { animation: sla-pulse 1.8s ease-in-out infinite; }
   @keyframes sla-pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.55; }
   }
-
-  /* ---- mobile: compact stacked rows (no overlap) ---- */
-  @media (max-width: 620px) {
-    .list { padding: 0 8px 12px; }
-    .toolbar { padding: 8px 10px 6px; gap: 6px; }
-    .search { min-width: 100%; max-width: none; order: -1; }
-
-    .rowline {
-      position: relative;
-      align-items: center;
-    }
-    .rowck { width: 26px; }
-    .rowck input { width: 15px; height: 15px; }
-
-    .row {
-      flex-wrap: wrap;
-      gap: 2px 8px;
-      padding: 8px 34px 8px 2px; /* right room for the ⋯ overlay */
-    }
-
-    .avatar { width: 30px; height: 30px; font-size: 10px; }
-
-    .mid { min-width: 0; }
-    .top { gap: 5px; flex-wrap: wrap; }
-    .subject { font-size: 0.9rem; min-width: 0; }
-    .snip { gap: 4px; }
-    .from { max-width: 42%; }
-    .snippet-text { font-size: 0.8rem; }
-
-    /* Status / time / SLA become their own wrapped chip row, never side-by-side
-       with the sender line -> no overlap even for long statuses. */
-    .right {
-      order: 5;
-      flex: 1 1 100%;
-      flex-direction: row;
-      align-items: center;
-      justify-content: flex-start;
-      flex-wrap: wrap;
-      gap: 4px 8px;
-      margin-left: 40px; /* align under the text (26 checkbox + 30 avatar + gaps) */
-      margin-top: 1px;
-    }
-    .status-pill, .sla-chip, .when { font-size: 0.72rem; }
-    .sla-chip { padding: 0 7px; }
-    .status-pill { padding: 0 6px; }
-
-    /* Bump the stacked status + SLA chips a touch so they're readable, while
-       leaving the relative 'when' timestamp small. */
-    .status-pill, .sla-chip { font-size: 0.8rem; padding: 2px 9px; }
-    .when { font-size: 0.72rem; }
-
-    /* ⋯ anchored top-right, always visible on touch; stays out of text flow */
-    .qa-anchor {
-      position: absolute;
-      top: 4px;
-      right: 2px;
-      padding: 0;
-    }
-    .qa-dots { width: 26px; height: 26px; opacity: 1; }
-
-    /* assignee pill: keep on the text block, compact + ellipsized */
-    .assignee-pill { max-width: 100%; }
+  @media (prefers-reduced-motion: reduce) {
+    .sla-chip.breached { animation: none; }
   }
 
-  .empty {
-    text-align: center;
+  /* --------------------------------------------------- quick actions (⋮) */
+  .qa-anchor {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    padding: 0 6px 0 0;
+    flex: 0 0 auto;
+    align-self: stretch;
+  }
+  .qa-dots {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--m3-on-surface-variant);
+    opacity: 0;
+    transition: opacity 0.1s ease, background 0.1s ease;
+  }
+  .qa-dots:hover { background: var(--m3-surface-container-highest); }
+  .rowline:hover .qa-dots,
+  .qa-anchor.open .qa-dots,
+  .qa-dots:focus-visible { opacity: 1; }
+  .qa-anchor.open .qa-dots { background: var(--m3-surface-container-highest); color: var(--m3-primary); }
+  @media (hover: none), (pointer: coarse) {
+    .qa-dots { opacity: 1; }
+    .qa-dots:hover { background: transparent; }
+  }
+
+  .qa-pop {
+    position: fixed;
+    z-index: 90;
+    width: 264px;
+    max-height: min(400px, 70vh);
+    overflow-y: auto;
+    background: var(--m3-surface-raised);
+    border: 1px solid var(--m3-outline-variant);
+    border-radius: var(--m3-shape-md);
+    box-shadow: var(--m3-elev-4);
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .qa-title {
+    font: var(--m3-type-label-sm);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
     color: var(--m3-on-surface-variant-2);
-    padding: 48px 0;
+    margin: 6px 4px 2px;
+  }
+  .qa-optlist { display: flex; flex-direction: column; gap: 1px; }
+  .qa-opt {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    text-align: left;
+    padding: 6px 8px;
+    border-radius: var(--m3-shape-sm);
     font: var(--m3-type-body-md);
+    color: var(--m3-on-surface);
+    min-height: 34px;
+  }
+  .qa-opt:hover { background: var(--m3-row-hover); }
+  .qa-opt.on { background: var(--m3-primary-container); color: var(--m3-on-primary-container); }
+  .qa-ava {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    font-weight: 700;
+    flex: 0 0 auto;
+  }
+  .qa-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .qa-check { color: var(--m3-primary); font-weight: 700; flex: 0 0 auto; }
+  .qa-wrap { flex-direction: row; flex-wrap: wrap; gap: 5px; padding: 2px; }
+  .qa-lbl {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    padding: 0 10px;
+    font: var(--m3-type-label-md);
+    color: var(--m3-on-surface-variant);
+    border: 1px solid var(--m3-outline-variant);
+    border-radius: var(--m3-shape-full);
+  }
+  .qa-lbl .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .qa-lbl.on { background: var(--m3-secondary-container); color: var(--m3-on-secondary-container); border-color: transparent; }
+  .qa-none { font-size: 0.8rem; padding: 2px 8px; color: var(--m3-on-surface-variant-2); }
+
+  .empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 64px 16px;
+    color: var(--m3-on-surface-variant-2);
+    font: var(--m3-type-body-md);
+    text-align: center;
+  }
+  .empty svg { opacity: 0.45; }
+
+  /* Mid-width desktop: assignee collapses to its avatar. */
+  @media (max-width: 1000px) {
+    .asg-col { flex-basis: 22px; }
+    .asg-col .ap-name { display: none; }
+  }
+
+  /* ------------------------------------------------------------------ mobile */
+  @media (max-width: 620px) {
+    /* nowrap matters: a wrapping column sizes its line to the widest child's
+       content, so the 820px chip strip stretched the search off-screen. */
+    .toolbar {
+      flex-direction: column;
+      flex-wrap: nowrap;
+      align-items: stretch;
+      gap: 10px;
+      padding: 10px 0 8px;
+    }
+    .search { flex: none; margin: 0 12px; height: 42px; min-width: 0; }
+    /* One scrolling row of chips; wrapping left "Closed 1" orphaned on a
+       second line. Edge-to-edge so chips visibly continue off-screen. */
+    .filters {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      padding: 0 12px;
+      scrollbar-width: none;
+      -webkit-overflow-scrolling: touch;
+    }
+    .filters::-webkit-scrollbar { display: none; }
+    .fchip { height: 32px; }
+    .count { display: none; }
+    .filters { order: 0; flex: none; }
+
+    .bulkbar {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      margin: 0 8px 8px;
+      flex-wrap: wrap;
+      row-gap: 4px;
+    }
+    .bb-spacer { display: none; }
+    .bb-selectall { margin-right: auto; }
+    .bb-actions {
+      order: 5;
+      flex: 1 1 100%;
+      overflow-x: auto;
+      scrollbar-width: none;
+      padding-bottom: 2px;
+    }
+
+    /* Full-bleed list, like a native mail app: the card-inside-a-page inset
+       cost 28px of width that the rows badly need on a phone. */
+    .list {
+      margin: 0;
+      padding: 0 0 12px;
+      border: 0;
+      border-top: 1px solid color-mix(in srgb, var(--m3-outline-variant) 60%, transparent);
+      border-radius: 0;
+      box-shadow: none;
+    }
+
+    .rowline {
+      margin: 0;
+      padding-left: 14px;
+      border-radius: 0;
+      align-items: flex-start;
+    }
+    /* Separator starts at the text column, not the avatar. */
+    .rowline + .rowline::before { left: 66px; }
+    .udot { top: 30px; margin-top: 0; left: 4px; }
+
+    .avatar {
+      width: 40px;
+      height: 40px;
+      margin: 12px 0 0;
+      font-size: 14px;
+    }
+
+    .row {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 2px;
+      padding: 11px 14px 12px 12px;
+    }
+
+    .m-l1 {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+    .m-l1 .from {
+      flex: 0 1 auto;
+      max-width: none;
+      font: var(--m3-type-body-md);
+      font-size: 0.9375rem;
+      font-weight: 500;
+      color: var(--m3-on-surface);
+    }
+    .rowline.unread .m-l1 .from { font-weight: 700; }
+    .m-spacer { flex: 1 1 auto; }
+    .when { font-size: 0.75rem; }
+
+    .subject { font-size: 0.875rem; margin: 0; color: var(--m3-on-surface-variant); }
+    .rowline.unread .subject { color: var(--m3-on-surface); }
+    .snippet-text { font-size: 0.8125rem; flex: none; }
+
+    /* Chip line; right padding keeps clear of the ⋮ button. */
+    /* Always one line: status, SLA, assignee avatar, then labels as a dot
+       cluster. Full tag chips wrapped the row or truncated to "s…". */
+    .m-meta {
+      display: flex;
+      flex-wrap: nowrap;
+      align-items: center;
+      gap: 5px;
+      /* overflow:hidden is a backstop so an unusually long chip line clips
+         rather than sliding under the ⋮; the 3px padding keeps the "You"
+         ring around the assignee avatar from being clipped. */
+      overflow: hidden;
+      margin: 4px 0 0 -3px;
+      padding: 3px;
+      min-height: 20px;
+    }
+    .m-meta .ap-name { display: none; }
+    .m-meta > * { flex: 0 0 auto; }
+    .m-meta .status-pill, .m-meta .sla-chip { padding: 0 7px 0 6px; gap: 4px; }
+    .tagdots {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      height: 20px;
+      padding: 0 2px;
+    }
+    .tagdots .tdot { width: 8px; height: 8px; box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.08); }
+    .m-meta .assignee.mine .ap-ava { box-shadow: 0 0 0 2px var(--m3-surface-raised), 0 0 0 3.5px var(--m3-primary); }
+
+    /* ⋮ sits beside the subject line: the subject already ellipsises, so it
+       can give up the room; the chip line can't, and on a 360px phone the
+       ⋮ there overlapped the chips. */
+    .qa-anchor {
+      position: absolute;
+      right: 6px;
+      top: 27px;
+      padding: 0;
+      align-self: auto;
+    }
+    .subject { padding-right: 30px; }
+    .qa-dots { width: 34px; height: 34px; color: var(--m3-on-surface-variant-2); }
   }
 </style>

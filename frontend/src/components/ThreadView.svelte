@@ -37,6 +37,10 @@
       : messages.filter((m) => m.is_internal_note)
   );
 
+  // Real message count for the Conversation tab label. The old label used
+  // msgsVisible, which on the Notes tab counted notes instead.
+  const conversationCount = $derived(messages.filter((m) => !m.is_internal_note).length);
+
   // Unread internal notes — shown as a count on the Internal notes tab.
   const unreadNotes = $derived(threadUnreadNotes(threadId));
 
@@ -1274,55 +1278,126 @@
       toast("error", e?.message || "Cancel failed");
     }
   }
+
+  // ---- presentation helpers (header / messages) ----------------------------
+  // A message is "ours" when it was sent from this mailbox or by a teammate.
+  function isOurs(m) {
+    const from = String(m.sender_email || "").toLowerCase();
+    if (!from) return false;
+    if (inboxEmail && from === String(inboxEmail).toLowerCase()) return true;
+    return Object.values(appState.users || {}).some((u) => String(u.email || "").toLowerCase() === from);
+  }
+  // Customer messages show the contact's name when we know it.
+  function senderLabel(m) {
+    const from = String(m.sender_email || "");
+    if (thread?.customer_name && from && from.toLowerCase() === String(thread.customer_email || "").toLowerCase()) return thread.customer_name;
+    const u = Object.values(appState.users || {}).find((x) => String(x.email || "").toLowerCase() === from.toLowerCase());
+    return (u && u.name) || from || "system";
+  }
+  // Two tabs, WAI-ARIA pattern: arrows switch.
+  function onTvTabKey(e) {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+    e.preventDefault();
+    tab = tab === "conversation" ? "notes" : "conversation";
+    requestAnimationFrame(() => document.getElementById("tvtab-" + tab)?.focus());
+  }
+  // Escape closes the innermost layer only (Meet dialog, contact panel,
+  // labels menu) before the drawer's own Escape-to-close sees it. Capture
+  // phase on document runs before the App's window listener.
+  $effect(() => {
+    const h = (e) => {
+      if (e.key !== "Escape") return;
+      if (meetOpen) { e.preventDefault(); e.stopPropagation(); closeMeet(); }
+      else if (contactOpen) { e.preventDefault(); e.stopPropagation(); contactOpen = false; }
+      else if (labelsOpen) { e.preventDefault(); e.stopPropagation(); labelsOpen = false; }
+    };
+    document.addEventListener("keydown", h, true);
+    return () => document.removeEventListener("keydown", h, true);
+  });
 </script>
 
 {#if thread}
   <div class="tv-root">
   <header class="tv-head">
     <div class="tv-title-row">
-      <button class="md3-icon-btn close" onclick={() => (appState.openThreadId = "")} title="Back / Close">
+      <button class="md3-icon-btn close" onclick={() => (appState.openThreadId = "")} title="Close (Esc)" aria-label="Close conversation">
         <svg class="icon-close-desktop" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M18.3 5.7 12 12l6.3 6.3-1.4 1.4L10.6 13.4 4.3 19.7l-1.4-1.4L9.2 12 2.9 5.7l1.4-1.4 6.3 6.3 6.3-6.3z"/></svg>
         <svg class="icon-back-mobile" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
       </button>
       <div class="tv-title">
-        <h3>{thread.subject || "(no subject)"}</h3>
+        <h2 id="tv-subject">{thread.subject || "(no subject)"}</h2>
+        <p class="cust">
+          {#if thread.customer_name}<strong>{thread.customer_name}</strong>{/if}
+          <span class="cust-email">{thread.customer_email || "no customer"}</span>
+          {#if thread.last_message_at}<span class="cust-when">· {timeAgo(thread.last_message_at)}</span>{/if}
+        </p>
       </div>
-      <select class="status-select" value={thread.status} onchange={setStatus}
-        style="--sc:{statusMeta(thread.status).dot}">
-        {#each STATUSES as s (s.value)}
-          <option value={s.value}>{s.label}</option>
-        {/each}
-      </select>
     </div>
 
-    <div class="tv-meta-row">
-      <span class="cust">
-        {thread.customer_name ? thread.customer_name + " · " : ""}{thread.customer_email || "no customer"}
-        {#if thread.last_message_at} · {timeAgo(thread.last_message_at)}{/if}
+    <!-- Properties bar: status, owner, contact. One control style (32px
+         pills), where before status was a wide grey pill beside the title and
+         the assignee a bare browser select. -->
+    <div class="tv-controls" role="group" aria-label="Conversation properties">
+      <span class="ctl ctl-select" style="--sc:{statusMeta(thread.status).dot}">
+        <span class="ctl-dot" aria-hidden="true"></span>
+        <select class="status-select" aria-label="Status" value={thread.status} onchange={setStatus}>
+          {#each STATUSES as s (s.value)}
+            <option value={s.value}>{s.label}</option>
+          {/each}
+        </select>
+        <svg class="ctl-caret" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 10l5 5 5-5z"/></svg>
+      </span>
+      <span class="ctl ctl-select" class:unassigned={!thread.assigned_agent}>
+        {#if thread.assigned_agent}
+          <span class="ctl-ava" style="background:{avatarColor(thread.assigned_agent)}" aria-hidden="true">{agentInitials(userName(thread.assigned_agent))}</span>
+        {:else}
+          <svg class="ctl-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+        {/if}
+        <select class="assignee-sel" value={thread.assigned_agent || ""} onchange={(e) => setAssignee(e.target.value)} disabled={busyAssign} aria-label="Assignee">
+          <option value="">Unassigned</option>
+          {#each assigneeOptions as u (u.id)}
+            <option value={u.id}>{u.name || u.email}</option>
+          {/each}
+        </select>
+        <svg class="ctl-caret" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 10l5 5 5-5z"/></svg>
       </span>
       {#if thread.customer_email}
-        <button type="button" class="contact-btn" onclick={() => (contactOpen = true)} title="View / edit contact">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+        <button type="button" class="ctl contact-btn" onclick={() => (contactOpen = true)} title="View / edit contact">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20 3H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zM8 7a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5zm5 10H3.5v-.6c0-1.7 3-2.6 4.5-2.6s4.5.9 4.5 2.6V17zm7-2h-5v-2h5v2zm0-4h-5V9h5v2z"/></svg>
           Contact
         </button>
       {/if}
-      <div class="spacer"></div>
-      <select class="assignee-sel" value={thread.assigned_agent || ""} onchange={(e) => setAssignee(e.target.value)} disabled={busyAssign} title="Assignee">
-        <option value="">Unassigned</option>
-        {#each assigneeOptions as u (u.id)}
-          <option value={u.id}>{u.name || u.email}</option>
-        {/each}
-      </select>
     </div>
 
     <div class="tv-actions">
-      <button class="md3-chip" class:is-active={tab === "conversation"} onclick={() => (tab = "conversation")}>
-        Conversation ({msgsVisible.length})
-      </button>
-      <button class="md3-chip" class:is-active={tab === "notes"} onclick={() => (tab = "notes")}>
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M4 4h16v2H4zm0 4h10v2H4zm0 4h10v2H4zm12-2h4v10a1 1 0 0 1-1 1h-3v-2h2v-7h-2z"/></svg>
-        Internal notes{#if unreadNotes > 0}<span class="tab-badge">{unreadNotes}</span>{/if}
-      </button>
+      <div class="tv-tabs" role="tablist" aria-label="Conversation view">
+        <button
+          type="button"
+          role="tab"
+          id="tvtab-conversation"
+          aria-controls="tv-panel"
+          aria-selected={tab === "conversation"}
+          tabindex={tab === "conversation" ? 0 : -1}
+          class:on={tab === "conversation"}
+          onclick={() => (tab = "conversation")}
+          onkeydown={onTvTabKey}
+        >
+          Conversation <span class="tab-count">{conversationCount}</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          id="tvtab-notes"
+          aria-controls="tv-panel"
+          aria-selected={tab === "notes"}
+          tabindex={tab === "notes" ? 0 : -1}
+          class:on={tab === "notes"}
+          onclick={() => (tab = "notes")}
+          onkeydown={onTvTabKey}
+        >
+          <span class="tab-lg">Internal notes</span><span class="tab-sm">Notes</span>{#if unreadNotes > 0}<span class="tab-badge" aria-label={`${unreadNotes} unread`}>{unreadNotes}</span>{/if}
+        </button>
+      </div>
       <div class="spacer"></div>
       <button type="button" class="detail-toggle" onclick={() => (detailsOpen = !detailsOpen)} aria-expanded={detailsOpen}
         title="Labels, meeting, previous tickets">
@@ -1366,7 +1441,7 @@
             <span class="dt-label">Labels</span>
             <div class="dt-chips">
               {#each threadTags as tg (tg)}
-                <span class="dt-chip plain" style="background:{tagColor(tg)}22;color:{tagColor(tg)}">{tg}</span>
+                <span class="dt-tag" style="--tag:{tagColor(tg)}"><span class="dt-tdot"></span>{tg}</span>
               {/each}
             </div>
           </div>
@@ -1378,7 +1453,7 @@
               {#each prevTickets as pt (pt.id)}
                 <button type="button" class="dt-chip" onclick={() => (appState.openThreadId = pt.id)} title={pt.subject || "(no subject)"}>
                   {pt.subject || "(no subject)"}
-                  <span class="dt-status" style="color:{statusMeta(pt.status).dot}">{statusMeta(pt.status).label}</span>
+                  <span class="dt-status" style="color:{statusMeta(pt.status).ink}">{statusMeta(pt.status).label}</span>
                 </button>
               {/each}
             </div>
@@ -1597,18 +1672,23 @@
     </div>
   {/if}
 
-  <div class="tv-body">
+  <div class="tv-body" role="tabpanel" id="tv-panel" aria-labelledby="tvtab-{tab}">
     {#if !msgsVisible.length}
       <p class="muted center">{tab === "notes" ? "No internal notes yet." : "No messages yet."}</p>
     {/if}
     {#each msgsVisible as m (m.id)}
-      <article class:note={m.is_internal_note} class:external={!m.is_internal_note} data-msg-id={m.id}>
+      {@const ours = !m.is_internal_note && isOurs(m)}
+      <article class:note={m.is_internal_note} class:external={!m.is_internal_note && !ours} class:ours data-msg-id={m.id}>
         <div class="msg-head">
-          <span class="avatar" style="background:{avatarColor(m.sender_email)}">
-            {agentInitials(m.sender_email)}
+          <span class="avatar" style="background:{avatarColor(m.sender_email)}" aria-hidden="true">
+            {agentInitials(senderLabel(m))}
           </span>
-          <span class="sender">{m.is_internal_note ? "Internal note · " + (m.sender_email || "system") : m.sender_email}</span>
-          <span class="when">{fmtDateTime(m.msg_date)}</span>
+          <span class="sender">
+            {#if m.is_internal_note}<span class="msg-kind note-kind">Internal note</span>{:else if ours}<span class="msg-kind">Team reply</span>{/if}
+            <strong class="sender-name">{senderLabel(m)}</strong>
+            {#if senderLabel(m) !== m.sender_email && m.sender_email}<span class="sender-email">{m.sender_email}</span>{/if}
+          </span>
+          <time class="when" datetime={m.msg_date}>{fmtDateTime(m.msg_date)}</time>
         </div>
         {#if !m.is_internal_note && msgRecipCount(m) > 0}
           {@const rp = msgRecips(m)}
@@ -1618,10 +1698,11 @@
                 <span><b>To:</b> {rp.to.join(", ") || "—"}</span>
                 {#if rp.cc.length}<span><b>Cc:</b> {rp.cc.join(", ")}</span>{/if}
               </div>
-              <button type="button" class="recip-toggle" onclick={() => toggleRecips(m.id)}>hide</button>
+              <button type="button" class="recip-toggle" aria-expanded="true" onclick={() => toggleRecips(m.id)}>hide</button>
             {:else}
-              <button type="button" class="recip-toggle" onclick={() => toggleRecips(m.id)}>
-                to {msgRecipCount(m)}{m.sender_email && m.sender_email !== inboxEmail ? " · " : ""}{#if rp.cc.length}(+{rp.cc.length} cc){/if}
+              <button type="button" class="recip-toggle" aria-expanded="false" onclick={() => toggleRecips(m.id)}>
+                to {msgRecipCount(m)} recipient{msgRecipCount(m) === 1 ? "" : "s"}{#if rp.cc.length}&nbsp;(+{rp.cc.length} cc){/if}
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 10l5 5 5-5z"/></svg>
               </button>
             {/if}
           </div>
@@ -1875,8 +1956,9 @@
 
   .tv-head {
     flex: 0 0 auto;
-    padding: 10px 16px 8px;
+    padding: 14px 20px 0;
     border-bottom: 1px solid var(--m3-outline-variant);
+    background: var(--m3-surface-raised);
   }
 
   /* The header is fixed-height above a scrolling body, so its height is
@@ -1889,9 +1971,10 @@
 
   .tv-title-row {
     display: flex;
-    align-items: center;
-    gap: 10px;
+    align-items: flex-start;
+    gap: 8px;
   }
+  .tv-title-row .close { margin: -6px 0 0 -10px; flex: none; }
 
   .icon-back-mobile {
     display: none;
@@ -1920,8 +2003,9 @@
     min-width: 0;
   }
 
-  .tv-title h3 {
+  .tv-title h2 {
     font: var(--m3-type-title-lg);
+    letter-spacing: -0.01em;
     line-height: 1.3;
     overflow-wrap: anywhere;
     display: -webkit-box;
@@ -1931,8 +2015,121 @@
   }
 
   .cust {
+    margin: 3px 0 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 6px;
     font: var(--m3-type-body-sm);
+    color: var(--m3-on-surface-variant-2);
+    min-width: 0;
+  }
+  .cust strong { font-weight: 600; color: var(--m3-on-surface); }
+  .cust-email { overflow-wrap: anywhere; }
+
+  /* ---- properties bar: status / assignee / contact ---- */
+  .tv-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 12px 0 4px;
+    flex-wrap: wrap;
+  }
+  .ctl {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 12px;
+    border: 1px solid var(--m3-outline-variant);
+    border-radius: var(--m3-shape-full);
+    background: var(--m3-surface-raised);
+    color: var(--m3-on-surface);
+    font: var(--m3-type-label-lg);
+    white-space: nowrap;
+    flex: 0 0 auto;
+    transition: background 0.12s ease, border-color 0.12s ease;
+  }
+  @media (hover: hover) {
+    .ctl:hover { background: var(--m3-row-hover); border-color: var(--m3-outline); }
+  }
+  .ctl:focus-within { border-color: var(--m3-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--m3-primary) 16%, transparent); }
+  /* The select fills the pill so the whole pill is the click target; the dot,
+     avatar and caret are decoration layered around it. */
+  .ctl-select { padding: 0 8px 0 10px; }
+  .ctl-select select {
+    appearance: none;
+    -webkit-appearance: none;
+    border: 0;
+    background: none;
+    font: inherit;
+    color: inherit;
+    padding: 0 22px 0 0;
+    margin-right: -22px;
+    height: 100%;
+    cursor: pointer;
+    outline: none;
+    /* Size to the chosen option, not the longest one ("Waiting on customer"
+       made every status pill wide). Older browsers just keep the wide pill. */
+    field-sizing: content;
+  }
+  .ctl-select.unassigned { color: var(--m3-on-surface-variant); }
+  .ctl-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--sc); flex: none; }
+  .ctl-ava {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    color: #fff;
+    font-size: 8.5px;
+    font-weight: 700;
+    display: inline-grid;
+    place-content: center;
+    flex: none;
+  }
+  .ctl-icon { color: var(--m3-on-surface-variant-2); flex: none; }
+  .ctl-caret { color: var(--m3-on-surface-variant-2); pointer-events: none; flex: none; }
+  .contact-btn svg { color: var(--m3-on-surface-variant-2); }
+
+  /* ---- Conversation / Internal notes tabs (underline style, as Settings) */
+  .tv-tabs { display: flex; gap: 2px; align-self: stretch; }
+  .tab-sm { display: none; }
+  .tv-tabs button {
+    white-space: nowrap;
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 42px;
+    padding: 0 12px;
+    font: var(--m3-type-label-lg);
     color: var(--m3-on-surface-variant);
+    border-radius: 6px 6px 0 0;
+  }
+  .tv-tabs button:hover:not(.on) { color: var(--m3-on-surface); background: var(--m3-row-hover); }
+  .tv-tabs button.on { color: var(--m3-on-surface); font-weight: 600; }
+  .tv-tabs button.on::after {
+    content: "";
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    bottom: -1px;
+    height: 2px;
+    border-radius: 2px 2px 0 0;
+    background: var(--m3-primary);
+  }
+  .tab-count {
+    min-width: 20px;
+    height: 18px;
+    padding: 0 6px;
+    display: inline-grid;
+    place-content: center;
+    border-radius: var(--m3-shape-full);
+    background: var(--m3-surface-container);
+    color: var(--m3-on-surface-variant);
+    font: var(--m3-type-label-sm);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
   }
 
   .tv-tags {
@@ -2061,19 +2258,24 @@
     padding: 2px 10px;
   }
 
-  .assignee-sel {
-    border: 1px solid var(--m3-outline-variant);
-    border-radius: 999px;
-    background: var(--m3-surface-container-high);
-    padding: 6px 10px;
-    font: var(--m3-type-label-md);
-    color: var(--m3-on-surface-variant);
-    outline: none;
-  }
 
   .lbl-wrap {
     position: relative;
   }
+  /* Same tag look as list rows and board cards: outline + colour dot. */
+  .dt-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 24px;
+    padding: 0 9px 0 8px;
+    border: 1px solid var(--m3-outline-variant);
+    border-radius: var(--m3-shape-full);
+    font: var(--m3-type-label-md);
+    color: var(--m3-on-surface-variant);
+    background: var(--m3-surface-raised);
+  }
+  .dt-tdot { width: 7px; height: 7px; border-radius: 50%; background: var(--tag); }
 
   .lbl-menu {
     position: absolute;
@@ -2127,25 +2329,12 @@
     min-width: 0;
   }
 
-  .status-select {
-    appearance: none;
-    border: 1px solid var(--m3-outline-variant);
-    border-radius: var(--m3-shape-full);
-    background: var(--m3-surface-container-high);
-    padding: 7px 12px 7px 22px;
-    font: var(--m3-type-label-md);
-    color: var(--m3-on-surface-variant);
-    background-image: radial-gradient(circle at 10px 50%, var(--sc, #888) 5px, transparent 6px);
-    background-repeat: no-repeat;
-    outline: none;
-  }
 
   .tv-actions {
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-top: 6px;
-    flex-wrap: wrap;
+    margin: 4px -4px 0;
   }
 
   /* "Details" toggle now lives in the action bar, not on its own row. */
@@ -2177,12 +2366,11 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 16px;
-    margin-left: 5px;
-    padding: 0 5px;
+    min-width: 18px;
+    padding: 0 6px;
     border-radius: 999px;
-    background: var(--m3-tertiary);
-    color: var(--m3-on-tertiary);
+    background: var(--m3-tertiary-container);
+    color: var(--m3-on-tertiary-container);
     font: var(--m3-type-label-sm);
     font-weight: 700;
     line-height: 16px;
@@ -2624,22 +2812,48 @@
   .tv-body {
     flex: 1;
     overflow-y: auto;
-    padding: 12px 16px;
+    padding: 16px 20px;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 12px;
     min-height: 0;
+    background: var(--m3-surface);
   }
+  .tv-body:focus-visible { outline: 2px solid var(--m3-primary); outline-offset: -2px; }
 
+  /* Customer messages: white cards. Team replies: tinted blue with a "Team
+     reply" tag, so the back-and-forth is readable at a glance — before, both
+     sides were the same grey card. */
   article {
-    border-radius: var(--m3-shape-sm);
-    padding: 10px 12px;
+    border-radius: var(--m3-shape-md);
+    padding: 12px 14px;
     max-width: 100%;
   }
-
   article.external {
-    background: var(--m3-surface-container);
+    background: var(--m3-surface-raised);
+    border: 1px solid color-mix(in srgb, var(--m3-outline-variant) 75%, transparent);
+    box-shadow: 0 1px 2px rgb(15 40 80 / 0.05);
   }
+  article.ours {
+    background: color-mix(in srgb, var(--m3-primary) 7%, var(--m3-surface-raised));
+    border: 1px solid color-mix(in srgb, var(--m3-primary) 18%, transparent);
+  }
+  .msg-kind {
+    display: inline-flex;
+    align-items: center;
+    height: 18px;
+    padding: 0 7px;
+    margin-right: 6px;
+    border-radius: var(--m3-shape-full);
+    background: color-mix(in srgb, var(--m3-primary) 14%, transparent);
+    color: var(--m3-on-primary-container);
+    font: var(--m3-type-label-sm);
+    font-weight: 600;
+    vertical-align: 1px;
+  }
+  .msg-kind.note-kind { background: color-mix(in srgb, var(--m3-tertiary) 18%, transparent); color: var(--m3-on-tertiary-container); }
+  .sender-name { font-weight: 600; color: var(--m3-on-surface); }
+  .sender-email { margin-left: 6px; font: var(--m3-type-body-sm); color: var(--m3-on-surface-variant-2); }
 
   article.note {
     background: var(--m3-tertiary-container);
@@ -2651,16 +2865,17 @@
   .msg-head {
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin-bottom: 6px;
+    gap: 10px;
+    margin-bottom: 4px;
   }
 
   .avatar {
-    width: 24px;
-    height: 24px;
+    width: 28px;
+    height: 28px;
+    flex: none;
     border-radius: 50%;
     color: #fff;
-    font-size: 10px;
+    font-size: 10.5px;
     font-weight: 700;
     display: inline-flex;
     align-items: center;
@@ -2668,8 +2883,10 @@
   }
 
   .sender {
-    font: var(--m3-type-label-md);
+    font: var(--m3-type-body-md);
     flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
 
   .when {
@@ -3331,7 +3548,7 @@
 
   /* ---- message recipients + reply-all composer ---- */
   .msg-recip {
-    margin: 0 0 6px;
+    margin: 0 0 8px 38px;
     font: var(--m3-type-label-sm);
     color: var(--m3-on-surface-variant);
     display: flex;
@@ -3341,11 +3558,14 @@
   }
 
   .recip-toggle {
-    color: var(--m3-primary);
-    padding: 2px 7px;
+    display: inline-flex;
+    align-items: center;
+    gap: 1px;
+    color: var(--m3-on-surface-variant-2);
+    padding: 2px 6px;
+    margin-left: -6px;
     border-radius: 6px;
     font: var(--m3-type-label-sm);
-    font-weight: 600;
   }
 
   .recip-toggle:hover {
@@ -3364,21 +3584,26 @@
 
   @media (max-width: 720px) {
     .tv-head {
-      padding: 8px 10px 6px;
+      padding: 10px 12px 0;
     }
-    .tv-title h3 {
-      font-size: 1.05rem;
-      line-height: 1.25;
+    .tv-title h2 {
+      font-size: 1.0625rem;
+      line-height: 1.3;
     }
-    .status-select,
-    .assignee-sel {
-      font-size: 0.8rem;
-      padding: 4px 8px 4px 18px;
+    /* Properties scroll sideways rather than wrapping into a second row. */
+    .tv-controls {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      scrollbar-width: none;
+      margin: 10px -12px 2px;
+      padding: 0 12px 2px;
     }
+    .tv-controls::-webkit-scrollbar { display: none; }
     .tv-actions {
       gap: 4px;
-      margin-top: 6px;
+      margin-top: 2px;
     }
+    .tv-tabs button { height: 40px; padding: 0 10px; }
     .tv-actions .md3-chip,
     .tv-actions .md3-btn {
       font-size: 0.78rem;
@@ -3400,12 +3625,23 @@
       font-size: 0.72rem;
     }
     .tv-body {
-      padding: 8px 10px;
-      gap: 8px;
+      padding: 12px;
+      gap: 10px;
     }
     article {
-      padding: 8px 9px;
+      padding: 11px 12px;
     }
+    .sender-email {
+      display: block;
+      margin: 1px 0 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .when { white-space: nowrap; font-size: 0.75rem; }
+    .tab-lg { display: none; }
+    .tab-sm { display: inline; }
+    .msg-recip { margin-left: 0; }
     .tv-composer {
       padding: 8px 10px 10px;
     }

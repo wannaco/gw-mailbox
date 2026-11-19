@@ -37,6 +37,21 @@
   --m3-success: #188038;
   --m3-warning: #f9ab00;
 
+  /* Status + SLA colours, per theme. `--st-*` is the fill (dots, bars, pill
+     tints); `--st-*-ink` is for TEXT and is tuned to pass 4.5:1 on the page
+     and on its own pill tint. The fills used to be hard-coded light-theme hex
+     in appState, so status text failed contrast in dark mode (~2.4:1). */
+  --st-new: #0b57d0;          --st-new-ink: #0b57d0;
+  --st-in_progress: #f9ab00;  --st-in_progress-ink: #8a5300;
+  --st-waiting_customer: #9334e6; --st-waiting_customer-ink: #7a1fcc;
+  --st-escalated: #ba1a1a;    --st-escalated-ink: #ae1717;
+  --st-closed: #5f6368;       --st-closed-ink: #4a4e53;
+  --st-archived: #5f6368;     --st-archived-ink: #4a4e53;
+  --st-spam: #c5221f;         --st-spam-ink: #ae1d1a;
+  --sla-ok: #188038;          --sla-ok-ink: #146c2e;
+  --sla-soon: #e37400;        --sla-soon-ink: #8f4a00;
+  --sla-breached: #ba1a1a;    --sla-breached-ink: #ae1717;
+
   /* surfaces — near-white, Gmail-like */
   --m3-surface: #f8fafd;
   --m3-on-surface: #1f1f1f;
@@ -119,6 +134,17 @@
   --m3-success: #6dd58c;
   --m3-warning: #fdd663;
 
+  --st-new: #8ab4f8;          --st-new-ink: #a8c7fa;
+  --st-in_progress: #fdd663;  --st-in_progress-ink: #fde293;
+  --st-waiting_customer: #c58af9; --st-waiting_customer-ink: #dcbcf3;
+  --st-escalated: #f28b82;    --st-escalated-ink: #f6aea9;
+  --st-closed: #9aa0a6;       --st-closed-ink: #c4c7c5;
+  --st-archived: #9aa0a6;     --st-archived-ink: #c4c7c5;
+  --st-spam: #f28b82;         --st-spam-ink: #f6aea9;
+  --sla-ok: #6dd58c;          --sla-ok-ink: #a8e6b8;
+  --sla-soon: #fbbc04;        --sla-soon-ink: #fde293;
+  --sla-breached: #f28b82;    --sla-breached-ink: #f6aea9;
+
   --m3-surface: #1f1f1f;
   --m3-on-surface: #e4e4e4;
   --m3-surface-dim: #141414;
@@ -146,17 +172,22 @@
    Type scale
    --------------------------------------------------------------------------- */
 :root {
-  --m3-type-display: clamp(2.25rem, 5vw, 3.25rem) / 1.1 "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --m3-type-headline: 1.375rem / 1.25 600 "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --m3-type-title-lg: 1.125rem / 1.3 600 "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --m3-type-title-md: 1rem / 1.35 500 "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --m3-type-title-sm: 0.875rem / 1.35 600 "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --m3-type-body-lg: 1rem / 1.45 "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --m3-type-body-md: 0.875rem / 1.4 "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --m3-type-body-sm: 0.75rem / 1.35 "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --m3-type-label-lg: 0.875rem / 1.4 500 "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --m3-type-label-md: 0.75rem / 1.3 500 "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --m3-type-label-sm: 0.6875rem / 1.3 500 "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* Weight must come BEFORE size in the `font` shorthand. These used to read
+     "1.375rem / 1.25 600 Inter", which is invalid CSS: browsers dropped every
+     declaration using them, so all titles and labels silently fell back to
+     the parent's 16px/400. That is why headings looked flat app-wide. */
+  --m3-type-display: 700 clamp(2.25rem, 5vw, 3.25rem) / 1.1 "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --m3-type-headline: 600 1.5rem / 1.25 "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --m3-type-title-lg: 600 1.125rem / 1.3 "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --m3-type-title-md: 600 1rem / 1.35 "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --m3-type-title-sm: 600 0.875rem / 1.35 "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --m3-type-body-lg: 400 1rem / 1.5 "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --m3-type-body-md: 400 0.875rem / 1.45 "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --m3-type-body-sm: 400 0.8125rem / 1.4 "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --m3-type-label-lg: 500 0.875rem / 1.4 "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --m3-type-label-md: 500 0.8125rem / 1.3 "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* 12px floor for the smallest text (was 11px) — legibility. */
+  --m3-type-label-sm: 500 0.75rem / 1.3 "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
 /* ---------------------------------------------------------------------------
@@ -354,4 +385,211 @@ button:focus-visible {
 
 ::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* ---------------------------------------------------------------------------
+   Accessibility foundations
+   --------------------------------------------------------------------------- */
+/* Text for screen readers only (labels for icon buttons, page headings that
+   would be redundant on screen). */
+.sr-only {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* First tab stop on every signed-in page: jumps past the topbar and the
+   mailbox rail straight to the content. Invisible until focused. */
+.skip-link {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 1000;
+  padding: 10px 16px;
+  border-radius: var(--m3-shape-sm);
+  background: var(--m3-primary);
+  color: var(--m3-on-primary);
+  font: var(--m3-type-label-lg);
+  text-decoration: none;
+  transform: translateY(-160%);
+  transition: transform 0.15s ease;
+}
+.skip-link:focus { transform: none; }
+
+/* One visible keyboard focus ring for everything interactive. Components that
+   remove the outline on an inner input draw a :focus-within ring on the
+   wrapper instead. :focus-visible keeps mouse clicks ring-free. */
+a:focus-visible,
+select:focus-visible,
+summary:focus-visible,
+[role="button"]:focus-visible,
+[tabindex]:not([tabindex="-1"]):focus-visible,
+input[type="checkbox"]:focus-visible,
+input[type="radio"]:focus-visible {
+  outline: 2px solid var(--m3-primary);
+  outline-offset: 2px;
+}
+:focus:not(:focus-visible) { outline: none; }
+
+/* Respect the OS "reduce motion" setting app-wide: keep state changes, drop
+   the movement (pulses, slides, spinners slow to a stop). */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Page header (Settings, Reports, Profile)
+   --------------------------------------------------------------------------- */
+.page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 0 0 22px;
+}
+.page-title {
+  font: var(--m3-type-headline);
+  letter-spacing: -0.015em;
+  color: var(--m3-on-surface);
+  margin: 0;
+}
+.page-sub {
+  font: var(--m3-type-body-md);
+  color: var(--m3-on-surface-variant-2);
+  margin: 4px 0 0;
+}
+
+/* ---------------------------------------------------------------------------
+   Filter chips — shared by the conversation list and the board toolbar.
+   --------------------------------------------------------------------------- */
+  /* One chip style for every filter. Before, "My tickets" was an outlined
+     chip, statuses were bare text, and Label was a third look. */
+  .fchip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    padding: 0 11px;
+    border-radius: var(--m3-shape-full);
+    border: 1px solid var(--m3-outline-variant);
+    background: var(--m3-surface-raised);
+    color: var(--m3-on-surface-variant);
+    font: var(--m3-type-label-md);
+    white-space: nowrap;
+    flex: 0 0 auto;
+    transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+  }
+  .fchip svg:last-child:not(:first-child) { margin-right: -5px; }
+  @media (hover: hover) {
+    .fchip:hover { background: var(--m3-row-hover); border-color: var(--m3-outline); }
+  }
+  .fchip.is-active {
+    background: var(--m3-primary-container);
+    border-color: transparent;
+    color: var(--m3-on-primary-container);
+  }
+  .fchip .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--dot, #9aa0a6);
+    flex: 0 0 auto;
+  }
+  .fcount {
+    font-variant-numeric: tabular-nums;
+    color: var(--m3-on-surface-variant-2);
+    font-weight: 600;
+  }
+  .fchip.is-active .fcount { color: inherit; }
+
+
+/* ---------------------------------------------------------------------------
+   Form controls (Settings, Profile) — opt in with class="form-ui"
+   --------------------------------------------------------------------------- */
+.form-ui input:is([type="text"], [type="email"], [type="number"], [type="password"], [type="url"], [type="time"], [type="datetime-local"], [type="search"], :not([type])),
+.form-ui select,
+.form-ui textarea {
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid var(--m3-outline-variant);
+  border-radius: var(--m3-shape-sm);
+  background: var(--m3-surface-raised);
+  color: var(--m3-on-surface);
+  font: var(--m3-type-body-md);
+  outline: none;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.form-ui textarea { line-height: 1.5; }
+.form-ui input:hover, .form-ui select:hover, .form-ui textarea:hover { border-color: var(--m3-outline); }
+.form-ui input:focus-visible, .form-ui select:focus-visible, .form-ui textarea:focus-visible,
+.form-ui input:focus, .form-ui select:focus, .form-ui textarea:focus {
+  border-color: var(--m3-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--m3-primary) 16%, transparent);
+  outline: none;
+}
+.form-ui ::placeholder { color: var(--m3-on-surface-variant-2); opacity: 1; }
+
+/* On/off settings render as switches. Still a native checkbox underneath,
+   so keyboard (Space) and screen readers work unchanged. */
+.form-ui .switch-row input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: none;
+  position: relative;
+  width: 40px;
+  height: 24px;
+  margin: 0;
+  border-radius: 999px;
+  background: var(--m3-surface-container-highest);
+  border: 1px solid var(--m3-outline);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.form-ui .switch-row input[type="checkbox"]::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--m3-outline);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+.form-ui .switch-row input[type="checkbox"]:checked { background: var(--m3-primary); border-color: var(--m3-primary); }
+.form-ui .switch-row input[type="checkbox"]:checked::after { transform: translateX(16px); background: var(--m3-on-primary); }
+.form-ui .switch-row input[type="checkbox"]:focus-visible { outline: 2px solid var(--m3-primary); outline-offset: 2px; }
+.form-ui input[type="checkbox"]:not(.switch-row input) { accent-color: var(--m3-primary); width: 16px; height: 16px; }
+
+/* Disabled buttons: a flat neutral, not a 40%-faded primary that read as a
+   washed-out pastel ("Save key" was barely visible). */
+.form-ui .md3-btn:disabled {
+  opacity: 1;
+  background: var(--m3-surface-container);
+  color: color-mix(in srgb, var(--m3-on-surface) 38%, transparent);
+  border-color: transparent;
+}
+
+/* Section cards, as Reports. */
+.form-ui .card {
+  background: var(--m3-surface-raised);
+  border: 1px solid color-mix(in srgb, var(--m3-outline-variant) 75%, transparent);
+  border-radius: var(--m3-shape-lg);
+  box-shadow: 0 1px 2px rgb(15 40 80 / 0.05);
+  padding: 20px 22px;
+}
+@media (max-width: 620px) {
+  .form-ui .card { padding: 16px; }
 }

@@ -36,8 +36,13 @@
   }
 </script>
 
-<div class="profile">
-  <h2>My profile</h2>
+<div class="profile form-ui">
+  <header class="page-head">
+    <div>
+      <h1 class="page-title">My profile</h1>
+      <p class="page-sub">Your email signature and reply preferences.</p>
+    </div>
+  </header>
   <div class="card">
     <p class="ident">
       <strong>{appState.me?.name || appState.me?.email}</strong>
@@ -67,13 +72,13 @@
 
 <style>
   .profile { max-width: 640px; margin: 0 auto; padding: 24px 20px 60px; height: 100%; overflow-y: auto; box-sizing: border-box; }
-  h2 { font: var(--m3-type-headline); margin: 0 0 16px; }
-  .card { background: var(--m3-surface-container-low); border: 1px solid var(--m3-outline-variant); border-radius: var(--m3-shape-md); padding: 18px; }
-  .ident { display: flex; flex-direction: column; gap: 2px; margin: 0 0 14px; }
+  .ident { display: flex; flex-direction: column; gap: 2px; margin: 0 0 18px; padding-bottom: 16px; border-bottom: 1px solid var(--m3-outline-variant); }
+  .ident strong { font: var(--m3-type-title-md); }
   .muted { color: var(--m3-on-surface-variant); font: var(--m3-type-body-sm); }
   .hint { color: var(--m3-on-surface-variant-2); font: var(--m3-type-body-sm); margin-top: 4px; }
-  .field-row { display: flex; flex-direction: column; gap: 6px; font: var(--m3-type-label-md); color: var(--m3-on-surface-variant); margin-bottom: 14px; }
-  .field-row textarea { border: 1px solid var(--m3-outline-variant); border-radius: var(--m3-shape-sm); padding: 9px 11px; font: var(--m3-type-body-sm); background: var(--m3-surface-container-lowest); resize: vertical; min-height: 100px; }
+  .field-row { display: flex; flex-direction: column; gap: 6px; font: var(--m3-type-label-lg); color: var(--m3-on-surface); margin-bottom: 18px; }
+  .field-row textarea { resize: vertical; min-height: 120px; }
+  .switch-row { padding: 14px 0; border-top: 1px solid var(--m3-outline-variant); }
   .switch-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .switch-row > span { display: flex; flex-direction: column; gap: 2px; }
   .row-btns { display: flex; gap: 10px; }

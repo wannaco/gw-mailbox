@@ -70,7 +70,7 @@
 
 </script>
 
-<div class="login-wrap">
+<main class="login-wrap">
   <!-- Decoration lives in its own clipped layer. Putting `overflow: hidden` on
        .login-wrap directly would clip the FORM on a short viewport, leaving no
        way to scroll to the button. -->
@@ -165,10 +165,10 @@
       </button>
     </form>
   </div>
-</div>
+</main>
 
 <style>
-  .login-wrap {
+  main.login-wrap, .login-wrap {
     position: relative;
     min-height: 100dvh;
     display: grid;

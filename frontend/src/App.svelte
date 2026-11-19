@@ -315,7 +315,44 @@ $effect(() => {
     routeReady = true;
     syncUrl(false);
   }
+
+  // ---- conversation drawer as a modal dialog -------------------------------
+  // The drawer covers the page with a scrim, so it behaves as a dialog: focus
+  // moves into it on open, the page behind is `inert` (not tabbable or
+  // readable), Escape closes it, and focus returns to whatever opened it.
+  let drawerEl = $state(null);
+  let returnFocusTo = null;
+  const drawerOpen = $derived(!!appState.openThreadId && !!appState.me);
+  $effect(() => {
+    if (!drawerOpen || !drawerEl) return;
+    returnFocusTo = document.activeElement;
+    // Next frame: ThreadView renders its header first.
+    requestAnimationFrame(() => {
+      if (drawerEl && !drawerEl.contains(document.activeElement)) drawerEl.focus();
+    });
+    return () => {
+      const el = returnFocusTo;
+      returnFocusTo = null;
+      if (el && el.isConnected && typeof el.focus === "function") requestAnimationFrame(() => el.focus());
+    };
+  });
+  function onWindowKeydown(ev) {
+    if (ev.key !== "Escape" || ev.defaultPrevented) return;
+    if (userMenuOpen) { userMenuOpen = false; return; }
+    // Only when nothing inside the drawer claimed Escape (menus, the slash
+    // command picker and the link dialog all preventDefault on it).
+    if (drawerOpen) appState.openThreadId = "";
+  }
+
+  const pageTitle = $derived(
+    appState.screen === "settings" ? "Settings"
+    : appState.screen === "reports" ? "Reports"
+    : appState.screen === "profile" ? "My profile"
+    : `${appState.inboxes.find((i) => i.id === appState.activeInboxId)?.name || "Mailbox"} — ${appState.view === "board" ? "board" : "conversations"}`
+  );
 </script>
+
+<svelte:window onkeydown={onWindowKeydown} />
 
 <svelte:head>
   <title>{appState.me ? "Mailbox" : "Sign in"} — shared inbox & kanban</title>
@@ -331,6 +368,7 @@ $effect(() => {
   <Login signIn={handleLogin} signInOAuth={handleOAuth} />
 {:else}
   <div class="shell">
+    <a class="skip-link" href="#main" inert={drawerOpen} onclick={(e) => { e.preventDefault(); document.getElementById("main")?.focus(); }}>Skip to content</a>
 <!-- Notification permission, offered once as a real click.
      A banner rather than a Settings button because (a) browsers only show the
      permission prompt from a user gesture, and (b) Settings is admin-only, so
@@ -350,28 +388,28 @@ $effect(() => {
     </button>
   </div>
 {/if}
-    <header class="topbar">
+    <header class="topbar" inert={drawerOpen}>
       <div class="brand">
         <span class="brand-dot"></span>
         <span class="brand-name">Mailbox</span>
         <span class="mobile-inbox">{appState.inboxes.find((i) => i.id === appState.activeInboxId)?.name || ""}</span>
       </div>
       <div class="spacer"></div>
-      <div class="md3-seg" role="tablist" aria-label="View">
-        <button class:is-active={appState.view === "list"} onclick={() => (appState.view = "list")} title="List view">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/></svg>
+      <div class="md3-seg" role="group" aria-label="View">
+        <button class:is-active={appState.view === "list"} aria-pressed={appState.view === "list"} onclick={() => (appState.view = "list")} title="List view">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/></svg>
           List
         </button>
-        <button class:is-active={appState.view === "board"} onclick={() => (appState.view = "board")} title="Board view">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 5h18v14H3z" opacity="0"/><path d="M3 5v14h8V5H3zm10 0v9h8V5h-8z"/></svg>
+        <button class:is-active={appState.view === "board"} aria-pressed={appState.view === "board"} onclick={() => (appState.view = "board")} title="Board view">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 5h18v14H3z" opacity="0"/><path d="M3 5v14h8V5H3zm10 0v9h8V5h-8z"/></svg>
           Board
         </button>
       </div>
       <span class="md3-chip is-active">{appState.inboxes.find((i) => i.id === appState.activeInboxId)?.name || "—"}</span>
-      <button class="md3-icon-btn" title="Settings" onclick={() => goScreen(appState.screen === "settings" ? "mail" : "settings")}>
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96a7.02 7.02 0 0 0-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84a.48.48 0 0 0-.48.41l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.48-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/></svg>
+      <button class="md3-icon-btn" title="Settings" aria-label="Settings" aria-pressed={appState.screen === "settings"} onclick={() => goScreen(appState.screen === "settings" ? "mail" : "settings")}>
+        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96a7.02 7.02 0 0 0-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84a.48.48 0 0 0-.48.41l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.48-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/></svg>
       </button>
-      <button class="md3-icon-btn" title="Toggle theme" onclick={toggleTheme}>
+      <button class="md3-icon-btn" title="Toggle theme" aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"} onclick={toggleTheme}>
         {#if theme === "dark"}
           <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36a5.39 5.39 0 0 1-4.4 2.26 5.4 5.4 0 0 1-3.14-9.8c-.44-.06-.9-.1-1.36-.1z"/></svg>
         {:else}
@@ -428,8 +466,11 @@ $effect(() => {
     </header>
 
     <div class="body">
-      <NavRail select={switchInbox} />
-      <main class:dimmed={!!appState.openThreadId && appState.screen === "mail"}>
+      <div class="rail-wrap" inert={drawerOpen}><NavRail select={switchInbox} /></div>
+      <main id="main" tabindex="-1" inert={drawerOpen} class:dimmed={!!appState.openThreadId && appState.screen === "mail"}>
+        <!-- One h1 per page for screen-reader navigation. Settings, Reports and
+             Profile show a visible title; list and board don't need one. -->
+        {#if appState.screen === "mail"}<h1 class="sr-only">{pageTitle}</h1>{/if}
         {#if appState.screen === "settings"}
           <Settings />
         {:else if appState.screen === "reports"}
@@ -444,10 +485,10 @@ $effect(() => {
       </main>
 
       {#if appState.openThreadId}
-        <div class="scrim" onclick={() => (appState.openThreadId = "")}></div>
-        <aside class="drawer" aria-label="Thread">
+        <div class="scrim" aria-hidden="true" onclick={() => (appState.openThreadId = "")}></div>
+        <div class="drawer" role="dialog" aria-modal="true" aria-label="Conversation" tabindex="-1" bind:this={drawerEl}>
           <ThreadView threadId={appState.openThreadId} />
-        </aside>
+        </div>
       {/if}
     </div>
 
@@ -667,6 +708,11 @@ $effect(() => {
        and can paint on top of it. Contained at 0, it stays under the scrim. */
     z-index: 0;
   }
+
+  /* Wrapper exists only to make the rail inert while the drawer is open. */
+  .rail-wrap { display: contents; }
+  /* Programmatic focus targets (skip link, drawer open) - no page-sized ring. */
+  main:focus, .drawer:focus { outline: none; }
 
   main.dimmed {
     filter: brightness(0.96);

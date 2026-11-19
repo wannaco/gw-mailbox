@@ -38,7 +38,9 @@ export function isoLocalInput(dt) {
 
 // Curated, muted avatar palette — no rainbow noise.
 const AVATAR_COLORS = [
-  "#1a73e8", "#188038", "#e37400", "#9334e6", "#12a4af", "#c5221f", "#5f6368"
+  // Each passes 4.5:1 with white text (WCAG AA). The old orange (#e37400)
+  // and teal (#12a4af) were ~3:1, so initials on them were hard to read.
+  "#1a6fdf", "#188038", "#b45309", "#9334e6", "#0e7c86", "#c5221f", "#5f6368"
 ];
 
 export function avatarColor(seed) {
