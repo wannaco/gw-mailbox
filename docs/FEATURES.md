@@ -60,6 +60,16 @@ Self-edit via **My profile**; admins can set on agents' behalf (Settings → Peo
 
 ## UI / design
 Material-3 token palette refined toward a **Linear-style** aesthetic (see `ui polish pass 1–4` commits): **Inter** (self-hosted via `@fontsource`) across the type scale, **6–8px radii** instead of pills, hairline borders, quiet chrome (white topbar/nav rail), underline Settings tabs, elevated white cards on the board, and consistent focus rings. Screenshots: `docs/screenshots/`.
+- **Type scale** tokens in `m3.css` use valid `font` shorthand (weight before size) — the old order was invalid CSS and silently fell back to 16px/400 everywhere.
+- **Status & SLA colours are theme tokens** (`--st-*`, `--sla-*`, each with an `-ink` text variant) so light and dark both pass contrast.
+- **List**: aligned columns (gutter unread dot, assignee column, time/status right column); phones get a mail-app layout with tap-avatar-to-select. **Board**: tinted lanes, two-line card subjects, Select mode. **Reports**: stat tiles + thin bar charts.
+
+## Accessibility
+Audited with axe-core (WCAG 2.2 AA + best practice): **0 violations** on every screen in light and dark.
+- Skip-to-content link; one `h1` per page; landmarks; labelled icon buttons and selects.
+- Conversation drawer is a modal dialog: focus moves in, the page behind is `inert`, **Esc** closes (innermost panel first), focus returns to the row/card that opened it.
+- Keyboard: Settings and conversation tabs follow the WAI-ARIA tabs pattern (arrows/Home/End); board **←/→/↑/↓** navigation and **Shift+←/→** to move a card between lanes (keyboard alternative to drag-and-drop, announced via a live region).
+- Visible focus rings everywhere; text and avatar colours meet 4.5:1; respects `prefers-reduced-motion`.
 
 ## Not built / deferred
 - Customer-facing "where's my ticket" portal

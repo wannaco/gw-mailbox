@@ -37,11 +37,11 @@ Sign in with your email + password, or **Continue with Google** if your admin ha
 |---|---|
 | **Left rail** | Your mailboxes (Support, Sales, Billing…). Click to switch. |
 | **Top bar** | **List / Board** toggle, the active mailbox name, ⚙ Settings, theme toggle, presence, notifications bell, and your account menu. |
-| **Toolbar** | Search, **My tickets**, status filter chips, and the conversation count. |
-| **Rows** | One conversation each: customer, subject, snippet, labels, assignee, status, SLA chip, time. |
-| **Hover a row** | A **⋯** button appears — assign or label the ticket without opening it. |
+| **Toolbar** | Search and the conversation count on top; **My tickets**, status and **Label** filter chips underneath. |
+| **Rows** | One conversation each: subject, message/note counts, labels, customer and snippet, assignee, and on the right the time, status and SLA chip. A blue dot in the left gutter marks new messages. |
+| **Hover a row** | A **⋮** button appears — assign or label the ticket without opening it. |
 
-**Keyboard/touch note:** on phones and tablets the **⋯** button is always visible (there's no hover on touch).
+**Phones:** rows show sender and time, then subject, snippet and a line of status/SLA chips. Tap a customer's **avatar** to select that conversation (it turns into a ✓) — the bulk bar appears. The **⋮** button is always visible on touch screens.
 
 ---
 
@@ -57,13 +57,13 @@ Type anything — subject, customer name, email, or snippet. The count at the to
 
 - **My tickets** — only conversations assigned to *you*.
 - **Status chips** (New / In progress / Waiting on customer / Escalated / Closed) — click to filter by status; click again to clear.
-- **Label chip** — click a label (e.g. `#billing`) to see only those conversations.
+- **Label** chip — opens the label list; pick one (e.g. `billing`) to see only those conversations.
 
-### Quick actions (⋯)
+### Quick actions (⋮)
 
 ![Quick actions](screenshots/03-quick-actions.png)
 
-Hover any row and click the **⋯** to, **without opening the thread**:
+Hover any row and click the **⋮** to, **without opening the thread**:
 
 - **Assign** the conversation to an agent (or Unassigned)
 - **Toggle labels** on/off
@@ -78,11 +78,11 @@ Click any conversation to open it on the right. The list stays visible on the le
 
 ![Thread drawer](screenshots/08-thread-drawer.png)
 
-**Header** — subject, customer, **Contact** (opens the contact panel with tags + related cases), and the status pill (click to change status).
+**Header** — subject and customer, then a row of controls: **status** (click to change), **assignee**, and **Contact** (opens the contact panel with tags + related cases).
 
-**Toolbar** — *Unassigned*/assignee, **Labels**, **Conversation** / **Internal notes** tabs, **Book Meet**.
+**Tabs** — **Conversation** / **Internal notes** (use ←/→ to switch), and **Details** for **Labels**, **Book Meet** and previous tickets. Press **Esc** to close the conversation (an open panel such as Contact closes first).
 
-**Conversation** — every message in order (oldest → newest). Attachments from customers appear as downloadable chips. Internal notes are shown in a distinct style and are never emailed.
+**Conversation** — every message in order (oldest → newest). Customer messages are white cards; your team's replies are tinted blue and tagged **Team reply**, so the back-and-forth reads at a glance. Attachments from customers appear as downloadable chips. Internal notes are shown in a distinct style and are never emailed.
 
 ### Replying
 
@@ -113,7 +113,18 @@ Each column is a status. Cards show the customer, subject, snippet, labels, assi
 
 ### Moving tickets
 
-**Drag a card onto another column** to change its status. The change saves immediately and shows up in every other open session within a few seconds.
+**Drag a card onto another column** to change its status — or, from the keyboard, select a card and press **Shift + ← / →**. The change saves immediately and shows up in every other open session within a few seconds.
+
+### Keyboard
+
+| Keys | Action |
+|---|---|
+| **← / →** | Move to the nearest card in the next lane (empty lanes are skipped) |
+| **↑ / ↓**, **Home / End** | Previous / next card in the lane; first / last |
+| **Shift + ← / →** | Move the selected card to the adjacent lane |
+| **Enter** | Open the conversation (**Esc** closes it and returns you to the card) |
+
+On phones the board shows one lane at a time — swipe sideways; it opens on the first lane that has conversations.
 
 ### Show / hide columns
 
@@ -123,7 +134,7 @@ Click **Columns** in the board toolbar to tick/untick statuses (each shows a liv
 
 ### Select mode
 
-Click **Select…** to check multiple cards (drag is disabled while selecting), then use the bulk bar at the top.
+Click **Select** in the board toolbar to check multiple cards (drag is disabled while selecting), then use the bulk bar at the top. Click **Done** to leave select mode.
 
 ---
 
@@ -151,15 +162,15 @@ Perfect for initial clean-up after connecting a mailbox.
 
 ![Bulk select](screenshots/05-bulk-select.png)
 
-1. Tick individual rows, or use **Select all N matching** after a search — this selects *every* conversation matching your filters, not just the visible ones.
+1. Tick individual rows (on phones, tap the avatars), or use **Select all N** after a search — this selects *every* conversation matching your filters, not just the visible ones.
 2. Choose an action:
    - **Close** — mark resolved
    - **Archive** — out of the way, still searchable (Archived chip/column)
-   - **Mark spam** — junk (Spam chip/column)
+   - **Spam** — junk (Spam chip/column); **Not spam** appears when the selection contains spam
    - **Delete** — permanently removes the conversation and its messages (**admins only**, asks to confirm)
-   - **Clear** — cancel the selection
+   - **✕** — cancel the selection
 
-**Tip:** clean up a noisy mailbox in seconds — search `Security alert` → **Select all matching** → **Mark spam**.
+**Tip:** clean up a noisy mailbox in seconds — search `Security alert` → **Select all** → **Spam**.
 
 ---
 
@@ -252,7 +263,7 @@ Check the thread — if it shows as sent, it went out. Replies go from the mailb
 The clock is anchored to the customer's real message date. Mail imported from history that was never answered is genuinely overdue. Close/archive those (see bulk actions) and they leave the queue.
 
 **How do I clean up hundreds of old conversations?**
-Search → **Select all matching** → **Mark spam** (or Archive/Delete for admins). See section 7.
+Search → **Select all** → **Spam** (or Archive/Delete for admins). See section 7.
 
 **A ticket is in Escalated — did something break?**
 No — that's the SLA monitor doing its job. Escalated means the ticket blew its deadline. Open it, read the ⏰ note, and work it like any other ticket.
