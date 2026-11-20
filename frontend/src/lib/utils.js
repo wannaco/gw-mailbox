@@ -58,10 +58,17 @@ export function sanitizeHtml(html) {
   }
   const doc = new DOMParser().parseFromString(html, "text/html");
   const allowed = new Set(["SCRIPT", "STYLE", "IFRAME", "OBJECT", "EMBED", "LINK", "META", "FORM", "INPUT", "BUTTON"]);
+  // Layout elements whose fixed pixel widths (width="640") made newsletters
+  // wider than the conversation panel. Percentage widths are kept.
+  const FLUID = new Set(["TABLE", "TD", "TH", "COL", "COLGROUP", "TBODY", "THEAD", "TFOOT", "TR", "DIV", "CENTER"]);
   doc.querySelectorAll("*").forEach((el) => {
     if (allowed.has(el.tagName)) {
       el.remove();
       return;
+    }
+    if (FLUID.has(el.tagName)) {
+      const w = el.getAttribute("width");
+      if (w && !/%\s*$/.test(w)) el.removeAttribute("width");
     }
     [...el.attributes].forEach((attr) => {
       const name = attr.name.toLowerCase();

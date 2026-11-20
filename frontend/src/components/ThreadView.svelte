@@ -2904,6 +2904,26 @@
     margin: 0 0 8px;
   }
 
+  /* Emails are fitted to the panel (fixed widths are dropped by
+     sanitizeHtml). If one still can't fit, only that email scrolls sideways
+     inside its card; before, the whole conversation did (971px wide on a
+     390px phone for a typical newsletter). */
+  .html-body {
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-wrap: anywhere;
+  }
+  .html-body :global(table) {
+    max-width: 100% !important;
+  }
+  .html-body :global(td),
+  .html-body :global(th) {
+    overflow-wrap: anywhere;
+  }
+  .html-body :global(pre) {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
   .html-body :global(img) {
     max-width: 100%;
     height: auto;
