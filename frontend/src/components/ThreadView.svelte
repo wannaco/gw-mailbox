@@ -2920,6 +2920,26 @@
   .html-body :global(th) {
     overflow-wrap: anywhere;
   }
+  /* Emails size their headings with inline styles, which sanitizeHtml strips
+     for safety, so an <h1> fell back to the browser default (2em = 32px),
+     about double what Gmail shows. Cap headings at a reading scale. */
+  .html-body :global(h1),
+  .html-body :global(h2),
+  .html-body :global(h3),
+  .html-body :global(h4),
+  .html-body :global(h5),
+  .html-body :global(h6) {
+    font-weight: 600;
+    line-height: 1.3;
+    margin: 0.6em 0 0.35em;
+    letter-spacing: normal;
+  }
+  .html-body :global(h1) { font-size: 1.25rem; }
+  .html-body :global(h2) { font-size: 1.125rem; }
+  .html-body :global(h3) { font-size: 1rem; }
+  .html-body :global(h4),
+  .html-body :global(h5),
+  .html-body :global(h6) { font-size: 0.9375rem; }
   .html-body :global(pre) {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
